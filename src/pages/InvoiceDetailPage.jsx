@@ -1,6 +1,7 @@
 import { useEffect, useMemo, useRef, useState } from 'react'
 import { useNavigate, useParams } from 'react-router-dom'
-import { Archive, ArrowLeft, CalendarDays, CheckCircle2, ChevronRight, CreditCard, DollarSign, Eye, FileText, RotateCcw, Save, Send, Trash2, Wallet } from 'lucide-react'
+import { Archive, ArrowLeft, Building2, CalendarDays, CheckCircle2, ChevronRight, CreditCard, DollarSign, Eye, FileText, Pencil, RotateCcw, Save, Send, Trash2, UserRound, Wallet } from 'lucide-react'
+import { StatusBadge } from '../components/ui/StatusBadge'
 import { contractorCompany } from '../data/mockInvoices'
 import { currency } from '../utils/formatters'
 import { archiveMenuItemClasses } from '../utils/buttonStyles'
@@ -22,6 +23,19 @@ import { appRoutes } from '../config/appRoutes'
 
 const paymentMethods = ['Cash', 'Check', 'Zelle', 'Credit Card', 'Bank Transfer', 'Other']
 const paymentTypes = ['Deposit', 'Progress Payment', 'Final Payment', 'Other']
+const unavailableContactValues = new Set(['(410) 555-0100', 'Address not added', 'Unknown Client'])
+
+function getAvailableContactValue(...values) {
+  for (const value of values) {
+    const normalizedValue = String(value ?? '').trim()
+
+    if (normalizedValue && !unavailableContactValues.has(normalizedValue)) {
+      return value
+    }
+  }
+
+  return ''
+}
 
 function getRemainingBalance(invoice) {
   return Math.max(Number(invoice.amount || 0) - Number(invoice.amountPaid || 0), 0)
@@ -135,7 +149,10 @@ export function InvoiceDetailRoute({ companySettings, leads, clients = [], invoi
   const [showSendModal, setShowSendModal] = useState(false)
   const [successMessage, setSuccessMessage] = useState('')
   const [isSavingInvoice, setIsSavingInvoice] = useState(false)
+  const [isEditingInvoice, setIsEditingInvoice] = useState(false)
   const invoiceSaveGuardRef = useRef(false)
+  const editInvoiceButtonRef = useRef(null)
+  const firstInvoiceEditFieldRef = useRef(null)
   const [isRunningInvoiceAction, setIsRunningInvoiceAction] = useState(false)
   const [activeInvoiceAction, setActiveInvoiceAction] = useState('')
   const invoiceActionGuardRef = useRef(false)
@@ -168,6 +185,20 @@ export function InvoiceDetailRoute({ companySettings, leads, clients = [], invoi
   useEffect(() => {
     setDraftInvoice(resolvedInvoice || null)
   }, [resolvedInvoice])
+
+  useEffect(() => {
+    setIsEditingInvoice(false)
+  }, [invoiceId])
+
+  useEffect(() => {
+    if (!isEditingInvoice) return undefined
+
+    const focusFrame = window.requestAnimationFrame(() => {
+      firstInvoiceEditFieldRef.current?.focus()
+    })
+
+    return () => window.cancelAnimationFrame(focusFrame)
+  }, [isEditingInvoice])
 
   useEffect(() => {
     if (invoice) {
@@ -239,9 +270,9 @@ export function InvoiceDetailRoute({ companySettings, leads, clients = [], invoi
   const invoiceTotal = calculateInvoiceTotal(lineItems) || Number(syncedInvoice.amount || 0)
   const currentInvoice = { ...syncedInvoice, amount: invoiceTotal, remainingBalance: getRemainingBalance({ ...syncedInvoice, amount: invoiceTotal }) }
   const balance = currentInvoice.remainingBalance
-  const clientAddress = lead?.address || lead?.location || t('notAvailable')
-  const clientEmail = lead?.email || t('notAvailable')
-  const clientPhone = lead?.phone || t('notAvailable')
+  const clientAddress = getAvailableContactValue(lead?.billingAddress, lead?.address, lead?.location, currentInvoice.clientAddress, clientRecord?.address)
+  const clientEmail = getAvailableContactValue(lead?.email, currentInvoice.clientEmail, clientRecord?.email)
+  const clientPhone = getAvailableContactValue(lead?.phone, currentInvoice.clientPhone, clientRecord?.phone)
   const paymentHistory = currentInvoice.paymentHistory || []
   const displayCompany = companySettings?.company || contractorCompany
   const isInvoiceActionPending = isSavingInvoice || isRunningInvoiceAction
@@ -254,11 +285,23 @@ export function InvoiceDetailRoute({ companySettings, leads, clients = [], invoi
       })
   const invoiceNumber = currentInvoice.number || currentInvoice.invoiceNumber || t('invoiceDetail')
   const invoiceTitle = currentInvoice.title || currentInvoice.projectTitle || ''
-  const invoiceClient = currentInvoice.client || currentInvoice.clientName || lead?.client || ''
+  const invoiceClient = getAvailableContactValue(currentInvoice.client, currentInvoice.clientName, lead?.client, clientRecord?.name, clientRecord?.displayName)
   const localizedIssueDate = formatLocalizedInvoiceDate(currentInvoice.issueDate, appLanguage)
   const localizedSummaryDueDate = formatLocalizedInvoiceDate(currentInvoice.dueDate, appLanguage) || t('notAvailable')
   const hasOutstandingBalance = balance > 0
   const isInvoiceOverdue = hasOutstandingBalance && String(presentationStatus || '').trim().toLowerCase() === 'overdue'
+  const contractorContactFields = [
+    { label: t('name'), value: displayCompany?.name },
+    { label: t('phone'), value: displayCompany?.phone },
+    { label: t('email'), value: displayCompany?.email },
+    { label: t('address'), value: displayCompany?.address },
+  ]
+  const clientContactFields = [
+    { label: t('name'), value: invoiceClient },
+    { label: t('phone'), value: clientPhone },
+    { label: t('email'), value: clientEmail },
+    { label: t('address'), value: clientAddress },
+  ]
 
   async function runSingleFlightInvoiceAction(actionKey, task) {
     if (invoiceActionGuardRef.current) {
@@ -294,11 +337,23 @@ export function InvoiceDetailRoute({ companySettings, leads, clients = [], invoi
     setDraftInvoice((current) => ({ ...current, lineItems: [...(current.lineItems || []), { description: '', amount: 0 }] }))
   }
 
+  function beginInvoiceEdit() {
+    setDraftInvoice(resolvedInvoice || null)
+    setIsEditingInvoice(true)
+  }
+
+  function cancelInvoiceEdit() {
+    setDraftInvoice(resolvedInvoice || null)
+    setIsEditingInvoice(false)
+    window.requestAnimationFrame(() => editInvoiceButtonRef.current?.focus())
+  }
+
   async function saveInvoice() {
     if (invoiceSaveGuardRef.current) {
-      return
+      return false
     }
 
+    const shouldRestoreEditFocus = isEditingInvoice
     invoiceSaveGuardRef.current = true
     setIsSavingInvoice(true)
 
@@ -337,13 +392,18 @@ export function InvoiceDetailRoute({ companySettings, leads, clients = [], invoi
         console.warn('[dev] Invoice save failed.', err)
       }
       showToast(err?.message || t('invoiceSaveFailed'), 'error')
-      return
+      return false
     } finally {
       invoiceSaveGuardRef.current = false
       setIsSavingInvoice(false)
     }
     setSuccessMessage(t('invoiceSaved'))
     window.setTimeout(() => setSuccessMessage(''), 2500)
+    setIsEditingInvoice(false)
+    if (shouldRestoreEditFocus) {
+      window.requestAnimationFrame(() => editInvoiceButtonRef.current?.focus())
+    }
+    return true
   }
 
   async function savePayment(payment) {
@@ -585,7 +645,7 @@ export function InvoiceDetailRoute({ companySettings, leads, clients = [], invoi
         />
       </div>
 
-      {successMessage && <div className="rounded-2xl border border-emerald-200 bg-emerald-50 px-4 py-3 text-sm font-bold text-emerald-700">{successMessage}</div>}
+      {successMessage && <div role="status" aria-live="polite" className="rounded-2xl border border-emerald-200 bg-emerald-50 px-4 py-3 text-sm font-bold text-emerald-700">{successMessage}</div>}
 
       <section className="relative rounded-3xl bg-[linear-gradient(135deg,#020617_0%,#0f172a_58%,#172554_100%)] p-5 text-white shadow-xl shadow-slate-950/15 sm:p-7 lg:p-8">
         <div className="pointer-events-none absolute inset-0 overflow-hidden rounded-3xl" aria-hidden="true">
@@ -691,63 +751,145 @@ export function InvoiceDetailRoute({ companySettings, leads, clients = [], invoi
 
       <section className="grid gap-6 lg:grid-cols-[1.3fr_0.7fr]">
         <div className="space-y-6">
-          <section className="rounded-3xl border border-slate-200 bg-white p-5 shadow-sm sm:p-6">
-            <div className="mb-6">
+          <section className="rounded-3xl border border-slate-200 bg-white p-5 shadow-sm sm:p-6" aria-busy={isSavingInvoice}>
+            <div className="flex flex-col gap-4 sm:flex-row sm:items-center sm:justify-between">
               <div>
-                <h2 className="text-xl font-bold text-slate-950">{t('invoiceDetail')}</h2>
-                <p className="text-sm text-slate-500">{t('invoiceDetailHelp')}</p>
+                <h2 className="text-xl font-bold text-slate-950">{t('invoiceDetails')}</h2>
               </div>
-            </div>
-
-            <div className="grid gap-4 rounded-2xl bg-slate-50 p-4 sm:grid-cols-2">
-              <div>
-                <p className="text-xs font-bold uppercase tracking-wide text-slate-400">{t('contractorCompany')}</p>
-                <h3 className="mt-1 font-bold text-slate-950">{contractorCompany.name}</h3>
-                <p className="text-sm text-slate-600">{contractorCompany.phone}</p>
-                <p className="text-sm text-slate-600">{contractorCompany.email}</p>
-                <p className="text-sm text-slate-600">{contractorCompany.address}</p>
-              </div>
-              <div>
-                <p className="text-xs font-bold uppercase tracking-wide text-slate-400">{t('clientInformation')}</p>
-                <h3 className="mt-1 font-bold text-slate-950">{currentInvoice.client}</h3>
-                <p className="text-sm text-slate-600">{clientPhone}</p>
-                <p className="text-sm text-slate-600">{clientEmail}</p>
-                <p className="text-sm text-slate-600">{clientAddress}</p>
-              </div>
-            </div>
-
-            <div className="mt-6 grid gap-4 sm:grid-cols-2">
-              <label className="text-sm font-bold text-slate-700">{t('dueDate')}<input value={currentInvoice.dueDate} onChange={(event) => updateDraft('dueDate', event.target.value)} className="mt-2 w-full rounded-2xl border border-slate-200 bg-slate-50 px-4 py-3 text-sm outline-none focus:border-blue-500 focus:ring-4 focus:ring-blue-100" /></label>
-              <label className="text-sm font-bold text-slate-700">{t('status')}<select value={currentInvoice.status} onChange={(event) => updateDraft('status', event.target.value)} className="mt-2 w-full rounded-2xl border border-slate-200 bg-slate-50 px-4 py-3 text-sm outline-none focus:border-blue-500 focus:ring-4 focus:ring-blue-100"><option>Draft</option><option>Sent</option><option>Partially Paid</option><option>Paid</option><option>Overdue</option><option>Canceled</option></select></label>
-            </div>
-
-            <div className="mt-6 overflow-hidden rounded-2xl border border-slate-200">
-              <div className="hidden grid-cols-[1fr_140px] bg-slate-50 px-4 py-3 text-xs font-bold uppercase tracking-wide text-slate-500 sm:grid">
-                <span>{t('description')}</span>
-                <span className="text-right">{t('amount')}</span>
-              </div>
-              <div className="divide-y divide-slate-100">
-                {lineItems.map((item, index) => (
-                  <div key={`${item.description}-${index}`} className="grid gap-2 px-4 py-4 text-sm sm:grid-cols-[1fr_140px]">
-                    <input value={item.description} onChange={(event) => updateLineItem(index, 'description', event.target.value)} className="rounded-xl border border-slate-200 bg-slate-50 px-3 py-2 font-medium text-slate-800 outline-none focus:border-blue-500" />
-                    <input type="number" value={item.amount} onChange={(event) => updateLineItem(index, 'amount', event.target.value)} className="rounded-xl border border-slate-200 bg-slate-50 px-3 py-2 font-bold text-slate-950 outline-none focus:border-blue-500 sm:text-right" />
-                  </div>
-                ))}
-              </div>
-            </div>
-            <button onClick={addLineItem} className="mt-3 rounded-2xl border border-slate-200 px-4 py-3 text-sm font-bold text-slate-700 hover:bg-slate-50">{t('addItem')}</button>
-
-            <div className="mt-6 grid gap-4 sm:grid-cols-2">
-              {isKnownPaymentTermValue(currentInvoice.paymentTerms) ? (
-                <div className="rounded-2xl bg-slate-50 p-4">
-                  <p className="text-xs font-bold uppercase tracking-wide text-slate-400">{t('paymentTerms')}</p>
-                  <select value={currentInvoice.paymentTerms} onChange={(event) => updateDraft('paymentTerms', event.target.value)} className="mt-2 w-full rounded-xl border border-slate-200 bg-white p-3 text-sm leading-6 text-slate-700 outline-none focus:border-blue-500">
-                    {getPaymentTermOptions(invoiceT, currentInvoice.paymentTerms).map(([value, label]) => <option key={value} value={value}>{label}</option>)}
-                  </select>
+              {isEditingInvoice ? (
+                <div className="flex flex-col-reverse gap-2 sm:flex-row">
+                  <button
+                    type="button"
+                    disabled={isSavingInvoice}
+                    onClick={cancelInvoiceEdit}
+                    className="inline-flex min-h-11 items-center justify-center rounded-2xl border border-slate-200 px-4 py-2.5 text-sm font-bold text-slate-700 transition hover:bg-slate-50 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-blue-500 focus-visible:ring-offset-2 disabled:cursor-not-allowed disabled:opacity-60"
+                  >
+                    {t('cancel')}
+                  </button>
+                  <button
+                    type="button"
+                    disabled={isInvoiceActionPending}
+                    onClick={saveInvoice}
+                    className="inline-flex min-h-11 items-center justify-center gap-2 rounded-2xl bg-blue-600 px-4 py-2.5 text-sm font-bold text-white transition hover:bg-blue-700 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-blue-500 focus-visible:ring-offset-2 disabled:cursor-not-allowed disabled:bg-blue-400"
+                  >
+                    <Save className="h-4 w-4" aria-hidden="true" />
+                    {isSavingInvoice ? t('saving') : t('save')}
+                  </button>
                 </div>
-              ) : <EditableInfoBlock title={t('paymentTerms')} value={currentInvoice.paymentTerms} onChange={(value) => updateDraft('paymentTerms', value)} />}
-              <EditableInfoBlock title={t('notes')} value={currentInvoice.notes} onChange={(value) => updateDraft('notes', value)} />
+              ) : (
+                <button
+                  ref={editInvoiceButtonRef}
+                  type="button"
+                  disabled={isInvoiceActionPending}
+                  onClick={beginInvoiceEdit}
+                  className="inline-flex min-h-11 items-center justify-center gap-2 rounded-2xl border border-slate-200 bg-white px-4 py-2.5 text-sm font-bold text-slate-700 transition hover:border-blue-200 hover:bg-blue-50 hover:text-blue-700 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-blue-500 focus-visible:ring-offset-2 disabled:cursor-not-allowed disabled:opacity-60"
+                >
+                  <Pencil className="h-4 w-4" aria-hidden="true" />
+                  {t('editInvoice')}
+                </button>
+              )}
             </div>
+
+            <div className="mt-6 grid gap-3 sm:grid-cols-2 xl:grid-cols-4">
+              <InvoiceMetadataItem label={t('invoiceNumber')} value={invoiceNumber} />
+              <InvoiceMetadataItem label={t('issueDate')} value={localizedIssueDate || t('notAvailable')} />
+              {isEditingInvoice ? (
+                <label htmlFor="invoice-edit-due-date" className="rounded-2xl border border-blue-100 bg-blue-50/60 p-4 text-sm font-bold text-slate-700">
+                  {t('dueDate')}
+                  <input
+                    ref={firstInvoiceEditFieldRef}
+                    id="invoice-edit-due-date"
+                    value={currentInvoice.dueDate || ''}
+                    onChange={(event) => updateDraft('dueDate', event.target.value)}
+                    className="mt-2 w-full rounded-xl border border-slate-200 bg-white px-3 py-2.5 text-sm font-semibold text-slate-900 outline-none transition focus:border-blue-500 focus:ring-4 focus:ring-blue-100"
+                  />
+                </label>
+              ) : (
+                <InvoiceMetadataItem label={t('dueDate')} value={localizedSummaryDueDate} />
+              )}
+              {isEditingInvoice ? (
+                <label htmlFor="invoice-edit-status" className="rounded-2xl border border-blue-100 bg-blue-50/60 p-4 text-sm font-bold text-slate-700">
+                  {t('status')}
+                  <select
+                    id="invoice-edit-status"
+                    value={currentInvoice.status}
+                    onChange={(event) => updateDraft('status', event.target.value)}
+                    className="mt-2 w-full rounded-xl border border-slate-200 bg-white px-3 py-2.5 text-sm font-semibold text-slate-900 outline-none transition focus:border-blue-500 focus:ring-4 focus:ring-blue-100"
+                  >
+                    <option value="Draft">{t('draft')}</option>
+                    <option value="Sent">{t('sent')}</option>
+                    <option value="Partially Paid">{t('partiallyPaid')}</option>
+                    <option value="Paid">{t('paid')}</option>
+                    <option value="Overdue">{t('overdue')}</option>
+                    <option value="Canceled">{t('canceled')}</option>
+                  </select>
+                </label>
+              ) : (
+                <InvoiceMetadataItem label={t('status')}>
+                  <StatusBadge status={presentationStatus} t={t} />
+                </InvoiceMetadataItem>
+              )}
+            </div>
+
+            <div className="mt-6 border-t border-slate-200 pt-6">
+              <div className="grid gap-4 md:grid-cols-2">
+                <InvoiceContactPanel
+                  icon={Building2}
+                  eyebrow={t('from')}
+                  title={t('contractorCompany')}
+                  fields={contractorContactFields}
+                />
+                <InvoiceContactPanel
+                  icon={UserRound}
+                  eyebrow={t('billTo')}
+                  title={t('client')}
+                  fields={clientContactFields}
+                />
+              </div>
+            </div>
+
+            {isEditingInvoice ? (
+              <div className="mt-6 border-t border-slate-200 pt-6">
+                <div className="overflow-hidden rounded-2xl border border-slate-200">
+                  <div className="hidden grid-cols-[1fr_140px] bg-slate-50 px-4 py-3 text-xs font-bold uppercase tracking-wide text-slate-500 sm:grid">
+                    <span>{t('description')}</span>
+                    <span className="text-right">{t('amount')}</span>
+                  </div>
+                  <div className="divide-y divide-slate-100">
+                    {lineItems.map((item, index) => (
+                      <div key={item.id || `invoice-line-${index}`} className="grid gap-2 px-4 py-4 text-sm sm:grid-cols-[1fr_140px]">
+                        <input
+                          value={item.description}
+                          onChange={(event) => updateLineItem(index, 'description', event.target.value)}
+                          aria-label={`${t('description')} ${index + 1}`}
+                          className="min-w-0 rounded-xl border border-slate-200 bg-slate-50 px-3 py-2 font-medium text-slate-800 outline-none focus:border-blue-500 focus:ring-4 focus:ring-blue-100"
+                        />
+                        <input
+                          type="number"
+                          value={item.amount}
+                          onChange={(event) => updateLineItem(index, 'amount', event.target.value)}
+                          aria-label={`${t('amount')} ${index + 1}`}
+                          className="min-w-0 rounded-xl border border-slate-200 bg-slate-50 px-3 py-2 font-bold text-slate-950 outline-none focus:border-blue-500 focus:ring-4 focus:ring-blue-100 sm:text-right"
+                        />
+                      </div>
+                    ))}
+                  </div>
+                </div>
+                <button type="button" onClick={addLineItem} className="mt-3 rounded-2xl border border-slate-200 px-4 py-3 text-sm font-bold text-slate-700 hover:bg-slate-50 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-blue-500 focus-visible:ring-offset-2">{t('addItem')}</button>
+
+                <div className="mt-6 grid gap-4 sm:grid-cols-2">
+                  {isKnownPaymentTermValue(currentInvoice.paymentTerms) ? (
+                    <div className="rounded-2xl bg-slate-50 p-4">
+                      <label htmlFor="invoice-edit-payment-terms" className="text-xs font-bold uppercase tracking-wide text-slate-500">{t('paymentTerms')}</label>
+                      <select id="invoice-edit-payment-terms" value={currentInvoice.paymentTerms} onChange={(event) => updateDraft('paymentTerms', event.target.value)} className="mt-2 w-full rounded-xl border border-slate-200 bg-white p-3 text-sm leading-6 text-slate-700 outline-none focus:border-blue-500 focus:ring-4 focus:ring-blue-100">
+                        {getPaymentTermOptions(invoiceT, currentInvoice.paymentTerms).map(([value, label]) => <option key={value} value={value}>{label}</option>)}
+                      </select>
+                    </div>
+                  ) : <EditableInfoBlock id="invoice-edit-payment-terms" title={t('paymentTerms')} value={currentInvoice.paymentTerms} onChange={(value) => updateDraft('paymentTerms', value)} />}
+                  <EditableInfoBlock id="invoice-edit-notes" title={t('notes')} value={currentInvoice.notes} onChange={(value) => updateDraft('notes', value)} />
+                </div>
+              </div>
+            ) : null}
           </section>
         </div>
 
@@ -859,8 +1001,52 @@ function InvoiceSummaryMetric({ icon: Icon, label, value, supportingText = '', t
   )
 }
 
-function EditableInfoBlock({ title, value, onChange }) {
-  return <div className="rounded-2xl bg-slate-50 p-4"><p className="text-xs font-bold uppercase tracking-wide text-slate-400">{title}</p><textarea value={value || ''} onChange={(event) => onChange(event.target.value)} rows={4} className="mt-2 w-full rounded-xl border border-slate-200 bg-white p-3 text-sm leading-6 text-slate-700 outline-none focus:border-blue-500" /></div>
+function InvoiceMetadataItem({ label, value, children }) {
+  return (
+    <div className="min-w-0 rounded-2xl bg-slate-50 p-4">
+      <p className="text-xs font-bold uppercase tracking-[0.14em] text-slate-500">{label}</p>
+      <div className="mt-2 break-words text-sm font-bold text-slate-950 [overflow-wrap:anywhere]">
+        {children || value}
+      </div>
+    </div>
+  )
+}
+
+function InvoiceContactPanel({ icon: Icon, eyebrow, title, fields = [] }) {
+  const availableFields = fields.filter(({ value }) => String(value ?? '').trim())
+
+  return (
+    <section className="min-w-0 rounded-2xl border border-slate-200 bg-slate-50/70 p-4 sm:p-5">
+      <div className="flex items-center gap-3">
+        <span className="inline-flex h-10 w-10 shrink-0 items-center justify-center rounded-xl bg-white text-blue-700 shadow-sm ring-1 ring-slate-200">
+          <Icon className="h-5 w-5" aria-hidden="true" />
+        </span>
+        <div>
+          <p className="text-xs font-bold uppercase tracking-[0.16em] text-blue-700">{eyebrow}</p>
+          <h3 className="mt-0.5 text-sm font-bold text-slate-950">{title}</h3>
+        </div>
+      </div>
+      {availableFields.length ? (
+        <dl className="mt-4 space-y-3">
+          {availableFields.map(({ label, value }) => (
+            <div key={label} className="grid min-w-0 gap-0.5 sm:grid-cols-[80px_minmax(0,1fr)] sm:gap-3">
+              <dt className="text-xs font-semibold text-slate-500">{label}</dt>
+              <dd className="min-w-0 whitespace-pre-line break-words text-sm font-semibold text-slate-800 [overflow-wrap:anywhere]">{value}</dd>
+            </div>
+          ))}
+        </dl>
+      ) : null}
+    </section>
+  )
+}
+
+function EditableInfoBlock({ id, title, value, onChange }) {
+  return (
+    <div className="rounded-2xl bg-slate-50 p-4">
+      <label htmlFor={id} className="text-xs font-bold uppercase tracking-wide text-slate-500">{title}</label>
+      <textarea id={id} value={value || ''} onChange={(event) => onChange(event.target.value)} rows={4} className="mt-2 w-full rounded-xl border border-slate-200 bg-white p-3 text-sm leading-6 text-slate-700 outline-none focus:border-blue-500 focus:ring-4 focus:ring-blue-100" />
+    </div>
+  )
 }
 
 function SummaryRow({ label, value, strong = false }) {
