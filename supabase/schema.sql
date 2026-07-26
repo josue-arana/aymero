@@ -291,6 +291,7 @@ create table invoices (
   invoice_number text,
   title text not null,
   description text,
+  customer_notes text,
   line_items jsonb not null default '[]'::jsonb,
   subtotal numeric(12,2) not null default 0,
   tax_amount numeric(12,2) not null default 0,
@@ -388,6 +389,7 @@ create table company_settings (
   license_number text,
   logo_file_path text,
   primary_brand_color text,
+  accepted_payment_methods jsonb not null default '{"methods":[],"otherLabel":""}'::jsonb,
   default_payment_terms text,
   default_tax_rate numeric(6,3) not null default 0 check (default_tax_rate between 0 and 100),
   default_estimate_expiration_days integer not null default 30 check (default_estimate_expiration_days between 1 and 365),
@@ -408,6 +410,11 @@ create table company_settings (
   created_at timestamptz not null default now(),
   updated_at timestamptz not null default now(),
   archived_at timestamptz,
+  constraint company_settings_accepted_payment_methods_shape_check check (
+    jsonb_typeof(accepted_payment_methods) = 'object'
+    and jsonb_typeof(accepted_payment_methods -> 'methods') = 'array'
+    and jsonb_typeof(accepted_payment_methods -> 'otherLabel') = 'string'
+  ),
   constraint company_settings_one_per_contractor unique (contractor_id)
 );
 

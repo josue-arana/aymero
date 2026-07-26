@@ -23,6 +23,19 @@ async function copyDocumentStyles(targetDocument) {
   })
 
   await Promise.all(pendingLoads)
+
+  if (targetDocument.fonts?.ready) {
+    await targetDocument.fonts.ready
+  }
+}
+
+function escapeHtml(value) {
+  return String(value || '')
+    .replaceAll('&', '&amp;')
+    .replaceAll('<', '&lt;')
+    .replaceAll('>', '&gt;')
+    .replaceAll('"', '&quot;')
+    .replaceAll("'", '&#039;')
 }
 
 function preparePrintContentNode(contentNode) {
@@ -56,16 +69,17 @@ export async function printDocumentElement(element, { documentTitle = 'Document'
     throw new Error('Unable to open the print preview window.')
   }
 
-  const contentNode = element.cloneNode(true)
-  preparePrintContentNode(contentNode)
+  try {
+    const contentNode = element.cloneNode(true)
+    preparePrintContentNode(contentNode)
 
-  printWindow.document.open()
-  printWindow.document.write(`
+    printWindow.document.open()
+    printWindow.document.write(`
     <!doctype html>
     <html>
       <head>
         <meta charset="utf-8" />
-        <title>${documentTitle}</title>
+        <title>${escapeHtml(documentTitle)}</title>
         <style>
           @page { size: letter; margin: ${printPageMarginInches}in; }
           html, body { margin: 0; padding: 0; width: 100%; background: #ffffff; color: #0f172a; }
@@ -108,6 +122,15 @@ export async function printDocumentElement(element, { documentTitle = 'Document'
             break-inside: avoid;
             page-break-inside: avoid;
           }
+          [data-print-root="true"] .invoice-document-information,
+          [data-print-root="true"] .invoice-document-summary,
+          [data-print-root="true"] .invoice-document-balance,
+          [data-print-root="true"] .invoice-document-final-content,
+          [data-print-root="true"] .invoice-document-payment-methods,
+          [data-print-root="true"] .invoice-document-footer {
+            break-inside: avoid;
+            page-break-inside: avoid;
+          }
           @media print {
             html, body { background: #ffffff; }
             body { -webkit-print-color-adjust: exact; print-color-adjust: exact; }
@@ -123,45 +146,50 @@ export async function printDocumentElement(element, { documentTitle = 'Document'
       </body>
     </html>
   `)
-  printWindow.document.close()
-  await copyDocumentStyles(printWindow.document)
+    printWindow.document.close()
+    await copyDocumentStyles(printWindow.document)
 
-  const mountPoint = printWindow.document.querySelector('[data-print-root="true"]')
+    const mountPoint = printWindow.document.querySelector('[data-print-root="true"]')
 
-  if (!mountPoint) {
-    printWindow.close()
-    throw new Error('Print preview could not be prepared.')
-  }
-
-  mountPoint.replaceChildren(contentNode)
-
-  await new Promise((resolve) => printWindow.requestAnimationFrame(() => printWindow.requestAnimationFrame(resolve)))
-
-  const imageElements = Array.from(printWindow.document.images || [])
-  await Promise.all(imageElements.map((image) => {
-    if (image.complete) return Promise.resolve()
-
-    return new Promise((resolve) => {
-      image.addEventListener('load', resolve, { once: true })
-      image.addEventListener('error', resolve, { once: true })
-      setTimeout(resolve, 1200)
-    })
-  }))
-
-  printWindow.focus()
-
-  await new Promise((resolve) => {
-    const finalize = () => {
-      printWindow.removeEventListener('afterprint', finalize)
-      resolve()
+    if (!mountPoint) {
+      throw new Error('Print preview could not be prepared.')
     }
 
-    printWindow.addEventListener('afterprint', finalize, { once: true })
-    setTimeout(finalize, 1500)
-    printWindow.print()
-  })
+    mountPoint.replaceChildren(contentNode)
 
-  printWindow.close()
+    await new Promise((resolve) => printWindow.requestAnimationFrame(() => printWindow.requestAnimationFrame(resolve)))
+
+    const imageElements = Array.from(printWindow.document.images || [])
+    await Promise.all(imageElements.map((image) => {
+      if (image.complete) return Promise.resolve()
+
+      return new Promise((resolve) => {
+        image.addEventListener('load', resolve, { once: true })
+        image.addEventListener('error', resolve, { once: true })
+        setTimeout(resolve, 3000)
+      })
+    }))
+
+    printWindow.focus()
+
+    await new Promise((resolve) => {
+      const finalize = () => {
+        printWindow.removeEventListener('afterprint', finalize)
+        resolve()
+      }
+
+      printWindow.addEventListener('afterprint', finalize, { once: true })
+      setTimeout(finalize, 1500)
+      printWindow.print()
+    })
+
+    printWindow.close()
+  } catch (error) {
+    if (!printWindow.closed) {
+      printWindow.close()
+    }
+    throw error
+  }
 }
 
 export default printDocumentElement
