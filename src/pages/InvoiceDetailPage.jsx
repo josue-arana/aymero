@@ -437,8 +437,16 @@ export function InvoiceDetailRoute({ companySettings, leads, clients = [], invoi
     name: invoiceClient,
     phone: clientPhone,
     email: clientEmail,
-    address: clientAddress,
+    address: getAvailableContactValue(clientRecord?.address, currentInvoice.clientAddress, lead?.billingAddress, lead?.address, lead?.location),
   }
+  const invoiceProjectId = String(currentInvoice.projectId || currentInvoice.project_id || '').trim()
+  const invoicePreviewProject = invoiceProjectId
+    ? leads.find((record) => [
+        record?.id,
+        record?.projectId,
+        record?.project_id,
+      ].some((value) => String(value || '').trim() === invoiceProjectId)) || {}
+    : {}
   const timelinePayments = dedupeInvoiceTimelinePayments(paymentHistory)
   const { events: invoiceTimelineEvents, completionDate: paidCompletionDate } = buildInvoiceTimelineEvents({
     invoice: currentInvoice,
@@ -1063,6 +1071,7 @@ export function InvoiceDetailRoute({ companySettings, leads, clients = [], invoi
                 invoice={currentInvoice}
                 company={displayCompany}
                 client={invoicePreviewClient}
+                project={invoicePreviewProject}
                 t={invoiceT}
                 uiT={t}
                 language={invoiceOutputLanguage}
@@ -1090,7 +1099,7 @@ export function InvoiceDetailRoute({ companySettings, leads, clients = [], invoi
       </section>
 
       <ConfirmRecordModal isOpen={Boolean(confirmAction)} mode={confirmAction?.mode === 'delete' ? 'delete' : 'archive'} title={confirmAction?.mode === 'delete' ? t('confirmPermanentDelete') : confirmAction?.mode === 'markPaid' ? t('confirmMarkAsPaid') : t('confirmArchive')} message={confirmAction?.mode === 'delete' ? t('permanentDeleteHelp') : confirmAction?.mode === 'markPaid' ? t('markAsPaidHelp') : t('archiveHelp')} confirmLabel={confirmAction?.mode === 'delete' ? t('deletePermanently') : confirmAction?.mode === 'markPaid' ? t('markAsPaid') : t('archive')} onCancel={() => setConfirmAction(null)} onConfirm={runConfirmAction} t={t} />
-      <InvoicePreviewModal isOpen={showPreview} invoice={currentInvoice} client={invoicePreviewClient} company={displayCompany} onClose={() => setShowPreview(false)} t={t} contentT={invoiceT} language={invoiceOutputLanguage} />
+      <InvoicePreviewModal isOpen={showPreview} invoice={currentInvoice} client={invoicePreviewClient} company={displayCompany} project={invoicePreviewProject} onClose={() => setShowPreview(false)} t={t} contentT={invoiceT} language={invoiceOutputLanguage} />
       <RecordPaymentModal isOpen={showPaymentModal} remainingBalance={balance} onClose={() => setShowPaymentModal(false)} onSave={savePayment} t={t} />
       <SendToCustomerModal
         isOpen={showSendModal}
@@ -1386,7 +1395,7 @@ function PaymentsTimelineCard({
   )
 }
 
-function InvoicePreviewModal({ isOpen, invoice, client, company, onClose, t, contentT, language = 'en' }) {
+function InvoicePreviewModal({ isOpen, invoice, client, company, project, onClose, t, contentT, language = 'en' }) {
   if (!isOpen) return null
 
   return (
@@ -1400,6 +1409,7 @@ function InvoicePreviewModal({ isOpen, invoice, client, company, onClose, t, con
           invoice={invoice}
           company={company}
           client={client}
+          project={project}
           t={contentT}
           uiT={t}
           language={language}

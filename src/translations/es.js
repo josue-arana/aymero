@@ -662,6 +662,8 @@ export const es = {
   "invoiceListHelp": "Revisa, envía y registra pagos de facturas del trabajo.",
   "filterInvoicesByStatus": "Filtrar facturas por estado",
   "invoiceNumber": "Factura #",
+  "invoiceDate": "Fecha de factura",
+  "jobLocation": "Ubicación del trabajo",
   "invoiceAmount": "Monto de factura",
   "invoiceTotal": "Total de la factura",
   "viewInvoice": "Ver factura",

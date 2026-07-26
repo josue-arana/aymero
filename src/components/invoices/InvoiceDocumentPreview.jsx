@@ -38,8 +38,8 @@ function PreviewState({ icon: Icon, message, animate = false }) {
   )
 }
 
-export function InvoiceDocumentPreview({ invoice, company, client, t, uiT = t, language }) {
-  const resetKey = `${invoice?.id || ''}:${invoice?.updatedAt || invoice?.updated_at || ''}:${language || ''}`
+export function InvoiceDocumentPreview({ invoice, company, client, project, t, uiT = t, language }) {
+  const resetKey = `${invoice?.id || ''}:${invoice?.updatedAt || invoice?.updated_at || ''}:${project?.updatedAt || project?.updated_at || ''}:${language || ''}`
 
   return (
     <InvoicePreviewErrorBoundary
@@ -52,6 +52,7 @@ export function InvoiceDocumentPreview({ invoice, company, client, t, uiT = t, l
             invoice={invoice}
             company={company}
             client={client}
+            project={project}
             t={t}
             language={language}
           />

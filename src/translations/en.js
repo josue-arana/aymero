@@ -662,6 +662,8 @@ export const en = {
   "invoiceListHelp": "View, send, and record payments for contractor invoices.",
   "filterInvoicesByStatus": "Filter invoices by status",
   "invoiceNumber": "Invoice #",
+  "invoiceDate": "Invoice Date",
+  "jobLocation": "Job Location",
   "invoiceAmount": "Invoice Amount",
   "invoiceTotal": "Invoice Total",
   "viewInvoice": "View Invoice",
