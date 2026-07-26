@@ -6,6 +6,7 @@ import {
   ESTIMATE_LABOR_ONLY,
   ESTIMATE_OWNER_SUPPLIED_MATERIALS,
 } from './estimateDocument'
+import { getAcceptedPaymentMethodLabels } from './acceptedPaymentMethods'
 import { getPaymentTermLabel } from './paymentTerms'
 
 const safeColors = {
@@ -69,7 +70,9 @@ function getEstimatePageBreakOffsets(element, sourcePageHeight) {
   const renderedScale = rootRect.width > 0 && element.offsetWidth > 0
     ? rootRect.width / element.offsetWidth
     : 1
-  const protectedRanges = Array.from(element.querySelectorAll('[data-line-item-card="true"]'))
+  const protectedRanges = Array.from(element.querySelectorAll(
+    '[data-line-item-card="true"], [data-estimate-footer-section="true"], [data-estimate-footer="true"]'
+  ))
     .map((node) => {
       const nodeRect = node.getBoundingClientRect()
       return {
@@ -120,6 +123,16 @@ function formatDisplayDate(value) {
   }
 
   return parsedDate.toLocaleDateString(undefined, { month: 'long', day: 'numeric', year: 'numeric' })
+}
+
+function resolveValidUntil(value, estimateDate) {
+  if (value) return value
+
+  const parsedDate = new Date(estimateDate)
+  if (Number.isNaN(parsedDate.getTime())) return ''
+
+  parsedDate.setDate(parsedDate.getDate() + 30)
+  return parsedDate.toISOString()
 }
 
 function toAsciiText(value) {
@@ -267,6 +280,11 @@ function buildFallbackPdf({
   materialsIncluded: legacyMaterialsIncluded,
   paymentTerms = '',
   total: legacyTotal = 0,
+  subtotal: legacySubtotal,
+  discountAmount: legacyDiscountAmount,
+  taxAmount: legacyTaxAmount,
+  messageFromContractor: legacyMessageFromContractor = '',
+  validUntil: legacyValidUntil = '',
   t = (key) => key,
 }) {
   const normalizedDocument = ensureNormalizedEstimateDocument(documentModel, {
@@ -274,6 +292,11 @@ function buildFallbackPdf({
     lineItems: legacyLineItems,
     materialsIncluded: legacyMaterialsIncluded,
     total: legacyTotal,
+    subtotal: legacySubtotal,
+    discountAmount: legacyDiscountAmount,
+    taxAmount: legacyTaxAmount,
+    messageFromContractor: legacyMessageFromContractor,
+    validUntil: legacyValidUntil,
   })
   const scope = normalizedDocument.scope.text
   const lineItems = normalizedDocument.sections.workBreakdown.visible
@@ -281,6 +304,12 @@ function buildFallbackPdf({
     : []
   const materialsIncluded = normalizedDocument.defaults.materialsIncluded
   const total = normalizedDocument.totals.total
+  const subtotal = normalizedDocument.totals.subtotal
+  const discountAmount = normalizedDocument.totals.discountAmount
+  const taxAmount = normalizedDocument.totals.taxAmount
+  const contractorMessage = normalizedDocument.messageFromContractor.text
+  const acceptedPaymentMethods = getAcceptedPaymentMethodLabels(company?.acceptedPaymentMethods, t)
+  const validUntil = resolveValidUntil(normalizedDocument.validUntil, estimateDate)
   const pdf = new jsPDF({
     orientation: 'portrait',
     unit: 'pt',
@@ -448,6 +477,39 @@ function buildFallbackPdf({
   }
 
   drawSectionBlock(t('paymentTerms'), getPaymentTermLabel(paymentTerms, t))
+  if (contractorMessage.trim()) {
+    drawSectionBlock(t('messageFromContractor'), contractorMessage)
+  }
+  if (acceptedPaymentMethods.length) {
+    drawSectionBlock(t('acceptedPaymentMethods'), acceptedPaymentMethods.map((method) => `• ${method}`).join('\n'))
+  }
+
+  const totalsLines = [
+    `${t('subtotal')}: ${currency.format(subtotal)}`,
+    ...(discountAmount > 0 ? [`${t('discount')}: -${currency.format(discountAmount)}`] : []),
+    ...(taxAmount > 0 ? [`${t('salesTax')}: ${currency.format(taxAmount)}`] : []),
+    `${t('totalEstimate')}: ${currency.format(total)}`,
+  ]
+  drawSectionBlock(t('totalEstimate'), totalsLines.join('\n'), { minHeight: 76 })
+  drawSectionBlock(t('validUntil'), formatDisplayDate(validUntil), { minHeight: 62 })
+
+  ensureSpace(50)
+  pdf.setDrawColor(safeColors.slate200)
+  pdf.line(innerX, cursorY, cardX + cardWidth - 20, cursorY)
+  cursorY += 18
+  drawText(t('thankYouForEstimateOpportunity'), cardX + (cardWidth / 2), cursorY, {
+    bold: true,
+    size: 11,
+    color: safeColors.blue700,
+    align: 'center',
+  })
+  cursorY += 16
+  drawText(company?.name || companyName || t('brandName'), cardX + (cardWidth / 2), cursorY, {
+    bold: true,
+    size: 9.5,
+    color: safeColors.slate900,
+    align: 'center',
+  })
 
   const fileName = buildEstimatePdfFileName({
     estimateNumber,
@@ -483,6 +545,11 @@ export async function downloadEstimatePdf({
   materialsIncluded,
   paymentTerms = '',
   total = 0,
+  subtotal,
+  discountAmount,
+  taxAmount,
+  messageFromContractor = '',
+  validUntil = '',
   t = (key) => key,
 } = {}) {
   if (!element) {
@@ -578,6 +645,11 @@ export async function downloadEstimatePdf({
       materialsIncluded,
       paymentTerms,
       total,
+      subtotal,
+      discountAmount,
+      taxAmount,
+      messageFromContractor,
+      validUntil,
       t,
       error,
     })

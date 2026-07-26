@@ -1,4 +1,3 @@
-import { FileText } from 'lucide-react'
 import { currency } from '../../utils/formatters'
 import { getLanguageLocale } from '../../utils/language'
 import { getDocumentDensityVariables } from '../../utils/documentDensity'
@@ -7,6 +6,7 @@ import {
   ESTIMATE_LABOR_ONLY,
   ESTIMATE_OWNER_SUPPLIED_MATERIALS,
 } from '../../utils/estimateDocument'
+import { getAcceptedPaymentMethodLabels } from '../../utils/acceptedPaymentMethods'
 import { getPaymentTermLabel } from '../../utils/paymentTerms'
 import '../documents/documentDensity.css'
 
@@ -40,6 +40,16 @@ function formatDisplayDate(value, language = 'en') {
   }
 
   return parsedDate.toLocaleDateString(getLanguageLocale(language), { month: 'long', day: 'numeric', year: 'numeric' })
+}
+
+function resolveValidUntil(value, estimateDate) {
+  if (value) return value
+
+  const parsedDate = new Date(estimateDate)
+  if (Number.isNaN(parsedDate.getTime())) return ''
+
+  parsedDate.setDate(parsedDate.getDate() + 30)
+  return parsedDate.toISOString()
 }
 
 function HeaderPhoneIcon({ color }) {
@@ -333,6 +343,53 @@ function WorkBreakdownItem({ item, index, accentColor, language, t }) {
   )
 }
 
+function LowerSectionHeading({ children, accentColor }) {
+  return (
+    <p
+      style={{
+        margin: 0,
+        fontSize: '10px',
+        lineHeight: 1.3,
+        fontWeight: 700,
+        letterSpacing: '0.18em',
+        textTransform: 'uppercase',
+        color: accentColor,
+      }}
+    >
+      {children}
+    </p>
+  )
+}
+
+function EstimateTotalRow({ label, value, emphasized = false, accentColor }) {
+  return (
+    <div style={{ display: 'flex', alignItems: 'baseline', justifyContent: 'space-between', gap: '18px' }}>
+      <span
+        style={{
+          fontSize: emphasized ? '11px' : '10.5px',
+          lineHeight: 1.4,
+          fontWeight: emphasized ? 700 : 500,
+          color: emphasized ? accentColor : colors.slate500,
+        }}
+      >
+        {label}
+      </span>
+      <span
+        style={{
+          textAlign: 'right',
+          fontSize: emphasized ? '18px' : '11px',
+          lineHeight: 1.3,
+          fontWeight: emphasized ? 750 : 650,
+          color: colors.ink,
+          whiteSpace: 'nowrap',
+        }}
+      >
+        {currency.format(Number(value || 0))}
+      </span>
+    </div>
+  )
+}
+
 export function EstimatePdfTemplate({
   company,
   lead,
@@ -342,6 +399,11 @@ export function EstimatePdfTemplate({
   materialsIncluded,
   paymentTerms,
   total,
+  subtotal,
+  discountAmount,
+  taxAmount,
+  messageFromContractor,
+  validUntil,
   lineItems = [],
   documentModel,
   language = 'en',
@@ -351,14 +413,26 @@ export function EstimatePdfTemplate({
     scope,
     lineItems,
     total,
+    subtotal,
+    discountAmount,
+    taxAmount,
     materialsIncluded,
+    messageFromContractor,
+    validUntil,
   })
   const scopeText = normalizedDocument.scope.text
   const workItems = normalizedDocument.workItems
+  const contractorMessage = normalizedDocument.messageFromContractor
   const documentTotal = normalizedDocument.totals.total
+  const documentSubtotal = normalizedDocument.totals.subtotal
+  const documentDiscount = normalizedDocument.totals.discountAmount
+  const documentTax = normalizedDocument.totals.taxAmount
   const hasScope = normalizedDocument.sections.scope.visible
   const hasLineItems = normalizedDocument.sections.workBreakdown.visible
+  const hasContractorMessage = normalizedDocument.sections.messageFromContractor.visible
   const accentColor = resolveCompanyAccentColor(company)
+  const acceptedPaymentMethods = getAcceptedPaymentMethodLabels(company?.acceptedPaymentMethods, t)
+  const displayValidUntil = resolveValidUntil(normalizedDocument.validUntil, estimateDate)
   const jobLocationLines = formatAddressLines(lead?.address || lead?.location || '')
   const projectTitle = lead?.projectTitle || lead?.projectType || t('projectTitle')
 
@@ -561,95 +635,113 @@ export function EstimatePdfTemplate({
 
       <section
         data-estimate-section="true"
+        data-estimate-footer-section="true"
         style={{
           marginTop: 'var(--document-section-gap)',
-          borderRadius: '16px',
-          border: `1px solid ${colors.slate200}`,
-          backgroundColor: colors.white,
-          overflow: 'hidden',
+          display: 'grid',
+          gridTemplateColumns: 'minmax(0, 1.35fr) minmax(210px, 0.65fr)',
+          gap: '20px',
+          alignItems: 'start',
+          breakInside: 'avoid',
+          pageBreakInside: 'avoid',
         }}
       >
-        <div style={{ display: 'grid', gridTemplateColumns: 'minmax(0, 1fr) 216px', alignItems: 'stretch' }}>
-          <div
-            style={{
-              minWidth: 0,
-              padding: 'var(--document-panel-padding-y) var(--document-panel-padding-x)',
-              display: 'flex',
-              alignItems: 'flex-start',
-              gap: 'var(--document-panel-gap)',
-            }}
-          >
-            <div
-              style={{
-                display: 'flex',
-                width: '38px',
-                height: '38px',
-                alignItems: 'center',
-                justifyContent: 'center',
-                borderRadius: '999px',
-                background: 'linear-gradient(135deg, #0891b2 0%, #0f766e 100%)',
-                color: colors.white,
-                flexShrink: 0,
-              }}
-            >
-              <FileText size={17} strokeWidth={2.1} />
-            </div>
-            <div style={{ minWidth: 0 }}>
-              <p
-                style={{
-                  margin: 0,
-                  fontSize: '11px',
-                  lineHeight: 1.3,
-                  fontWeight: 700,
-                  letterSpacing: '0.18em',
-                  textTransform: 'uppercase',
-                  color: colors.teal700,
-                }}
-              >
-                {t('paymentTerms')}
-              </p>
-              <div
-                style={{
-                  marginTop: 'var(--document-panel-heading-gap)',
-                  fontSize: '11px',
-                  lineHeight: 1.32,
-                  color: colors.slate900,
-                  whiteSpace: 'pre-line',
-                  overflowWrap: 'anywhere',
-                  wordBreak: 'break-word',
-                }}
-              >
-                {getPaymentTermLabel(paymentTerms, t)}
-              </div>
+        <div style={{ minWidth: 0, borderTop: `1px solid ${colors.slate300}` }}>
+          <div style={{ padding: '14px 0' }}>
+            <LowerSectionHeading accentColor={accentColor}>{t('paymentTerms')}</LowerSectionHeading>
+            <div style={{ marginTop: '6px', whiteSpace: 'pre-line', fontSize: '11px', lineHeight: 1.48, color: colors.ink, overflowWrap: 'anywhere', wordBreak: 'break-word' }}>
+              {getPaymentTermLabel(paymentTerms, t)}
             </div>
           </div>
+
+          {hasContractorMessage ? (
+            <div style={{ borderTop: `1px solid ${colors.slate200}`, padding: '14px 0' }}>
+              <LowerSectionHeading accentColor={accentColor}>{t('messageFromContractor')}</LowerSectionHeading>
+              <div style={{ marginTop: '7px', display: 'grid', gap: '3px' }}>
+                <RichWorkItemContent blocks={contractorMessage.contentBlocks} accentColor={accentColor} />
+              </div>
+            </div>
+          ) : null}
+
+          {acceptedPaymentMethods.length ? (
+            <div style={{ borderTop: `1px solid ${colors.slate200}`, padding: '14px 0 0' }}>
+              <LowerSectionHeading accentColor={accentColor}>{t('acceptedPaymentMethods')}</LowerSectionHeading>
+              <ul
+                style={{
+                  margin: '8px 0 0',
+                  padding: 0,
+                  display: 'grid',
+                  gridTemplateColumns: 'repeat(2, minmax(0, 1fr))',
+                  columnGap: '18px',
+                  rowGap: '5px',
+                  listStyle: 'none',
+                }}
+              >
+                {acceptedPaymentMethods.map((method) => (
+                  <li key={method} style={{ display: 'grid', gridTemplateColumns: '6px minmax(0,1fr)', gap: '7px', alignItems: 'start', fontSize: '10.5px', lineHeight: 1.4, color: colors.ink }}>
+                    <span aria-hidden="true" style={{ width: '3px', height: '3px', marginTop: '6px', borderRadius: '999px', backgroundColor: accentColor }} />
+                    <span style={{ overflowWrap: 'anywhere', wordBreak: 'break-word' }}>{method}</span>
+                  </li>
+                ))}
+              </ul>
+            </div>
+          ) : null}
+        </div>
+
+        <div style={{ display: 'grid', minWidth: 0, gap: '10px' }}>
           <div
             style={{
-              borderLeft: `1px solid ${colors.slate300}`,
-              padding: 'var(--document-panel-padding-y) var(--document-panel-padding-x)',
-              display: 'flex',
-              flexDirection: 'column',
-              justifyContent: 'center',
+              border: `1px solid ${colors.slate200}`,
+              borderRadius: '14px',
+              backgroundColor: colors.white,
+              padding: '14px',
+            }}
+          >
+            <div style={{ display: 'grid', gap: '8px' }}>
+              <EstimateTotalRow label={t('subtotal')} value={documentSubtotal} accentColor={accentColor} />
+              {documentDiscount > 0 ? <EstimateTotalRow label={t('discount')} value={-documentDiscount} accentColor={accentColor} /> : null}
+              {documentTax > 0 ? <EstimateTotalRow label={t('salesTax')} value={documentTax} accentColor={accentColor} /> : null}
+            </div>
+            <div style={{ marginTop: '10px', borderTop: `1px solid ${colors.slate300}`, paddingTop: '10px' }}>
+              <EstimateTotalRow label={t('totalEstimate')} value={documentTotal} emphasized accentColor={accentColor} />
+            </div>
+          </div>
+
+          <div
+            style={{
+              border: `1px solid ${colors.slate200}`,
+              borderRadius: '14px',
+              backgroundColor: colors.white,
+              padding: '12px 14px',
               textAlign: 'center',
             }}
           >
-            <p
-              style={{
-                margin: 0,
-                fontSize: '18px',
-                lineHeight: 1.1,
-                color: colors.teal700,
-                fontFamily: '"Brush Script MT", "Segoe Script", "Snell Roundhand", cursive',
-              }}
-            >
-              {t('thankYou')}
-            </p>
-            <p style={{ margin: '4px 0 0', fontSize: '11px', lineHeight: 1.28, color: colors.slate900 }}>
-              {t('weAppreciateYourBusiness')}
+            <LowerSectionHeading accentColor={accentColor}>{t('validUntil')}</LowerSectionHeading>
+            <p style={{ margin: '6px 0 0', fontSize: '11.5px', lineHeight: 1.4, fontWeight: 700, color: colors.ink }}>
+              {formatDisplayDate(displayValidUntil, language)}
             </p>
           </div>
         </div>
       </section>
+
+      <footer
+        data-estimate-footer="true"
+        style={{
+          marginTop: '18px',
+          borderTop: `1px solid ${colors.slate300}`,
+          paddingTop: '14px',
+          textAlign: 'center',
+          breakInside: 'avoid',
+          pageBreakInside: 'avoid',
+        }}
+      >
+        <p style={{ margin: 0, fontSize: '12px', lineHeight: 1.4, fontWeight: 700, color: accentColor }}>
+          {t('thankYouForEstimateOpportunity')}
+        </p>
+        <p style={{ margin: '4px 0 0', fontSize: '10.5px', lineHeight: 1.35, fontWeight: 650, color: colors.ink }}>
+          {company?.name || t('brandName')}
+        </p>
+      </footer>
     </article>
   )
 }

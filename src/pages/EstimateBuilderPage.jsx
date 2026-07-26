@@ -36,6 +36,38 @@ function readEstimateScopeText(estimate = {}) {
   return estimate?.summary || estimate?.scopeOfWork || estimate?.scope_of_work || ''
 }
 
+function readEstimateContractorMessage(estimate = {}) {
+  return (
+    estimate?.messageFromContractor
+    || estimate?.message_from_contractor
+    || estimate?.customerMessage
+    || estimate?.customer_message
+    || estimate?.publicNotes
+    || estimate?.public_notes
+    || estimate?.notes
+    || ''
+  )
+}
+
+function resolveEstimateValidUntil(estimate = {}, estimateDate, expirationDays = 30) {
+  const explicitDate = (
+    estimate?.validUntil
+    || estimate?.valid_until
+    || estimate?.expirationDate
+    || estimate?.expiration_date
+    || estimate?.expiresAt
+    || estimate?.expires_at
+  )
+
+  if (explicitDate) return explicitDate
+
+  const parsedDate = new Date(estimateDate)
+  if (Number.isNaN(parsedDate.getTime())) return ''
+
+  parsedDate.setDate(parsedDate.getDate() + Number(expirationDays || 30))
+  return parsedDate.toISOString()
+}
+
 function resolveMaterialsIncludedDefault(...values) {
   const firstBoolean = values.find((value) => typeof value === 'boolean')
   return typeof firstBoolean === 'boolean' ? firstBoolean : false
@@ -264,8 +296,29 @@ export function EstimateBuilderPage({ lead, clientRecord = null, t, appLanguage 
     scope,
     lineItems: isDetailedPricing ? lineItems : [],
     total: estimateTotal,
+    subtotal: isDetailedPricing
+      ? lineTotal
+      : Number(savedEstimate?.subtotal || estimateTotal),
+    discountAmount: savedEstimate?.discountAmount,
+    taxAmount: savedEstimate?.taxAmount,
     materialsIncluded,
-  }), [estimateTotal, isDetailedPricing, lineItems, materialsIncluded, scope])
+    messageFromContractor: readEstimateContractorMessage(savedEstimate),
+    validUntil: resolveEstimateValidUntil(
+      savedEstimate,
+      previewEstimateDate,
+      companySettings?.defaults?.estimateExpirationDays
+    ),
+  }), [
+    companySettings?.defaults?.estimateExpirationDays,
+    estimateTotal,
+    isDetailedPricing,
+    lineItems,
+    lineTotal,
+    materialsIncluded,
+    previewEstimateDate,
+    savedEstimate,
+    scope,
+  ])
   const estimatePreviewProps = useMemo(() => ({
     company: companySettings?.company,
     lead,

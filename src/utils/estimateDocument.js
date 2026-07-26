@@ -193,9 +193,15 @@ export function normalizeEstimateDocument({
   scope = '',
   lineItems = [],
   total = 0,
+  subtotal,
+  discountAmount = 0,
+  taxAmount = 0,
   materialsIncluded = false,
+  messageFromContractor = '',
+  validUntil = '',
 } = {}) {
   const scopeText = normalizeText(scope)
+  const contractorMessageText = normalizeText(messageFromContractor)
   const sourceItems = Array.isArray(lineItems) ? lineItems : []
   const hasDetailedItems = sourceItems.length > 0
   const normalizedTotal = toFiniteNumber(total)
@@ -215,6 +221,9 @@ export function normalizeEstimateDocument({
           }
         ),
       ]
+  const calculatedSubtotal = hasDetailedItems
+    ? workItems.reduce((sum, item) => sum + item.total, 0)
+    : normalizedTotal
 
   return {
     version: 1,
@@ -222,11 +231,16 @@ export function normalizeEstimateDocument({
       text: scopeText,
       contentBlocks: normalizeEstimateRichText(scopeText).blocks,
     },
+    messageFromContractor: {
+      text: contractorMessageText,
+      contentBlocks: normalizeEstimateRichText(contractorMessageText).blocks,
+    },
+    validUntil: normalizeText(validUntil),
     workItems,
     totals: {
-      subtotal: hasDetailedItems
-        ? workItems.reduce((sum, item) => sum + item.total, 0)
-        : normalizedTotal,
+      subtotal: subtotal === undefined ? calculatedSubtotal : toFiniteNumber(subtotal),
+      discountAmount: toFiniteNumber(discountAmount),
+      taxAmount: toFiniteNumber(taxAmount),
       total: normalizedTotal,
     },
     defaults: {
@@ -239,6 +253,9 @@ export function normalizeEstimateDocument({
       workBreakdown: {
         visible: workItems.length > 0,
       },
+      messageFromContractor: {
+        visible: Boolean(contractorMessageText.trim()),
+      },
     },
   }
 }
@@ -250,8 +267,28 @@ export function ensureNormalizedEstimateDocument(documentModel, legacyInput = {}
     && documentModel?.scope
     && documentModel?.totals
   ) {
+    const legacyMessageText = typeof documentModel.messageFromContractor === 'string'
+      ? documentModel.messageFromContractor
+      : normalizeText(documentModel?.messageFromContractor?.text)
+    const legacySubtotal = documentModel.totals.subtotal === undefined
+      ? documentModel.workItems.reduce((sum, item) => sum + toFiniteNumber(item?.total), 0)
+      : toFiniteNumber(documentModel.totals.subtotal)
+
     return {
       ...documentModel,
+      messageFromContractor: {
+        text: legacyMessageText,
+        contentBlocks: Array.isArray(documentModel?.messageFromContractor?.contentBlocks)
+          ? documentModel.messageFromContractor.contentBlocks
+          : normalizeEstimateRichText(legacyMessageText).blocks,
+      },
+      validUntil: normalizeText(documentModel.validUntil),
+      totals: {
+        subtotal: legacySubtotal,
+        discountAmount: toFiniteNumber(documentModel?.totals?.discountAmount),
+        taxAmount: toFiniteNumber(documentModel?.totals?.taxAmount),
+        total: toFiniteNumber(documentModel?.totals?.total),
+      },
       workItems: documentModel.workItems.map((item, index) => {
         const materialsStatus = normalizeEstimateMaterialsStatus(
           item,
@@ -279,6 +316,10 @@ export function ensureNormalizedEstimateDocument(documentModel, legacyInput = {}
         workBreakdown: {
           ...documentModel?.sections?.workBreakdown,
           visible: documentModel.workItems.length > 0,
+        },
+        messageFromContractor: {
+          ...documentModel?.sections?.messageFromContractor,
+          visible: Boolean(legacyMessageText.trim()),
         },
       },
     }
