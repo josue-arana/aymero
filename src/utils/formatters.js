@@ -4,6 +4,13 @@ export const currency = new Intl.NumberFormat('en-US', {
   maximumFractionDigits: 0,
 })
 
+export const currencyWithCents = new Intl.NumberFormat('en-US', {
+  style: 'currency',
+  currency: 'USD',
+  minimumFractionDigits: 2,
+  maximumFractionDigits: 2,
+})
+
 export function formatDisplayDate(value, fallback = '') {
   if (!value) return fallback
 

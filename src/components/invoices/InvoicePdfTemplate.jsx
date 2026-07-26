@@ -1,5 +1,5 @@
 import { useEffect, useState } from 'react'
-import { currency } from '../../utils/formatters'
+import { currencyWithCents } from '../../utils/formatters'
 import { getLanguageLocale } from '../../utils/language'
 import { calculateInvoiceTotal, getInvoiceRemainingBalance } from '../../utils/invoiceRecords'
 import { getPaymentTermLabel } from '../../utils/paymentTerms'
@@ -24,6 +24,25 @@ function formatInvoiceDocumentDate(value, language = 'en') {
 
 function getFirstAvailableValue(...values) {
   return values.find((value) => String(value || '').trim()) || ''
+}
+
+function hasOwn(source, key) {
+  return Boolean(source) && Object.prototype.hasOwnProperty.call(source, key)
+}
+
+function readNumericField(source = {}, keys = [], fallback = 0) {
+  for (const key of keys) {
+    if (!hasOwn(source, key)) continue
+
+    const value = Number(source[key])
+    if (Number.isFinite(value)) return value
+  }
+
+  return Number(fallback) || 0
+}
+
+function hasAnyField(source = {}, keys = []) {
+  return keys.some((key) => hasOwn(source, key))
 }
 
 function formatAddressLines(value) {
@@ -217,11 +236,106 @@ function InvoiceDetailRow({ label, value }) {
   )
 }
 
-function TotalRow({ label, value, strong = false, success = false }) {
+function splitInvoiceItemContent(item = {}, fallbackTitle = '') {
+  const explicitTitle = getFirstAvailableValue(item?.title, item?.name)
+  const description = String(item?.description || '').trim()
+  const descriptionLines = description
+    .split(/\r?\n/)
+    .map((line) => line.trim())
+    .filter(Boolean)
+  const title = explicitTitle || descriptionLines[0] || fallbackTitle
+  const supportingLines = explicitTitle
+    ? descriptionLines.filter((line) => line !== explicitTitle)
+    : descriptionLines.slice(1)
+
+  return { title, supportingLines }
+}
+
+function getDisplayInvoiceItems(lineItems = [], invoiceTitle = '', subtotal = 0) {
+  if (lineItems.length) return lineItems
+  if (!String(invoiceTitle || '').trim()) return []
+
+  return [{ description: invoiceTitle, amount: subtotal }]
+}
+
+function getPaymentDate(payment = {}) {
+  return payment?.date
+    || payment?.paymentDate
+    || payment?.payment_date
+    || payment?.createdAt
+    || payment?.created_at
+    || ''
+}
+
+function dedupeDocumentPayments(payments = []) {
+  const seenIds = new Set()
+
+  return payments.filter((payment) => {
+    const paymentId = String(payment?.id || '').trim()
+    if (!paymentId) return true
+    if (seenIds.has(paymentId)) return false
+
+    seenIds.add(paymentId)
+    return true
+  })
+}
+
+function getPaymentDescription(payment = {}, t) {
+  const note = getFirstAvailableValue(payment?.notes, payment?.description)
+  const method = getFirstAvailableValue(payment?.method, payment?.paymentMethod, payment?.payment_method)
+  const type = getFirstAvailableValue(payment?.type, payment?.paymentType, payment?.payment_type)
+  const translatedDetails = [method, type]
+    .filter(Boolean)
+    .map((value) => t(value))
+  const title = note || translatedDetails.join(' · ') || t('paymentReceived')
+  const supportingText = note ? translatedDetails.join(' · ') : ''
+
+  return { title, supportingText }
+}
+
+function getReliablePaidDate(invoice = {}, payments = [], { invoiceTotal, amountPaid, isPaidInFull }) {
+  const storedPaidDate = invoice?.paidAt || invoice?.paid_at || ''
+
+  if (storedPaidDate && !Number.isNaN(new Date(storedPaidDate).getTime())) {
+    return storedPaidDate
+  }
+
+  if (!isPaidInFull || invoiceTotal <= 0 || amountPaid < invoiceTotal) {
+    return ''
+  }
+
+  return payments.reduce((latest, payment) => {
+    const dateValue = getPaymentDate(payment)
+    const timestamp = dateValue ? new Date(dateValue).getTime() : Number.NaN
+
+    if (!Number.isFinite(timestamp)) return latest
+    if (!latest || timestamp > latest.timestamp) {
+      return { value: dateValue, timestamp }
+    }
+
+    return latest
+  }, null)?.value || ''
+}
+
+function CalendarIcon({ color = '#0f8b8d' }) {
   return (
-    <div className={`flex items-center justify-between gap-5 ${strong ? 'border-t border-slate-200 pt-3' : ''}`}>
-      <span className="text-sm font-semibold text-slate-500">{label}</span>
-      <span className={`${strong ? 'text-lg' : 'text-sm'} font-bold ${success ? 'text-emerald-700' : 'text-slate-950'}`}>{value}</span>
+    <svg width="13" height="13" viewBox="0 0 24 24" aria-hidden="true" className="block shrink-0">
+      <path
+        fill={color}
+        d="M7 2a1 1 0 0 1 1 1v1h8V3a1 1 0 1 1 2 0v1h1a3 3 0 0 1 3 3v12a3 3 0 0 1-3 3H5a3 3 0 0 1-3-3V7a3 3 0 0 1 3-3h1V3a1 1 0 0 1 1-1m12 8H5v9a1 1 0 0 0 1 1h12a1 1 0 0 0 1-1z"
+      />
+    </svg>
+  )
+}
+
+function InvoiceTotalRow({ label, value, strong = false, deducted = false }) {
+  return (
+    <div className={`flex items-start justify-between gap-5 ${strong ? 'mt-2 border-t border-slate-300 pt-3' : ''}`}>
+      <span className={`${strong ? 'font-bold text-slate-950' : 'font-semibold text-slate-600'} text-[12px] leading-5`}>{label}</span>
+      <span className={`${strong ? 'text-[14px]' : 'text-[12px]'} shrink-0 font-bold leading-5 text-slate-950`}>
+        {deducted && Number(value) > 0 ? '− ' : ''}
+        {currencyWithCents.format(Number(value) || 0)}
+      </span>
     </div>
   )
 }
@@ -235,13 +349,36 @@ export function InvoicePdfTemplate({
   language = 'en',
 }) {
   const lineItems = Array.isArray(invoice?.lineItems) ? invoice.lineItems : []
-  const subtotal = calculateInvoiceTotal(lineItems, Number(invoice?.amount || 0))
-  const amountPaid = Number(invoice?.amountPaid || 0)
-  const balance = getInvoiceRemainingBalance({ ...invoice, amount: subtotal, amountPaid })
+  const calculatedLineItemSubtotal = calculateInvoiceTotal(lineItems, Number(invoice?.amount || 0))
+  const storedSubtotal = readNumericField(invoice, ['subtotal'], calculatedLineItemSubtotal)
+  const subtotal = storedSubtotal === 0 && calculatedLineItemSubtotal > 0
+    ? calculatedLineItemSubtotal
+    : storedSubtotal
+  const taxFieldNames = ['taxAmount', 'tax_amount', 'salesTax', 'sales_tax']
+  const hasTaxSupport = hasAnyField(invoice, taxFieldNames)
+  const taxAmount = readNumericField(invoice, taxFieldNames, 0)
+  const storedInvoiceTotal = readNumericField(invoice, ['totalAmount', 'total_amount', 'total', 'amount'], subtotal)
+  const invoiceTotal = storedInvoiceTotal === 0 && subtotal > 0 ? subtotal : storedInvoiceTotal
+  const amountPaid = readNumericField(invoice, ['amountPaid', 'amount_paid'], 0)
+  const balance = getInvoiceRemainingBalance({ amount: invoiceTotal, amountPaid })
   const issueDate = formatInvoiceDocumentDate(invoice?.issueDate, language)
   const dueDate = formatInvoiceDocumentDate(invoice?.dueDate, language)
   const invoiceNumber = invoice?.number || invoice?.invoiceNumber || ''
   const invoiceTitle = invoice?.title || invoice?.projectTitle || invoice?.description || ''
+  const displayLineItems = getDisplayInvoiceItems(lineItems, invoiceTitle, subtotal)
+  const payments = dedupeDocumentPayments(Array.isArray(invoice?.paymentHistory) ? invoice.paymentHistory : [])
+  const normalizedStatus = String(invoice?.status || '').trim().toLowerCase().replaceAll('_', ' ')
+  const isPaidInFull = balance === 0 && (
+    (invoiceTotal > 0 && amountPaid >= invoiceTotal)
+    || normalizedStatus === 'paid'
+    || normalizedStatus === 'paid in full'
+  )
+  const paidDateValue = getReliablePaidDate(invoice, payments, {
+    invoiceTotal,
+    amountPaid,
+    isPaidInFull,
+  })
+  const paidDate = formatInvoiceDocumentDate(paidDateValue, language)
   const paymentTerms = getPaymentTermLabel(invoice?.paymentTerms, t)
   const showPaymentTerms = Boolean(String(invoice?.paymentTerms || '').trim())
   const showNotes = Boolean(String(invoice?.notes || '').trim())
@@ -282,38 +419,114 @@ export function InvoicePdfTemplate({
         </div>
       </section>
 
-      <section className="py-8">
-        <div className="overflow-hidden rounded-2xl border border-slate-200">
-          <div className="grid grid-cols-[minmax(0,1fr)_120px] bg-slate-50 px-5 py-3 text-[11px] font-bold uppercase tracking-[0.16em] text-slate-500">
-            <span>{t('description')}</span>
-            <span className="text-right">{t('amount')}</span>
+      <section className="pt-2">
+        <div className="border-y border-slate-300">
+          <div className="grid grid-cols-[minmax(0,1fr)_132px] border-b border-slate-300 text-[10px] font-bold uppercase tracking-[0.16em] text-slate-950">
+            <span className="px-1 py-3">{t('description')}</span>
+            <span className="border-l border-slate-300 px-3 py-3 text-right">{t('amount')}</span>
           </div>
-          <div className="divide-y divide-slate-200">
-            {lineItems.map((item, index) => (
-              <div key={item?.id || `invoice-preview-line-${index}`} data-line-item-card="true" className="grid grid-cols-[minmax(0,1fr)_120px] gap-4 px-5 py-4 text-sm">
-                <span className="break-words leading-5 text-slate-700 [overflow-wrap:anywhere]">{item?.description}</span>
-                <span className="text-right font-bold text-slate-950">{currency.format(Number(item?.amount || 0))}</span>
-              </div>
-            ))}
-            {!lineItems.length && invoiceTitle ? (
-              <div className="grid grid-cols-[minmax(0,1fr)_120px] gap-4 px-5 py-4 text-sm">
-                <span className="break-words leading-5 text-slate-700 [overflow-wrap:anywhere]">{invoiceTitle}</span>
-                <span className="text-right font-bold text-slate-950">{currency.format(subtotal)}</span>
-              </div>
-            ) : null}
+          <div>
+            {displayLineItems.map((item, index) => {
+              const { title, supportingLines } = splitInvoiceItemContent(item, `${t('item')} ${index + 1}`)
+
+              return (
+                <div
+                  key={item?.id || `invoice-preview-line-${index}`}
+                  data-line-item-card="true"
+                  className={`grid grid-cols-[minmax(0,1fr)_132px] text-[12px] ${index < displayLineItems.length - 1 ? 'border-b border-slate-200' : ''}`}
+                >
+                  <div className="min-w-0 px-1 py-3.5 pr-5">
+                    <p className="break-words font-bold leading-5 text-slate-950 [overflow-wrap:anywhere]">
+                      <span className="mr-1.5 text-[#0f8b8d]">{index + 1}.</span>
+                      {title}
+                    </p>
+                    {supportingLines.length ? (
+                      <div className="mt-1.5 space-y-1 pl-5 text-[11px] leading-[1.45] text-slate-600">
+                        {supportingLines.map((line, lineIndex) => (
+                          <p key={`${line}-${lineIndex}`} className="break-words [overflow-wrap:anywhere]">{line}</p>
+                        ))}
+                      </div>
+                    ) : null}
+                  </div>
+                  <div className="border-l border-slate-300 px-3 py-3.5 text-right font-bold leading-5 text-slate-950">
+                    {currencyWithCents.format(Number(item?.amount || 0))}
+                  </div>
+                </div>
+              )
+            })}
           </div>
         </div>
 
-        <div className="ml-auto mt-6 w-[310px] space-y-3 rounded-2xl bg-slate-50 p-5">
-          <TotalRow label={t('subtotal')} value={currency.format(subtotal)} />
-          <TotalRow label={t('paymentsReceived')} value={currency.format(amountPaid)} />
-          <TotalRow label={t('remainingBalance')} value={currency.format(balance)} strong success={balance === 0} />
-          {balance === 0 ? <p className="text-right text-xs font-bold text-emerald-700">{t('paidInFull')}</p> : null}
+        <div className="mt-7 grid grid-cols-[minmax(0,1.2fr)_minmax(250px,0.8fr)]">
+          <section className="min-w-0 pr-6">
+            <DocumentLabel>{t('paymentHistory')}</DocumentLabel>
+            <div className="mt-3 border-y border-slate-300">
+              <div className="grid grid-cols-[92px_minmax(0,1fr)_92px] border-b border-slate-300 text-[9px] font-bold uppercase tracking-[0.12em] text-slate-950">
+                <span className="py-2.5 pr-3">{t('date')}</span>
+                <span className="border-l border-slate-200 px-3 py-2.5">{t('description')}</span>
+                <span className="border-l border-slate-200 py-2.5 pl-3 text-right">{t('amount')}</span>
+              </div>
+              {payments.length ? (
+                payments.map((payment, index) => {
+                  const description = getPaymentDescription(payment, t)
+
+                  return (
+                    <div
+                      key={payment?.id || `invoice-payment-${index}`}
+                      className={`grid grid-cols-[92px_minmax(0,1fr)_92px] text-[10.5px] leading-[1.45] ${index < payments.length - 1 ? 'border-b border-slate-200' : ''}`}
+                    >
+                      <span className="py-3 pr-3 text-slate-600">{formatInvoiceDocumentDate(getPaymentDate(payment), language)}</span>
+                      <span className="min-w-0 border-l border-slate-200 px-3 py-3">
+                        <span className="block break-words font-semibold text-slate-900 [overflow-wrap:anywhere]">{description.title}</span>
+                        {description.supportingText ? <span className="mt-0.5 block break-words text-[9.5px] text-slate-500 [overflow-wrap:anywhere]">{description.supportingText}</span> : null}
+                      </span>
+                      <span className="border-l border-slate-200 py-3 pl-3 text-right font-bold text-slate-950">
+                        {currencyWithCents.format(Number(payment?.amount || 0))}
+                      </span>
+                    </div>
+                  )
+                })
+              ) : (
+                <p className="py-5 text-[11px] text-slate-500">{t('noPayments')}</p>
+              )}
+            </div>
+          </section>
+
+          <section className="min-w-0 border-l border-slate-300 pl-6">
+            <div className="grid gap-2">
+              <InvoiceTotalRow label={t('subtotal')} value={subtotal} />
+              {hasTaxSupport ? <InvoiceTotalRow label={t('salesTax')} value={taxAmount} /> : null}
+              <InvoiceTotalRow label={t('totalInvoice')} value={invoiceTotal} strong />
+              <InvoiceTotalRow label={t('previousPayments')} value={amountPaid} deducted />
+            </div>
+
+            <div className={`mt-5 border p-4 ${isPaidInFull ? 'border-emerald-300 bg-emerald-50/30' : 'border-slate-300 bg-white'}`}>
+              <div className="flex items-start justify-between gap-4">
+                <p className={`text-[10px] font-bold uppercase tracking-[0.18em] ${isPaidInFull ? 'text-emerald-700' : 'text-[#0f8b8d]'}`}>
+                  {isPaidInFull ? t('paidInFull') : t('balanceDue')}
+                </p>
+                <p className="shrink-0 text-[20px] font-bold leading-none text-slate-950">
+                  {currencyWithCents.format(isPaidInFull ? 0 : balance)}
+                </p>
+              </div>
+              {isPaidInFull && paidDate ? (
+                <div className="mt-3 flex items-center gap-2 text-[10.5px] font-semibold text-emerald-700">
+                  <CalendarIcon color="#047857" />
+                  <span>{t('paid')} {paidDate}</span>
+                </div>
+              ) : !isPaidInFull && dueDate ? (
+                <div className="mt-3 flex items-center gap-2 text-[10.5px] font-semibold text-slate-600">
+                  <CalendarIcon />
+                  <span>{t('invoiceDueDateLabel')} {dueDate}</span>
+                </div>
+              ) : null}
+            </div>
+          </section>
         </div>
       </section>
 
       {showPaymentTerms || showNotes ? (
-        <section className="grid grid-cols-2 gap-8 border-t border-slate-200 pt-7">
+        <section className="mt-7 grid grid-cols-2 gap-8 border-t border-slate-200 pt-7">
           {showPaymentTerms ? (
             <div>
               <DocumentLabel>{t('paymentTerms')}</DocumentLabel>
