@@ -425,7 +425,7 @@ export function SettingsPage({ settings, onSaveSettings, onOpenCompanySetup, onC
         t={t}
       />
 
-      <section className="grid gap-5 lg:grid-cols-[1fr_340px]">
+      <section className="grid items-start gap-5 lg:grid-cols-[minmax(0,1fr)_360px]">
         <div className="space-y-5">
           <InfoCard title={t('companyProfile')} icon={Building2}>
             <div className="grid gap-4 sm:grid-cols-2">
@@ -497,6 +497,13 @@ export function SettingsPage({ settings, onSaveSettings, onOpenCompanySetup, onC
             </div>
           </InfoCard>
 
+          <InfoCard title={t('languageSettings')} icon={Languages}>
+            <div className="grid gap-4 sm:grid-cols-2">
+              <LanguageSelect label={t('contractorAppLanguage')} value={language} onChange={setLanguage} t={t} />
+              <LanguageSelect label={t('customerPortalDefaultLanguage')} value={portalLanguage} onChange={setPortalLanguage} t={t} />
+            </div>
+          </InfoCard>
+
           <InfoCard title={t('customerPortalSettings')} icon={Globe2}>
             <fieldset>
               <legend className="text-sm font-bold text-slate-700">{t('visibleFeatures')}</legend>
@@ -520,14 +527,7 @@ export function SettingsPage({ settings, onSaveSettings, onOpenCompanySetup, onC
             </fieldset>
           </InfoCard>
 
-          <InfoCard title={t('languageSettings')} icon={Languages}>
-            <div className="grid gap-4 sm:grid-cols-2">
-              <LanguageSelect label={t('contractorAppLanguage')} value={language} onChange={setLanguage} t={t} />
-              <LanguageSelect label={t('customerPortalDefaultLanguage')} value={portalLanguage} onChange={setPortalLanguage} t={t} />
-            </div>
-          </InfoCard>
-
-          <InfoCard title={t('analyticsMode')} icon={Globe2}>
+          <InfoCard title={t('features')} icon={Globe2}>
             <ToggleRow
               label={t('analyticsMode')}
               description={t('analyticsModeDescription')}
@@ -639,9 +639,20 @@ export function SettingsPage({ settings, onSaveSettings, onOpenCompanySetup, onC
             </div>
           </section>
 
-          <button type="button" onClick={saveSettings} className="inline-flex w-full items-center justify-center gap-2 rounded-2xl bg-blue-600 px-5 py-4 text-sm font-bold text-white hover:bg-blue-700">
-            <Save className="h-4 w-4" /> {t('saveSettings')}
-          </button>
+          <section className="rounded-3xl border border-slate-200 bg-white p-4 shadow-sm" aria-labelledby="save-settings-heading">
+            <div className="flex items-start gap-3">
+              <span className="flex h-9 w-9 shrink-0 items-center justify-center rounded-xl bg-blue-50 text-blue-600">
+                <Save className="h-4 w-4" aria-hidden="true" />
+              </span>
+              <div className="min-w-0">
+                <h2 id="save-settings-heading" className="text-sm font-bold text-slate-950">{t('saveSettings')}</h2>
+                <p className="mt-1 text-xs leading-5 text-slate-500">{t('settingsSaveHelp')}</p>
+              </div>
+            </div>
+            <button type="button" onClick={saveSettings} className="mt-4 inline-flex min-h-12 w-full items-center justify-center gap-2 rounded-2xl bg-blue-600 px-5 text-sm font-bold text-white transition hover:bg-blue-700 focus-visible:outline-none focus-visible:ring-4 focus-visible:ring-blue-100">
+              <Save className="h-4 w-4" aria-hidden="true" /> {t('saveSettings')}
+            </button>
+          </section>
         </aside>
       </section>
     </div>
