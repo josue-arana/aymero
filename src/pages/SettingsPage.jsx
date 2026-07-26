@@ -1,5 +1,5 @@
 import { useEffect, useMemo, useState } from 'react'
-import { Building2, CreditCard, FileText, Globe2, ImageUp, Languages, Save } from 'lucide-react'
+import { Building2, Check, CreditCard, FileText, Globe2, ImageUp, Languages, Palette, Save } from 'lucide-react'
 import { useToast } from '../components/common/ToastProvider'
 import { InfoCard } from '../components/ui/InfoCard'
 import { USE_SUPABASE_SETTINGS } from '../config/backendConfig'
@@ -21,6 +21,10 @@ import {
   hasSampleWorkspace,
   needsSampleWorkspaceUpgrade,
 } from '../services/sampleWorkspaceService'
+import {
+  normalizeBrandColor,
+  SUPPORTED_BRAND_COLORS,
+} from '../data/brandColors'
 
 function getSettingsUiErrorMessage(error, t) {
   if (error?.code === 'ANALYTICS_MODE_COLUMN_MISSING') {
@@ -227,6 +231,18 @@ export function SettingsPage({ settings, onSaveSettings, onOpenCompanySetup, onC
   const portal = draft?.portal || {}
   const acceptedPaymentMethods = normalizeAcceptedPaymentMethods(company.acceptedPaymentMethods)
   const paymentTermOptions = getPaymentTermOptions(t, defaults.paymentTerms)
+  const selectedBrandColor = normalizeBrandColor(company.primaryColor)
+  const selectedBrandColorOption = SUPPORTED_BRAND_COLORS.find(
+    (option) => option.value === selectedBrandColor
+  )
+  const previewTotal = useMemo(() => new Intl.NumberFormat(
+    language === 'es' ? 'es-US' : 'en-US',
+    {
+      style: 'currency',
+      currency: defaults.currency || 'USD',
+      maximumFractionDigits: 2,
+    }
+  ).format(12500), [defaults.currency, language])
   const sampleWorkspaceExists = hasSampleWorkspace(draft)
   const sampleWorkspaceInstalled = hasCompleteSampleWorkspaceManifest(draft)
   const sampleWorkspaceNeedsUpgrade = needsSampleWorkspaceUpgrade(draft)
@@ -509,26 +525,107 @@ export function SettingsPage({ settings, onSaveSettings, onOpenCompanySetup, onC
         </div>
 
         <aside className="space-y-5 lg:sticky lg:top-24 lg:self-start">
-          <section className="rounded-3xl border border-slate-200 bg-white p-5 shadow-sm">
+          <section
+            className="rounded-3xl border border-slate-200 bg-white p-5 shadow-sm"
+            aria-labelledby="company-branding-heading"
+          >
+            <div className="flex items-start gap-3">
+              <span className="flex h-10 w-10 shrink-0 items-center justify-center rounded-2xl bg-blue-50 text-blue-600">
+                <Palette className="h-5 w-5" aria-hidden="true" />
+              </span>
+              <div>
+                <h2 id="company-branding-heading" className="text-base font-bold text-slate-950">{t('branding')}</h2>
+                <p className="mt-1 text-sm leading-6 text-slate-600">{t('brandingHelp')}</p>
+              </div>
+            </div>
+
+            <div className="mt-5 border-t border-slate-200 pt-5">
+              <p className="text-sm font-bold text-slate-700">{t('companyLogo')}</p>
+            </div>
             <div className="flex items-center gap-4">
               <CompanyLogoPreview company={company} />
-              <div>
+              <div className="min-w-0">
                 <p className="text-sm font-bold text-slate-950">{company.name || t('brandName')}</p>
                 <p className="text-xs text-slate-500">{company.phone || t('phoneNumber')}</p>
               </div>
             </div>
-            <label className="mt-5 flex cursor-pointer items-center justify-center gap-2 rounded-2xl border border-dashed border-slate-300 bg-slate-50 px-4 py-4 text-sm font-bold text-slate-700 hover:bg-white">
-              <ImageUp className="h-4 w-4" /> {t('uploadCompanyLogo')}
-              <input type="file" accept="image/*" onChange={handleLogoUpload} className="hidden" />
+            <label
+              htmlFor="company-logo-upload"
+              className="mt-5 flex cursor-pointer items-center justify-center gap-2 rounded-2xl border border-dashed border-slate-300 bg-slate-50 px-4 py-4 text-sm font-bold text-slate-700 transition hover:bg-white focus-within:border-blue-500 focus-within:ring-4 focus-within:ring-blue-100"
+            >
+              <ImageUp className="h-4 w-4" aria-hidden="true" /> {t('uploadCompanyLogo')}
+              <input id="company-logo-upload" type="file" accept="image/*" onChange={handleLogoUpload} className="sr-only" />
             </label>
             {company.logo && (
-              <button onClick={() => updateCompany('logo', '')} className="mt-3 w-full rounded-2xl border border-slate-200 px-4 py-3 text-sm font-bold text-slate-700 hover:bg-slate-50">
+              <button type="button" onClick={() => updateCompany('logo', '')} className="mt-3 w-full rounded-2xl border border-slate-200 px-4 py-3 text-sm font-bold text-slate-700 hover:bg-slate-50 focus-visible:outline-none focus-visible:ring-4 focus-visible:ring-blue-100">
                 {t('removeLogo')}
               </button>
             )}
+
+            <fieldset className="mt-5 border-t border-slate-200 pt-5">
+              <legend className="text-sm font-bold text-slate-700">{t('brandColor')}</legend>
+              <div className="mt-3 flex flex-wrap gap-3">
+                {!selectedBrandColorOption ? (
+                  <span
+                    className="relative flex h-10 w-10 items-center justify-center rounded-full ring-2 ring-slate-950 ring-offset-2"
+                    style={{ backgroundColor: selectedBrandColor }}
+                    role="img"
+                    aria-label={t('currentBrandColor')}
+                    title={t('currentBrandColor')}
+                  >
+                    <Check className="h-4 w-4 text-white drop-shadow-sm" aria-hidden="true" />
+                  </span>
+                ) : null}
+                {SUPPORTED_BRAND_COLORS.map((option) => {
+                  const selected = option.value === selectedBrandColor
+                  const colorName = t(option.labelKey)
+
+                  return (
+                    <button
+                      key={option.value}
+                      type="button"
+                      onClick={() => updateCompany('primaryColor', option.value)}
+                      className={`relative flex h-10 w-10 items-center justify-center rounded-full transition hover:scale-105 focus-visible:outline-none focus-visible:ring-4 focus-visible:ring-blue-100 ${selected ? 'ring-2 ring-slate-950 ring-offset-2' : 'ring-1 ring-slate-200 ring-offset-2'}`}
+                      style={{ backgroundColor: option.value }}
+                      aria-label={t('selectBrandColor', { color: colorName })}
+                      aria-pressed={selected}
+                      title={colorName}
+                    >
+                      {selected ? <Check className="h-4 w-4 text-white drop-shadow-sm" aria-hidden="true" /> : null}
+                    </button>
+                  )
+                })}
+              </div>
+            </fieldset>
+
+            <div className="mt-5 border-t border-slate-200 pt-5">
+              <p className="text-xs font-bold uppercase tracking-[0.18em] text-slate-500">{t('onboardingLivePreview')}</p>
+              <div className="mt-3 overflow-hidden rounded-2xl border border-slate-200 bg-slate-50 p-3">
+                <div className="rounded-xl bg-white p-4 shadow-sm">
+                  <div className="flex items-start justify-between gap-3">
+                    <div className="min-w-0">
+                      <p className="text-lg font-black tracking-[0.12em]" style={{ color: selectedBrandColor }}>
+                        {t('estimate').toUpperCase()}
+                      </p>
+                      <p className="mt-1 truncate text-[11px] font-semibold text-slate-500">
+                        {company.name || t('brandName')}
+                      </p>
+                    </div>
+                    <CompanyLogoPreview company={company} compact />
+                  </div>
+                  <div className="my-3 h-0.5 rounded-full" style={{ backgroundColor: selectedBrandColor }} />
+                  <div className="flex items-end justify-between gap-3">
+                    <span className="text-[10px] font-bold uppercase tracking-[0.12em]" style={{ color: selectedBrandColor }}>
+                      {t('totalEstimate')}
+                    </span>
+                    <span className="text-sm font-black text-slate-950">{previewTotal}</span>
+                  </div>
+                </div>
+              </div>
+            </div>
           </section>
 
-          <button onClick={saveSettings} className="inline-flex w-full items-center justify-center gap-2 rounded-2xl bg-blue-600 px-5 py-4 text-sm font-bold text-white hover:bg-blue-700">
+          <button type="button" onClick={saveSettings} className="inline-flex w-full items-center justify-center gap-2 rounded-2xl bg-blue-600 px-5 py-4 text-sm font-bold text-white hover:bg-blue-700">
             <Save className="h-4 w-4" /> {t('saveSettings')}
           </button>
         </aside>
@@ -580,10 +677,19 @@ function ToggleRow({ label, description = '', checked, onChange, t, alignedCard 
   )
 }
 
-function CompanyLogoPreview({ company }) {
+function CompanyLogoPreview({ company, compact = false }) {
+  const sizeClass = compact ? 'h-9 w-9 rounded-xl text-xs' : 'h-14 w-14 rounded-2xl text-lg'
+
   if (company.logo) {
-    return <img src={company.logo} alt="" className="h-14 w-14 rounded-2xl object-cover ring-1 ring-slate-200" />
+    return <img src={company.logo} alt="" className={`${sizeClass} shrink-0 object-cover ring-1 ring-slate-200`} />
   }
   const initials = (company.name || 'Aymero').split(' ').map((part) => part[0]).join('').slice(0, 2).toUpperCase()
-  return <div className="flex h-14 w-14 items-center justify-center rounded-2xl bg-blue-600 text-lg font-bold text-white shadow-lg shadow-blue-500/20">{initials}</div>
+  return (
+    <div
+      className={`${sizeClass} flex shrink-0 items-center justify-center font-bold text-white shadow-sm`}
+      style={{ backgroundColor: normalizeBrandColor(company.primaryColor) }}
+    >
+      {initials}
+    </div>
+  )
 }
