@@ -668,6 +668,8 @@ export const es = {
   "totalInvoice": "Total de la factura",
   "previousPayments": "Pagos anteriores",
   "invoiceDueDateLabel": "Vence el",
+  "acceptedPaymentMethods": "Métodos de pago aceptados",
+  "thankYouForYourBusiness": "¡Gracias por su preferencia!",
   "invoiceAmount": "Monto de factura",
   "invoiceTotal": "Total de la factura",
   "viewInvoice": "Ver factura",

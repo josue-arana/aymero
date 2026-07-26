@@ -668,6 +668,8 @@ export const en = {
   "totalInvoice": "Total Invoice",
   "previousPayments": "Previous Payments",
   "invoiceDueDateLabel": "Due",
+  "acceptedPaymentMethods": "Accepted Payment Methods",
+  "thankYouForYourBusiness": "Thank you for your business!",
   "invoiceAmount": "Invoice Amount",
   "invoiceTotal": "Invoice Total",
   "viewInvoice": "View Invoice",

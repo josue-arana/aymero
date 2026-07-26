@@ -293,6 +293,100 @@ function getPaymentDescription(payment = {}, t) {
   return { title, supportingText }
 }
 
+const customerNoteFieldNames = [
+  'customerFacingNotes',
+  'customer_facing_notes',
+  'customerNotes',
+  'customer_notes',
+  'publicNotes',
+  'public_notes',
+  'invoiceNotes',
+  'invoice_notes',
+]
+
+const sampleMetadataPatterns = [
+  /aymero[_\s-]*sample[_\s-]*data/i,
+  /sample[_\s-]*data[_\s-]*key/i,
+  /["']?(?:sampleDataKey|sample_data_key)["']?\s*:/i,
+]
+
+function sanitizeCustomerFacingNotes(value) {
+  return String(value || '')
+    .split(/\r?\n/)
+    .filter((line) => !sampleMetadataPatterns.some((pattern) => pattern.test(line)))
+    .join('\n')
+    .trim()
+}
+
+function resolveCustomerFacingNotes(invoice = {}) {
+  const explicitCustomerNotes = customerNoteFieldNames
+    .map((fieldName) => invoice?.[fieldName])
+    .find((value) => String(value || '').trim())
+
+  if (explicitCustomerNotes) {
+    return sanitizeCustomerFacingNotes(explicitCustomerNotes)
+  }
+
+  const notesVisibility = String(
+    invoice?.notesVisibility
+      || invoice?.notes_visibility
+      || invoice?.noteVisibility
+      || invoice?.note_visibility
+      || ''
+  ).trim().toLowerCase()
+  const notesAreInternal = invoice?.notesAreInternal === true
+    || invoice?.notes_are_internal === true
+    || notesVisibility === 'internal'
+    || notesVisibility === 'private'
+
+  if (notesAreInternal) return ''
+
+  return sanitizeCustomerFacingNotes(invoice?.notes)
+}
+
+function normalizeConfiguredPaymentMethods(value) {
+  const rawMethods = Array.isArray(value)
+    ? value
+    : typeof value === 'string'
+      ? value.split(/[,\n]/)
+      : value && typeof value === 'object'
+        ? Object.entries(value)
+          .filter(([, enabled]) => Boolean(enabled))
+          .map(([method]) => method)
+        : []
+  const seenMethods = new Set()
+
+  return rawMethods
+    .map((method) => (
+      method && typeof method === 'object'
+        ? getFirstAvailableValue(method.label, method.name, method.value)
+        : String(method || '').trim()
+    ))
+    .filter(Boolean)
+    .filter((method) => {
+      const normalizedMethod = method.toLowerCase()
+      if (seenMethods.has(normalizedMethod)) return false
+
+      seenMethods.add(normalizedMethod)
+      return true
+    })
+}
+
+function resolveAcceptedPaymentMethods(invoice = {}, company = {}) {
+  const configuredMethods = getFirstAvailableValue(
+    company?.acceptedPaymentMethods,
+    company?.accepted_payment_methods,
+    company?.paymentMethods,
+    company?.payment_methods,
+    invoice?.acceptedPaymentMethods,
+    invoice?.accepted_payment_methods,
+    invoice?.paymentMethods,
+    invoice?.payment_methods
+  )
+
+  return normalizeConfiguredPaymentMethods(configuredMethods)
+}
+
 function getReliablePaidDate(invoice = {}, payments = [], { invoiceTotal, amountPaid, isPaidInFull }) {
   const storedPaidDate = invoice?.paidAt || invoice?.paid_at || ''
 
@@ -380,8 +474,9 @@ export function InvoicePdfTemplate({
   })
   const paidDate = formatInvoiceDocumentDate(paidDateValue, language)
   const paymentTerms = getPaymentTermLabel(invoice?.paymentTerms, t)
-  const showPaymentTerms = Boolean(String(invoice?.paymentTerms || '').trim())
-  const showNotes = Boolean(String(invoice?.notes || '').trim())
+  const customerFacingNotes = resolveCustomerFacingNotes(invoice)
+  const acceptedPaymentMethods = resolveAcceptedPaymentMethods(invoice, company)
+  const showLowerContent = Boolean(customerFacingNotes || acceptedPaymentMethods.length)
   const jobLocation = resolveInvoiceJobLocation({ invoice, project, client })
 
   return (
@@ -525,22 +620,31 @@ export function InvoicePdfTemplate({
         </div>
       </section>
 
-      {showPaymentTerms || showNotes ? (
-        <section className="mt-7 grid grid-cols-2 gap-8 border-t border-slate-200 pt-7">
-          {showPaymentTerms ? (
-            <div>
-              <DocumentLabel>{t('paymentTerms')}</DocumentLabel>
-              <p className="mt-2 whitespace-pre-line break-words text-sm leading-6 text-slate-700 [overflow-wrap:anywhere]">{paymentTerms}</p>
+      {showLowerContent ? (
+        <section className={`mt-7 border-t border-slate-300 pt-6 ${customerFacingNotes && acceptedPaymentMethods.length ? 'grid grid-cols-2' : ''}`}>
+          {customerFacingNotes ? (
+            <div className={acceptedPaymentMethods.length ? 'min-w-0 pr-7' : 'min-w-0'}>
+              <DocumentLabel>{t('notes')}</DocumentLabel>
+              <p className="mt-3 whitespace-pre-line break-words text-[11.5px] leading-[1.55] text-slate-700 [overflow-wrap:anywhere]">{customerFacingNotes}</p>
             </div>
           ) : null}
-          {showNotes ? (
-            <div>
-              <DocumentLabel>{t('notes')}</DocumentLabel>
-              <p className="mt-2 whitespace-pre-line break-words text-sm leading-6 text-slate-700 [overflow-wrap:anywhere]">{invoice.notes}</p>
+          {acceptedPaymentMethods.length ? (
+            <div className={`min-w-0 ${customerFacingNotes ? 'border-l border-slate-300 pl-7' : ''}`}>
+              <DocumentLabel>{t('acceptedPaymentMethods')}</DocumentLabel>
+              <ul className="mt-3 grid grid-cols-2 gap-x-6 gap-y-2 pl-4 text-[11.5px] leading-[1.45] text-slate-700">
+                {acceptedPaymentMethods.map((method) => (
+                  <li key={method} className="break-words pl-0.5 [overflow-wrap:anywhere]">{t(method)}</li>
+                ))}
+              </ul>
             </div>
           ) : null}
         </section>
       ) : null}
+
+      <footer className="mt-7 border-t border-slate-300 pt-5 text-center">
+        <p className="text-[13px] font-bold leading-5 text-[#0f8b8d]">{t('thankYouForYourBusiness')}</p>
+        {company?.name ? <p className="mt-1 text-[11.5px] font-bold leading-5 text-slate-950">{company.name}</p> : null}
+      </footer>
     </article>
   )
 }
