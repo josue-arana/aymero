@@ -1056,6 +1056,8 @@ export const es = {
   "defaultMaterialsIncluded": "Materiales incluidos por defecto",
   "customerPortalSettings": "Configuración del portal del cliente",
   "defaultPortalLanguage": "Idioma del portal por defecto",
+  "visibleFeatures": "Funciones visibles",
+  "photos": "Fotos",
   "showPaymentsInPortal": "Mostrar pagos en el portal",
   "showPhotosInPortal": "Mostrar fotos en el portal",
   "showDocumentsInPortal": "Mostrar documentos en el portal",

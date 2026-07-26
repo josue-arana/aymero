@@ -1056,6 +1056,8 @@ export const en = {
   "defaultMaterialsIncluded": "Default materials included",
   "customerPortalSettings": "Customer Portal Settings",
   "defaultPortalLanguage": "Default portal language",
+  "visibleFeatures": "Visible features",
+  "photos": "Photos",
   "showPaymentsInPortal": "Show payments in portal",
   "showPhotosInPortal": "Show photos in portal",
   "showDocumentsInPortal": "Show documents in portal",

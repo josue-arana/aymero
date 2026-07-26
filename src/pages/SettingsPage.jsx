@@ -498,11 +498,28 @@ export function SettingsPage({ settings, onSaveSettings, onOpenCompanySetup, onC
           </InfoCard>
 
           <InfoCard title={t('customerPortalSettings')} icon={Globe2}>
-            <div className="grid gap-4 sm:grid-cols-2">
-              <LanguageSelect label={t('defaultPortalLanguage')} value={portalLanguage} onChange={setPortalLanguage} t={t} alignedCard />
-              <ToggleRow label={t('showPaymentsInPortal')} checked={portal.showPayments !== false} onChange={(checked) => updatePortal('showPayments', checked)} t={t} alignedCard />
-              <ToggleRow label={t('showPhotosInPortal')} checked={portal.showPhotos !== false} onChange={(checked) => updatePortal('showPhotos', checked)} t={t} alignedCard />
-              <ToggleRow label={t('showDocumentsInPortal')} checked={portal.showDocuments !== false} onChange={(checked) => updatePortal('showDocuments', checked)} t={t} alignedCard />
+            <div className="grid gap-5 md:grid-cols-[minmax(0,240px)_1fr] md:items-end">
+              <LanguageSelect label={t('defaultPortalLanguage')} value={portalLanguage} onChange={setPortalLanguage} t={t} />
+              <fieldset>
+                <legend className="text-sm font-bold text-slate-700">{t('visibleFeatures')}</legend>
+                <div className="mt-2 grid gap-2 sm:grid-cols-3">
+                  <PortalFeatureCheckbox
+                    label={t('documents')}
+                    checked={portal.showDocuments !== false}
+                    onChange={(checked) => updatePortal('showDocuments', checked)}
+                  />
+                  <PortalFeatureCheckbox
+                    label={t('photos')}
+                    checked={portal.showPhotos !== false}
+                    onChange={(checked) => updatePortal('showPhotos', checked)}
+                  />
+                  <PortalFeatureCheckbox
+                    label={t('payments')}
+                    checked={portal.showPayments !== false}
+                    onChange={(checked) => updatePortal('showPayments', checked)}
+                  />
+                </div>
+              </fieldset>
             </div>
           </InfoCard>
 
@@ -657,6 +674,20 @@ function LanguageSelect({ label, value, onChange, t, alignedCard = false }) {
         <option value="en">🇺🇸 {t('english')}</option>
         <option value="es">🇪🇸 {t('spanish')}</option>
       </select>
+    </label>
+  )
+}
+
+function PortalFeatureCheckbox({ label, checked, onChange }) {
+  return (
+    <label className={`flex min-h-11 cursor-pointer items-center gap-2.5 rounded-xl border px-3 py-2 text-sm font-semibold transition ${checked ? 'border-blue-200 bg-blue-50 text-blue-900' : 'border-slate-200 bg-slate-50 text-slate-600 hover:bg-white'}`}>
+      <input
+        type="checkbox"
+        checked={checked}
+        onChange={(event) => onChange(event.target.checked)}
+        className="h-4 w-4 shrink-0 rounded border-slate-300 text-blue-600 focus:ring-blue-500"
+      />
+      <span className="min-w-0">{label}</span>
     </label>
   )
 }
