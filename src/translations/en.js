@@ -659,6 +659,7 @@ export const en = {
   "filterInvoicesByStatus": "Filter invoices by status",
   "invoiceNumber": "Invoice #",
   "invoiceAmount": "Invoice Amount",
+  "invoiceTotal": "Invoice Total",
   "viewInvoice": "View Invoice",
   "sendToCustomer": "Send to Client",
   "invoicePreview": "Invoice Preview",

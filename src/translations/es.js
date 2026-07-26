@@ -659,6 +659,7 @@ export const es = {
   "filterInvoicesByStatus": "Filtrar facturas por estado",
   "invoiceNumber": "Factura #",
   "invoiceAmount": "Monto de factura",
+  "invoiceTotal": "Total de la factura",
   "viewInvoice": "Ver factura",
   "sendToCustomer": "Enviar al cliente",
   "invoicePreview": "Vista de factura",

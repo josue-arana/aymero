@@ -1,6 +1,6 @@
 import { useEffect, useMemo, useRef, useState } from 'react'
 import { useNavigate, useParams } from 'react-router-dom'
-import { Archive, ArrowLeft, CalendarDays, CheckCircle2, ChevronRight, CreditCard, Eye, RotateCcw, Save, Send, Trash2 } from 'lucide-react'
+import { Archive, ArrowLeft, CalendarDays, CheckCircle2, ChevronRight, CreditCard, DollarSign, Eye, FileText, RotateCcw, Save, Send, Trash2, Wallet } from 'lucide-react'
 import { contractorCompany } from '../data/mockInvoices'
 import { currency } from '../utils/formatters'
 import { archiveMenuItemClasses } from '../utils/buttonStyles'
@@ -256,6 +256,9 @@ export function InvoiceDetailRoute({ companySettings, leads, clients = [], invoi
   const invoiceTitle = currentInvoice.title || currentInvoice.projectTitle || ''
   const invoiceClient = currentInvoice.client || currentInvoice.clientName || lead?.client || ''
   const localizedIssueDate = formatLocalizedInvoiceDate(currentInvoice.issueDate, appLanguage)
+  const localizedSummaryDueDate = formatLocalizedInvoiceDate(currentInvoice.dueDate, appLanguage) || t('notAvailable')
+  const hasOutstandingBalance = balance > 0
+  const isInvoiceOverdue = hasOutstandingBalance && String(presentationStatus || '').trim().toLowerCase() === 'overdue'
 
   async function runSingleFlightInvoiceAction(actionKey, task) {
     if (invoiceActionGuardRef.current) {
@@ -653,11 +656,37 @@ export function InvoiceDetailRoute({ companySettings, leads, clients = [], invoi
         </div>
       </section>
 
-      <section className="grid gap-4 sm:grid-cols-2 lg:grid-cols-4">
-        <InvoiceStat label={t('invoiceAmount')} value={currency.format(invoiceTotal)} />
-        <InvoiceStat label={t('paymentsReceived')} value={currency.format(currentInvoice.amountPaid)} />
-        <InvoiceStat label={t('remainingBalance')} value={currency.format(balance)} />
-        <InvoiceStat label={t('dueDate')} value={currentInvoice.dueDate} />
+      <section aria-label={t('paymentSummary')} className="overflow-hidden rounded-3xl border border-slate-200 bg-white shadow-sm">
+        <div className="grid grid-cols-2 lg:grid-cols-4">
+          <InvoiceSummaryMetric
+            icon={FileText}
+            label={t('invoiceTotal')}
+            value={currency.format(invoiceTotal)}
+          />
+          <InvoiceSummaryMetric
+            icon={DollarSign}
+            label={t('paymentsReceived')}
+            value={currency.format(currentInvoice.amountPaid)}
+            className="border-l border-slate-200"
+          />
+          <InvoiceSummaryMetric
+            icon={hasOutstandingBalance ? Wallet : CheckCircle2}
+            label={t('remainingBalance')}
+            value={currency.format(balance)}
+            supportingText={hasOutstandingBalance ? '' : t('paidInFull')}
+            tone={hasOutstandingBalance ? 'default' : 'success'}
+            className="border-t border-slate-200 lg:border-l lg:border-t-0"
+          />
+          <InvoiceSummaryMetric
+            icon={CalendarDays}
+            label={t('dueDate')}
+            value={localizedSummaryDueDate}
+            supportingText={isInvoiceOverdue ? t('overdue') : ''}
+            tone={isInvoiceOverdue ? 'danger' : 'default'}
+            compactValue
+            className="border-l border-t border-slate-200 lg:border-t-0"
+          />
+        </div>
       </section>
 
       <section className="grid gap-6 lg:grid-cols-[1.3fr_0.7fr]">
@@ -793,8 +822,41 @@ function InvoiceHeroStatusBadge({ status, t }) {
   )
 }
 
-function InvoiceStat({ label, value }) {
-  return <div className="rounded-3xl border border-slate-200 bg-white p-5 shadow-sm"><p className="text-sm font-semibold text-slate-500">{label}</p><p className="mt-2 text-2xl font-bold text-slate-950">{value}</p></div>
+function InvoiceSummaryMetric({ icon: Icon, label, value, supportingText = '', tone = 'default', compactValue = false, className = '' }) {
+  const isSuccess = tone === 'success'
+  const isDanger = tone === 'danger'
+  const iconClasses = isSuccess
+    ? 'bg-emerald-50 text-emerald-700'
+    : isDanger
+      ? 'bg-rose-50 text-rose-700'
+      : 'bg-slate-100 text-slate-600'
+  const valueClasses = isSuccess
+    ? 'text-emerald-700'
+    : isDanger
+      ? 'text-rose-700'
+      : 'text-slate-950'
+  const supportingClasses = isSuccess
+    ? 'text-emerald-700'
+    : isDanger
+      ? 'text-rose-700'
+      : 'text-slate-500'
+
+  return (
+    <div className={`min-w-0 p-3 sm:p-5 lg:p-6 ${className}`.trim()}>
+      <div className="flex min-w-0 items-start gap-2.5 sm:gap-3">
+        <span className={`inline-flex h-9 w-9 shrink-0 items-center justify-center rounded-xl sm:h-10 sm:w-10 ${iconClasses}`}>
+          <Icon className="h-4 w-4 sm:h-5 sm:w-5" aria-hidden="true" />
+        </span>
+        <div className="min-w-0">
+          <p className="text-xs font-bold leading-5 text-slate-500 sm:text-sm">{label}</p>
+          <p className={`mt-1 break-words font-bold tracking-tight ${compactValue ? 'text-base sm:text-lg lg:text-xl' : 'text-lg sm:text-xl lg:text-2xl'} ${valueClasses}`}>
+            {value}
+          </p>
+          {supportingText ? <p className={`mt-1 text-xs font-bold ${supportingClasses}`}>{supportingText}</p> : null}
+        </div>
+      </div>
+    </div>
+  )
 }
 
 function EditableInfoBlock({ title, value, onChange }) {
