@@ -1,5 +1,5 @@
 import { useEffect, useMemo, useState } from 'react'
-import { Building2, FileText, Globe2, ImageUp, Languages, Save } from 'lucide-react'
+import { Building2, CreditCard, FileText, Globe2, ImageUp, Languages, Save } from 'lucide-react'
 import { useToast } from '../components/common/ToastProvider'
 import { InfoCard } from '../components/ui/InfoCard'
 import { USE_SUPABASE_SETTINGS } from '../config/backendConfig'
@@ -9,6 +9,12 @@ import { getSettingsContractorId } from '../services/system/settingsRuntimeServi
 import settingsHeroBackground from '../assets/page-heroes/settings-bg.png'
 import { buildHeroBackgroundStyle } from '../utils/heroBackground'
 import { getPaymentTermOptions } from '../utils/paymentTerms'
+import {
+  ACCEPTED_PAYMENT_METHOD_OPTIONS,
+  normalizeAcceptedPaymentMethods,
+  OTHER_PAYMENT_METHOD,
+  serializeAcceptedPaymentMethods,
+} from '../utils/acceptedPaymentMethods'
 import { ConfirmRecordModal } from '../components/common/ConfirmRecordModal'
 import {
   hasCompleteSampleWorkspaceManifest,
@@ -30,6 +36,7 @@ export function SettingsPage({ settings, onSaveSettings, onOpenCompanySetup, onC
   const [draft, setDraft] = useState(settings)
   const [successMessage, setSuccessMessage] = useState('')
   const [settingsLoadError, setSettingsLoadError] = useState('')
+  const [paymentMethodsError, setPaymentMethodsError] = useState('')
   const [sampleAction, setSampleAction] = useState('')
   const [sampleProgress, setSampleProgress] = useState(null)
 
@@ -43,6 +50,7 @@ export function SettingsPage({ settings, onSaveSettings, onOpenCompanySetup, onC
 
   useEffect(() => {
     setDraft(settings)
+    setPaymentMethodsError('')
   }, [settings])
 
   // Try to load canonical settings from the data provider (no-op in local
@@ -128,8 +136,27 @@ export function SettingsPage({ settings, onSaveSettings, onOpenCompanySetup, onC
   }
 
   async function saveSettings() {
+    const acceptedPaymentMethods = normalizeAcceptedPaymentMethods(
+      draft?.company?.acceptedPaymentMethods
+    )
+
+    if (
+      acceptedPaymentMethods.methods.includes(OTHER_PAYMENT_METHOD)
+      && !acceptedPaymentMethods.otherLabel.trim()
+    ) {
+      const errorMessage = t('customPaymentMethodRequired')
+      setPaymentMethodsError(errorMessage)
+      showToast(errorMessage, 'error')
+      return
+    }
+
+    setPaymentMethodsError('')
     const nextSettings = {
       ...draft,
+      company: {
+        ...(draft?.company || {}),
+        acceptedPaymentMethods: serializeAcceptedPaymentMethods(acceptedPaymentMethods),
+      },
       portal: {
         ...(draft.portal || {}),
         defaultLanguage: portalLanguage,
@@ -198,10 +225,33 @@ export function SettingsPage({ settings, onSaveSettings, onOpenCompanySetup, onC
   const company = draft?.company || {}
   const defaults = draft?.defaults || {}
   const portal = draft?.portal || {}
+  const acceptedPaymentMethods = normalizeAcceptedPaymentMethods(company.acceptedPaymentMethods)
   const paymentTermOptions = getPaymentTermOptions(t, defaults.paymentTerms)
   const sampleWorkspaceExists = hasSampleWorkspace(draft)
   const sampleWorkspaceInstalled = hasCompleteSampleWorkspaceManifest(draft)
   const sampleWorkspaceNeedsUpgrade = needsSampleWorkspaceUpgrade(draft)
+
+  function toggleAcceptedPaymentMethod(method, checked) {
+    const nextMethods = checked
+      ? [...acceptedPaymentMethods.methods, method]
+      : acceptedPaymentMethods.methods.filter((value) => value !== method)
+
+    updateCompany('acceptedPaymentMethods', {
+      methods: [...new Set(nextMethods)],
+      otherLabel: method === OTHER_PAYMENT_METHOD && !checked
+        ? ''
+        : acceptedPaymentMethods.otherLabel,
+    })
+    setPaymentMethodsError('')
+  }
+
+  function updateCustomPaymentMethod(value) {
+    updateCompany('acceptedPaymentMethods', {
+      ...acceptedPaymentMethods,
+      otherLabel: value,
+    })
+    setPaymentMethodsError('')
+  }
 
   async function runSampleAction() {
     const completedAction = sampleAction
@@ -387,6 +437,47 @@ export function SettingsPage({ settings, onSaveSettings, onOpenCompanySetup, onC
               <SettingsInput type="number" label={t('defaultDepositPercentage')} value={defaults.depositPercentage} onChange={(value) => updateDefaults('depositPercentage', Number(value || 0))} />
               <SettingsInput type="number" label={t('defaultInvoiceDueDays')} value={defaults.invoiceDueDays} onChange={(value) => updateDefaults('invoiceDueDays', Number(value || 0))} />
               <ToggleRow label={t('defaultMaterialsIncluded')} checked={Boolean(defaults.materialsIncluded)} onChange={(checked) => updateDefaults('materialsIncluded', checked)} t={t} />
+            </div>
+            <div className="mt-5 border-t border-slate-200 pt-5">
+              <fieldset aria-describedby="accepted-payment-methods-help accepted-payment-methods-hint">
+                <legend className="flex items-center gap-2 text-sm font-bold text-slate-950">
+                  <CreditCard className="h-4 w-4 text-blue-600" aria-hidden="true" />
+                  {t('acceptedPaymentMethods')}
+                </legend>
+                <p id="accepted-payment-methods-help" className="mt-2 text-sm leading-6 text-slate-600">{t('acceptedPaymentMethodsHelp')}</p>
+                <p id="accepted-payment-methods-hint" className="mt-1 text-xs leading-5 text-slate-500">{t('acceptedPaymentMethodsSelectionHint')}</p>
+                <div className="mt-4 grid gap-2 sm:grid-cols-2">
+                  {ACCEPTED_PAYMENT_METHOD_OPTIONS.map((option) => {
+                    const checked = acceptedPaymentMethods.methods.includes(option.value)
+
+                    return (
+                      <label key={option.value} className={`flex min-h-11 cursor-pointer items-center gap-3 rounded-2xl border px-3 py-2.5 text-sm font-semibold transition ${checked ? 'border-blue-300 bg-blue-50 text-blue-900' : 'border-slate-200 bg-slate-50 text-slate-700 hover:bg-white'}`}>
+                        <input
+                          type="checkbox"
+                          checked={checked}
+                          onChange={(event) => toggleAcceptedPaymentMethod(option.value, event.target.checked)}
+                          className="h-4 w-4 rounded border-slate-300 text-blue-600 focus:ring-blue-500"
+                        />
+                        <span>{t(option.labelKey)}</span>
+                      </label>
+                    )
+                  })}
+                </div>
+                {acceptedPaymentMethods.methods.includes(OTHER_PAYMENT_METHOD) ? (
+                  <label htmlFor="custom-payment-method" className="mt-4 block text-sm font-bold text-slate-700">
+                    {t('customPaymentMethod')}
+                    <input
+                      id="custom-payment-method"
+                      value={acceptedPaymentMethods.otherLabel}
+                      onChange={(event) => updateCustomPaymentMethod(event.target.value)}
+                      aria-invalid={Boolean(paymentMethodsError)}
+                      aria-describedby={paymentMethodsError ? 'custom-payment-method-error' : undefined}
+                      className={`mt-2 w-full rounded-2xl border bg-slate-50 px-4 py-3 text-sm outline-none focus:ring-4 ${paymentMethodsError ? 'border-rose-400 focus:border-rose-500 focus:ring-rose-100' : 'border-slate-200 focus:border-blue-500 focus:ring-blue-100'}`}
+                    />
+                    {paymentMethodsError ? <span id="custom-payment-method-error" className="mt-2 block text-sm font-semibold text-rose-600">{paymentMethodsError}</span> : null}
+                  </label>
+                ) : null}
+              </fieldset>
             </div>
           </InfoCard>
 

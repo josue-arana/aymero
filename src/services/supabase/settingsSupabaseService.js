@@ -1,6 +1,7 @@
 import { USE_SUPABASE_SETTINGS } from '../../config/backendConfig'
 import { createDefaultCompanySettings } from '../../data/defaultCompanySettings'
 import { supabaseClient } from '../../lib/supabaseClient'
+import { serializeAcceptedPaymentMethods } from '../../utils/acceptedPaymentMethods'
 
 const TABLE_NAME = 'company_settings'
 const settingsRuntimeState = {
@@ -145,6 +146,7 @@ function toAppSettings(row) {
       licenseNumber: row?.license_number || '',
       logo: row?.logo_file_path || defaults.company.logo,
       primaryColor: row?.primary_brand_color || defaults.company.primaryColor,
+      acceptedPaymentMethods: row?.accepted_payment_methods ?? defaults.company.acceptedPaymentMethods,
     },
     defaults: {
       paymentTerms: row?.default_payment_terms || defaults.defaults.paymentTerms,
@@ -190,6 +192,7 @@ function toSupabasePayload(contractorId, settings = {}) {
     license_number: normalized.company.licenseNumber || null,
     logo_file_path: normalized.company.logo || null,
     primary_brand_color: normalized.company.primaryColor || null,
+    accepted_payment_methods: serializeAcceptedPaymentMethods(normalized.company.acceptedPaymentMethods),
     default_payment_terms: normalized.defaults.paymentTerms || null,
     default_tax_rate: Number(normalized.defaults.taxRate ?? 0),
     default_estimate_expiration_days: Number(normalized.defaults.estimateExpirationDays ?? 30),

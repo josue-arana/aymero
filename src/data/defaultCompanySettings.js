@@ -1,3 +1,5 @@
+import { normalizeAcceptedPaymentMethods } from '../utils/acceptedPaymentMethods'
+
 const baseCompanySettings = {
   appLanguage: 'en',
   analyticsMode: true,
@@ -12,6 +14,10 @@ const baseCompanySettings = {
     licenseNumber: 'MHIC-000000',
     logo: '',
     primaryColor: '#2563eb',
+    acceptedPaymentMethods: {
+      methods: [],
+      otherLabel: '',
+    },
   },
   defaults: {
     paymentTerms: '50% downpayment with remaining balance due weekly based on work progress.',
@@ -69,6 +75,10 @@ export function createDefaultCompanySettings(overrides = {}) {
     company: {
       ...baseCompanySettings.company,
       ...(safeOverrides.company || {}),
+      acceptedPaymentMethods: normalizeAcceptedPaymentMethods(
+        safeOverrides.company?.acceptedPaymentMethods
+          ?? baseCompanySettings.company.acceptedPaymentMethods
+      ),
     },
     defaults: {
       ...baseCompanySettings.defaults,

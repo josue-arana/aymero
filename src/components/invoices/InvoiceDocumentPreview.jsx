@@ -38,7 +38,7 @@ function PreviewState({ icon: Icon, message, animate = false }) {
   )
 }
 
-export function InvoiceDocumentPreview({ invoice, company, client, project, t, uiT = t, language }) {
+export function InvoiceDocumentPreview({ invoice, company, client, project, t, uiT = t, language, documentRef }) {
   const resetKey = `${invoice?.id || ''}:${invoice?.updatedAt || invoice?.updated_at || ''}:${project?.updatedAt || project?.updated_at || ''}:${language || ''}`
 
   return (
@@ -49,6 +49,7 @@ export function InvoiceDocumentPreview({ invoice, company, client, project, t, u
       <Suspense fallback={<PreviewState icon={LoaderCircle} message={uiT('invoicePreviewLoading')} animate />}>
         <ScaledDocumentPreview pageWidth={defaultDocumentPreviewWidth} pagePadding={0}>
           <LazyInvoicePdfTemplate
+            ref={documentRef}
             invoice={invoice}
             company={company}
             client={client}

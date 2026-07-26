@@ -1,8 +1,10 @@
-import { useEffect, useState } from 'react'
+import { forwardRef, useEffect, useState } from 'react'
 import { currencyWithCents } from '../../utils/formatters'
 import { getLanguageLocale } from '../../utils/language'
 import { calculateInvoiceTotal, getInvoiceRemainingBalance } from '../../utils/invoiceRecords'
 import { getPaymentTermLabel } from '../../utils/paymentTerms'
+import { getAcceptedPaymentMethodLabels } from '../../utils/acceptedPaymentMethods'
+import { resolveInvoiceCustomerNote } from '../../utils/invoiceCustomerNotes'
 import './invoiceDocument.css'
 
 function formatInvoiceDocumentDate(value, language = 'en') {
@@ -304,110 +306,14 @@ function getPaymentDescription(payment = {}, t) {
   return { title, supportingText }
 }
 
-const customerNoteFieldNames = [
-  'customerFacingNotes',
-  'customer_facing_notes',
-  'customerNotes',
-  'customer_notes',
-  'publicNotes',
-  'public_notes',
-  'invoiceNotes',
-  'invoice_notes',
-]
+function resolveAcceptedPaymentMethods(invoice = {}, company = {}, t) {
+  const hasInvoiceOverride = hasOwn(invoice, 'acceptedPaymentMethods')
+    || hasOwn(invoice, 'accepted_payment_methods')
+  const configuredMethods = hasInvoiceOverride
+    ? invoice?.acceptedPaymentMethods ?? invoice?.accepted_payment_methods
+    : company?.acceptedPaymentMethods ?? company?.accepted_payment_methods
 
-const sampleMetadataPatterns = [
-  /aymero[_\s-]*sample[_\s-]*data/i,
-  /sample[_\s-]*data[_\s-]*key/i,
-  /["']?(?:sampleDataKey|sample_data_key)["']?\s*:/i,
-]
-
-function sanitizeCustomerFacingNotes(value) {
-  return String(value || '')
-    .split(/\r?\n/)
-    .filter((line) => !sampleMetadataPatterns.some((pattern) => pattern.test(line)))
-    .join('\n')
-    .trim()
-}
-
-function resolveCustomerFacingNotes(invoice = {}) {
-  const explicitCustomerNotes = customerNoteFieldNames
-    .map((fieldName) => invoice?.[fieldName])
-    .find((value) => String(value || '').trim())
-
-  if (explicitCustomerNotes) {
-    return sanitizeCustomerFacingNotes(explicitCustomerNotes)
-  }
-
-  const notesVisibility = String(
-    invoice?.notesVisibility
-      || invoice?.notes_visibility
-      || invoice?.noteVisibility
-      || invoice?.note_visibility
-      || ''
-  ).trim().toLowerCase()
-  const notesAreInternal = invoice?.notesAreInternal === true
-    || invoice?.notes_are_internal === true
-    || notesVisibility === 'internal'
-    || notesVisibility === 'private'
-
-  if (notesAreInternal) return ''
-
-  return sanitizeCustomerFacingNotes(invoice?.notes)
-}
-
-function normalizeConfiguredPaymentMethods(value) {
-  const rawMethods = Array.isArray(value)
-    ? value
-    : typeof value === 'string'
-      ? value.split(/[,\n]/)
-      : value && typeof value === 'object'
-        ? Object.entries(value)
-          .filter(([, enabled]) => Boolean(enabled))
-          .map(([method]) => method)
-        : []
-  const seenMethods = new Set()
-
-  return rawMethods
-    .map((method) => (
-      method && typeof method === 'object'
-        ? getFirstAvailableValue(method.label, method.name, method.value)
-        : String(method || '').trim()
-    ))
-    .filter(Boolean)
-    .filter((method) => {
-      const normalizedMethod = method.toLowerCase()
-      if (seenMethods.has(normalizedMethod)) return false
-
-      seenMethods.add(normalizedMethod)
-      return true
-    })
-}
-
-const fallbackAcceptedPaymentMethods = ['Cash', 'Check']
-
-function resolveAcceptedPaymentMethods(invoice = {}, company = {}) {
-  const companyMethods = normalizeConfiguredPaymentMethods(getFirstAvailableValue(
-    company?.acceptedPaymentMethods,
-    company?.accepted_payment_methods,
-    company?.paymentMethods,
-    company?.payment_methods
-  ))
-
-  if (companyMethods.length) return companyMethods
-
-  const invoiceMethods = normalizeConfiguredPaymentMethods(getFirstAvailableValue(
-    invoice?.acceptedPaymentMethods,
-    invoice?.accepted_payment_methods,
-    invoice?.paymentMethods,
-    invoice?.payment_methods
-  ))
-
-  if (invoiceMethods.length) return invoiceMethods
-
-  // Company settings do not currently expose accepted payment methods. Keep this
-  // presentation-only fallback aligned with the application's supported payment
-  // methods until contractor-configurable payment methods are available.
-  return fallbackAcceptedPaymentMethods
+  return getAcceptedPaymentMethodLabels(configuredMethods, t)
 }
 
 function getReliablePaidDate(invoice = {}, payments = [], { invoiceTotal, amountPaid, isPaidInFull }) {
@@ -457,14 +363,14 @@ function InvoiceTotalRow({ label, value, strong = false, deducted = false }) {
   )
 }
 
-export function InvoicePdfTemplate({
+export const InvoicePdfTemplate = forwardRef(function InvoicePdfTemplate({
   invoice = {},
   company = {},
   client = {},
   project = {},
   t = (key) => key,
   language = 'en',
-}) {
+}, ref) {
   const lineItems = Array.isArray(invoice?.lineItems) ? invoice.lineItems : []
   const calculatedLineItemSubtotal = calculateInvoiceTotal(lineItems, Number(invoice?.amount || 0))
   const storedSubtotal = readNumericField(invoice, ['subtotal'], calculatedLineItemSubtotal)
@@ -497,12 +403,13 @@ export function InvoicePdfTemplate({
   })
   const paidDate = formatInvoiceDocumentDate(paidDateValue, language)
   const paymentTerms = getPaymentTermLabel(invoice?.paymentTerms, t)
-  const customerFacingNotes = resolveCustomerFacingNotes(invoice) || t('thankYouForYourBusiness')
-  const acceptedPaymentMethods = resolveAcceptedPaymentMethods(invoice, company)
+  const customerFacingNotes = resolveInvoiceCustomerNote(invoice) || t('thankYouForYourBusiness')
+  const acceptedPaymentMethods = resolveAcceptedPaymentMethods(invoice, company, t)
   const jobLocation = resolveInvoiceJobLocation({ invoice, project, client })
 
   return (
     <article
+      ref={ref}
       data-invoice-pdf-template="true"
       className="invoice-document document-sheet border border-slate-200 bg-white p-10 font-sans text-slate-900"
     >
@@ -659,19 +566,21 @@ export function InvoicePdfTemplate({
         </div>
       </section>
 
-      <section className="invoice-document-final-content mt-7 grid grid-cols-2 border-t border-slate-300 pt-6">
-        <div className="invoice-document-notes min-w-0 pr-7">
+      <section className={`invoice-document-final-content mt-7 border-t border-slate-300 pt-6 ${acceptedPaymentMethods.length ? 'grid grid-cols-2' : ''}`}>
+        <div className={`invoice-document-notes min-w-0 ${acceptedPaymentMethods.length ? 'pr-7' : ''}`}>
           <DocumentLabel>{t('notes')}</DocumentLabel>
           <p className="mt-3 whitespace-pre-line break-words text-[11.5px] leading-[1.55] text-slate-700 [overflow-wrap:anywhere]">{customerFacingNotes}</p>
         </div>
-        <div className="invoice-document-payment-methods min-w-0 border-l border-slate-300 pl-7">
-          <DocumentLabel>{t('acceptedPaymentMethods')}</DocumentLabel>
-          <ul className={`mt-3 grid gap-x-6 gap-y-2 pl-4 text-[11.5px] leading-[1.45] text-slate-700 ${acceptedPaymentMethods.length === 1 ? 'grid-cols-1' : 'grid-cols-2'}`}>
-            {acceptedPaymentMethods.map((method) => (
-              <li key={method} className="break-words pl-0.5 [overflow-wrap:anywhere]">{t(method)}</li>
-            ))}
-          </ul>
-        </div>
+        {acceptedPaymentMethods.length ? (
+          <div className="invoice-document-payment-methods min-w-0 border-l border-slate-300 pl-7">
+            <DocumentLabel>{t('acceptedPaymentMethods')}</DocumentLabel>
+            <ul className={`mt-3 grid gap-x-6 gap-y-2 pl-4 text-[11.5px] leading-[1.45] text-slate-700 ${acceptedPaymentMethods.length === 1 ? 'grid-cols-1' : 'grid-cols-2'}`}>
+              {acceptedPaymentMethods.map((method) => (
+                <li key={method} className="break-words pl-0.5 [overflow-wrap:anywhere]">{method}</li>
+              ))}
+            </ul>
+          </div>
+        ) : null}
       </section>
 
       <footer className="invoice-document-footer pt-7">
@@ -682,6 +591,6 @@ export function InvoicePdfTemplate({
       </footer>
     </article>
   )
-}
+})
 
 export default InvoicePdfTemplate

@@ -11,6 +11,7 @@ const INVOICE_TABLE_COLUMNS = new Set([
   'invoice_number',
   'title',
   'description',
+  'customer_notes',
   'line_items',
   'subtotal',
   'tax_amount',
@@ -205,7 +206,7 @@ function serializeDescription(invoice = {}) {
   // hydration fields inside description because there are no first-class columns
   // for them yet. Keep this payload backward compatible so refresh/login
   // hydration preserves lead/estimate links, customer labels, display dates,
-  // notes, payment terms, and payment history.
+  // legacy notes, payment terms, and payment history.
   const descriptionText = readField(invoice, ['description'])
   const notes = readField(invoice, ['notes'])
   const paymentTerms = readField(invoice, ['paymentTerms', 'payment_terms'])
@@ -373,6 +374,7 @@ function toAppInvoice(row) {
     title: row?.title || 'Invoice',
     projectTitle: row?.title || 'Invoice',
     description: parsedDescription.summary,
+    customerNotes: row?.customer_notes ?? null,
     notes: parsedDescription.notes,
     paymentTerms: parsedDescription.paymentTerms,
     invoiceLanguage: parsedDescription.invoiceLanguage || '',
@@ -454,6 +456,7 @@ function toSupabasePayload(contractorId, invoice = {}, { isCreate = false } = {}
   const statusInput = readField(invoice, ['status'])
   const issueDateInput = readField(invoice, ['issueDate', 'issue_date'])
   const dueDateInput = readField(invoice, ['dueDate', 'due_date'])
+  const customerNotesInput = readField(invoice, ['customerNotes', 'customer_notes'])
   const descriptionInput = serializeDescription(invoice)
 
   if (contractorId) {
@@ -486,6 +489,12 @@ function toSupabasePayload(contractorId, invoice = {}, { isCreate = false } = {}
     payload.description = descriptionInput
   } else if (isCreate) {
     payload.description = null
+  }
+
+  if (customerNotesInput !== undefined) {
+    payload.customer_notes = customerNotesInput === null ? null : String(customerNotesInput)
+  } else if (isCreate) {
+    payload.customer_notes = null
   }
 
   if (lineItems !== undefined || isCreate) {

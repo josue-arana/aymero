@@ -1,6 +1,6 @@
 import { useEffect, useMemo, useRef, useState } from 'react'
 import { useNavigate, useParams } from 'react-router-dom'
-import { Archive, ArrowLeft, Building2, CalendarDays, CheckCircle2, ChevronRight, CreditCard, DollarSign, Eye, FileText, Pencil, RotateCcw, Save, Send, Trash2, UserRound, Wallet } from 'lucide-react'
+import { Archive, ArrowLeft, Building2, CalendarDays, CheckCircle2, ChevronRight, CreditCard, DollarSign, Download, Eye, FileText, LoaderCircle, Pencil, Printer, RotateCcw, Save, Send, Trash2, UserRound, Wallet } from 'lucide-react'
 import { StatusBadge } from '../components/ui/StatusBadge'
 import { InvoiceDocumentPreview } from '../components/invoices/InvoiceDocumentPreview'
 import { contractorCompany } from '../data/mockInvoices'
@@ -20,6 +20,8 @@ import { createTranslator } from '../translations'
 import { findRelatedClient } from '../utils/clients'
 import { getLanguageLocale, resolveClientFacingLanguage } from '../utils/language'
 import { getPaymentTermOptions, isKnownPaymentTermValue } from '../utils/paymentTerms'
+import { resolveInvoiceCustomerNote } from '../utils/invoiceCustomerNotes'
+import { printDocumentElement } from '../utils/printDocument'
 import { appRoutes } from '../config/appRoutes'
 
 const paymentMethods = ['Cash', 'Check', 'Zelle', 'Credit Card', 'Bank Transfer', 'Other']
@@ -284,6 +286,11 @@ export function InvoiceDetailRoute({ companySettings, leads, clients = [], invoi
   const invoiceSaveGuardRef = useRef(false)
   const editInvoiceButtonRef = useRef(null)
   const firstInvoiceEditFieldRef = useRef(null)
+  const invoiceDocumentRef = useRef(null)
+  const invoicePdfGuardRef = useRef(false)
+  const invoicePrintGuardRef = useRef(false)
+  const [isGeneratingInvoicePdf, setIsGeneratingInvoicePdf] = useState(false)
+  const [isPreparingInvoicePrint, setIsPreparingInvoicePrint] = useState(false)
   const [isRunningInvoiceAction, setIsRunningInvoiceAction] = useState(false)
   const [activeInvoiceAction, setActiveInvoiceAction] = useState('')
   const invoiceActionGuardRef = useRef(false)
@@ -520,7 +527,14 @@ export function InvoiceDetailRoute({ companySettings, leads, clients = [], invoi
     setIsSavingInvoice(true)
 
     try {
-      const payload = { ...currentInvoice }
+      const payload = {
+        ...currentInvoice,
+        customerNotes: resolveInvoiceCustomerNote(currentInvoice),
+      }
+
+      if (!currentInvoice?.id) {
+        delete payload.notes
+      }
       let response = null
 
       if (currentInvoice && currentInvoice.id) {
@@ -704,6 +718,54 @@ export function InvoiceDetailRoute({ companySettings, leads, clients = [], invoi
         showToast(error?.message || t('restoreFailed'), 'error')
       }
     })
+  }
+
+  async function downloadInvoiceDocument() {
+    if (invoicePdfGuardRef.current) return
+
+    invoicePdfGuardRef.current = true
+    setIsGeneratingInvoicePdf(true)
+
+    try {
+      const { downloadInvoicePdf } = await import('../utils/invoicePdf')
+      await downloadInvoicePdf({
+        element: invoiceDocumentRef.current,
+        invoiceNumber,
+        clientName: invoiceClient,
+      })
+      showToast(t('invoicePdfDownloaded'))
+    } catch (error) {
+      if (import.meta.env.DEV) {
+        // eslint-disable-next-line no-console
+        console.warn('[dev] Invoice PDF generation failed.', error)
+      }
+      showToast(t('invoicePdfGenerationError'), 'error')
+    } finally {
+      invoicePdfGuardRef.current = false
+      setIsGeneratingInvoicePdf(false)
+    }
+  }
+
+  async function printInvoiceDocument() {
+    if (invoicePrintGuardRef.current) return
+
+    invoicePrintGuardRef.current = true
+    setIsPreparingInvoicePrint(true)
+
+    try {
+      await printDocumentElement(invoiceDocumentRef.current, {
+        documentTitle: `${invoiceNumber} - ${invoiceClient || t('invoice')}`.trim(),
+      })
+    } catch (error) {
+      if (import.meta.env.DEV) {
+        // eslint-disable-next-line no-console
+        console.warn('[dev] Invoice print preparation failed.', error)
+      }
+      showToast(t('invoicePrintPreparationError'), 'error')
+    } finally {
+      invoicePrintGuardRef.current = false
+      setIsPreparingInvoicePrint(false)
+    }
   }
 
   const actionDefinitions = {
@@ -1048,26 +1110,58 @@ export function InvoiceDetailRoute({ companySettings, leads, clients = [], invoi
                       </select>
                     </div>
                   ) : <EditableInfoBlock id="invoice-edit-payment-terms" title={t('paymentTerms')} value={currentInvoice.paymentTerms} onChange={(value) => updateDraft('paymentTerms', value)} />}
-                  <EditableInfoBlock id="invoice-edit-notes" title={t('notes')} value={currentInvoice.notes} onChange={(value) => updateDraft('notes', value)} />
+                  <EditableInfoBlock
+                    id="invoice-edit-customer-note"
+                    title={t('customerNote')}
+                    helperText={t('customerNoteHelp')}
+                    value={resolveInvoiceCustomerNote(currentInvoice)}
+                    onChange={(value) => updateDraft('customerNotes', value)}
+                  />
                 </div>
               </div>
             ) : null}
           </section>
 
           <section className="min-w-0 overflow-hidden rounded-3xl border border-slate-200 bg-white shadow-sm">
-            <div className="flex flex-col gap-3 border-b border-slate-200 px-5 py-4 sm:flex-row sm:items-center sm:justify-between sm:px-6">
+            <div className="flex flex-col gap-3 border-b border-slate-200 px-5 py-4 md:flex-row md:items-center md:justify-between sm:px-6">
               <h2 className="text-lg font-bold text-slate-950">{t('invoicePreview')}</h2>
-              <button
-                type="button"
-                onClick={() => setShowPreview(true)}
-                className="inline-flex min-h-11 items-center justify-center gap-2 rounded-2xl border border-slate-200 bg-white px-4 py-2.5 text-sm font-bold text-slate-700 transition hover:border-blue-200 hover:bg-blue-50 hover:text-blue-700 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-blue-500 focus-visible:ring-offset-2"
-              >
-                <Eye className="h-4 w-4" aria-hidden="true" />
-                {t('previewPdf')}
-              </button>
+              <div className="flex min-w-0 flex-col gap-2 sm:flex-row sm:flex-wrap" aria-busy={isGeneratingInvoicePdf || isPreparingInvoicePrint}>
+                <button
+                  type="button"
+                  disabled={isGeneratingInvoicePdf || isPreparingInvoicePrint}
+                  onClick={() => setShowPreview(true)}
+                  className="inline-flex min-h-11 items-center justify-center gap-2 rounded-2xl px-3 py-2.5 text-sm font-bold text-slate-600 transition hover:bg-slate-100 hover:text-slate-950 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-blue-500 focus-visible:ring-offset-2 disabled:cursor-not-allowed disabled:opacity-60"
+                >
+                  <Eye className="h-4 w-4" aria-hidden="true" />
+                  {t('previewFullScreen')}
+                </button>
+                <button
+                  type="button"
+                  disabled={isGeneratingInvoicePdf || isPreparingInvoicePrint}
+                  onClick={printInvoiceDocument}
+                  className="inline-flex min-h-11 items-center justify-center gap-2 rounded-2xl border border-slate-200 bg-white px-4 py-2.5 text-sm font-bold text-slate-700 transition hover:border-blue-200 hover:bg-blue-50 hover:text-blue-700 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-blue-500 focus-visible:ring-offset-2 disabled:cursor-not-allowed disabled:opacity-60"
+                >
+                  {isPreparingInvoicePrint ? <LoaderCircle className="h-4 w-4 animate-spin" aria-hidden="true" /> : <Printer className="h-4 w-4" aria-hidden="true" />}
+                  <span role={isPreparingInvoicePrint ? 'status' : undefined} aria-live={isPreparingInvoicePrint ? 'polite' : undefined}>
+                    {isPreparingInvoicePrint ? t('preparingPrint') : t('printInvoice')}
+                  </span>
+                </button>
+                <button
+                  type="button"
+                  disabled={isGeneratingInvoicePdf || isPreparingInvoicePrint}
+                  onClick={downloadInvoiceDocument}
+                  className="inline-flex min-h-11 items-center justify-center gap-2 rounded-2xl bg-blue-600 px-4 py-2.5 text-sm font-bold text-white shadow-sm transition hover:bg-blue-700 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-blue-500 focus-visible:ring-offset-2 disabled:cursor-not-allowed disabled:bg-blue-400"
+                >
+                  {isGeneratingInvoicePdf ? <LoaderCircle className="h-4 w-4 animate-spin" aria-hidden="true" /> : <Download className="h-4 w-4" aria-hidden="true" />}
+                  <span role={isGeneratingInvoicePdf ? 'status' : undefined} aria-live={isGeneratingInvoicePdf ? 'polite' : undefined}>
+                    {isGeneratingInvoicePdf ? t('generatingPdf') : t('downloadPdf')}
+                  </span>
+                </button>
+              </div>
             </div>
             <div className="min-w-0 overflow-hidden bg-slate-100 p-2 sm:p-3">
               <InvoiceDocumentPreview
+                documentRef={invoiceDocumentRef}
                 invoice={currentInvoice}
                 company={displayCompany}
                 client={invoicePreviewClient}
@@ -1221,11 +1315,12 @@ function InvoiceContactPanel({ icon: Icon, eyebrow, title, fields = [] }) {
   )
 }
 
-function EditableInfoBlock({ id, title, value, onChange }) {
+function EditableInfoBlock({ id, title, helperText = '', value, onChange }) {
   return (
     <div className="rounded-2xl bg-slate-50 p-4">
       <label htmlFor={id} className="text-xs font-bold uppercase tracking-wide text-slate-500">{title}</label>
-      <textarea id={id} value={value || ''} onChange={(event) => onChange(event.target.value)} rows={4} className="mt-2 w-full rounded-xl border border-slate-200 bg-white p-3 text-sm leading-6 text-slate-700 outline-none focus:border-blue-500 focus:ring-4 focus:ring-blue-100" />
+      {helperText ? <p id={`${id}-help`} className="mt-1 text-xs font-medium normal-case leading-5 tracking-normal text-slate-500">{helperText}</p> : null}
+      <textarea id={id} value={value || ''} onChange={(event) => onChange(event.target.value)} rows={4} aria-describedby={helperText ? `${id}-help` : undefined} className="mt-2 w-full rounded-xl border border-slate-200 bg-white p-3 text-sm leading-6 text-slate-700 outline-none focus:border-blue-500 focus:ring-4 focus:ring-blue-100" />
     </div>
   )
 }
