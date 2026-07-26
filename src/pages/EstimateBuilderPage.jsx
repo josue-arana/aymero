@@ -24,6 +24,7 @@ import { shouldUseGeneratedPdfForPrint } from '../utils/documentOutput'
 import { createTranslator } from '../translations'
 import { findLeadByProjectLookup } from '../utils/projectIdentity'
 import { findRelatedClient } from '../utils/clients'
+import { normalizeEstimateDocument } from '../utils/estimateDocument'
 import { normalizeDocumentLanguageOverride, resolveClientFacingLanguage } from '../utils/language'
 import { getPaymentTermLabel, getPaymentTermOptions, isKnownPaymentTermValue } from '../utils/paymentTerms'
 
@@ -258,19 +259,22 @@ export function EstimateBuilderPage({ lead, clientRecord = null, t, appLanguage 
     ),
     [lead?.portal?.estimate?.createdAt, lead?.portal?.estimate?.created_at, lead?.portal?.estimate?.dateCreated, savedEstimate.createdAt, savedEstimate.created_at, savedEstimate.dateCreated]
   )
+  const estimateDocumentModel = useMemo(() => normalizeEstimateDocument({
+    scope,
+    lineItems: isDetailedPricing ? lineItems : [],
+    total: estimateTotal,
+    materialsIncluded,
+  }), [estimateTotal, isDetailedPricing, lineItems, materialsIncluded, scope])
   const estimatePreviewProps = useMemo(() => ({
     company: companySettings?.company,
     lead,
     estimateNumber: previewEstimateNumber,
     estimateDate: previewEstimateDate,
-    scope,
-    materialsIncluded,
+    documentModel: estimateDocumentModel,
     paymentTerms: getPaymentTermLabel(paymentTerms, estimateT),
-    total: estimateTotal,
-    lineItems: isDetailedPricing ? lineItems : [],
     language: estimateOutputLanguage,
     t: estimateT,
-  }), [companySettings?.company, estimateOutputLanguage, estimateT, estimateTotal, isDetailedPricing, lead, lineItems, materialsIncluded, paymentTerms, previewEstimateDate, previewEstimateNumber, scope])
+  }), [companySettings?.company, estimateDocumentModel, estimateOutputLanguage, estimateT, lead, paymentTerms, previewEstimateDate, previewEstimateNumber])
 
   function getEstimatePayload() {
     return {
@@ -517,11 +521,8 @@ export function EstimateBuilderPage({ lead, clientRecord = null, t, appLanguage 
         companyName: companySettings?.company?.name,
         company: companySettings?.company || {},
         lead,
-        scope,
-        lineItems: isDetailedPricing ? lineItems : [],
-        materialsIncluded,
+        documentModel: estimateDocumentModel,
         paymentTerms,
-        total: estimateTotal,
         t: estimateT,
       })
       showToast(t('estimatePdfGenerated'))

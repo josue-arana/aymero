@@ -1,6 +1,7 @@
 import html2canvas from 'html2canvas'
 import { jsPDF } from 'jspdf'
 import { currency } from './formatters'
+import { ensureNormalizedEstimateDocument } from './estimateDocument'
 import { getPaymentTermLabel } from './paymentTerms'
 
 const safeColors = {
@@ -102,26 +103,14 @@ function wrapMultilineText(text, maxChars) {
 }
 
 function estimateLineItemHeight(item) {
-  const nameLines = wrapMultilineText(item?.name || '', 52)
+  const nameLines = wrapMultilineText(getNormalizedItemDisplayText(item), 52)
   const detailHeight = Math.max(nameLines.length, 1) * 14
   const detailsHeight = 22
   return detailHeight + detailsHeight + 14
 }
 
-function resolveLineItemMaterialsIncluded(item, fallbackMaterialsIncluded) {
-  if (typeof item?.materialsIncluded === 'boolean') {
-    return item.materialsIncluded
-  }
-
-  if (typeof item?.materials_included === 'boolean') {
-    return item.materials_included
-  }
-
-  if (typeof fallbackMaterialsIncluded === 'boolean') {
-    return fallbackMaterialsIncluded
-  }
-
-  return false
+function getNormalizedItemDisplayText(item = {}) {
+  return [item?.title, item?.description].filter(Boolean).join('\n')
 }
 
 function sanitizeCloneTree(root, clonedDoc) {
@@ -175,13 +164,26 @@ function buildFallbackPdf({
   companyName = '',
   company = {},
   lead = {},
-  scope = '',
-  lineItems = [],
-  materialsIncluded,
+  documentModel,
+  scope: legacyScope = '',
+  lineItems: legacyLineItems = [],
+  materialsIncluded: legacyMaterialsIncluded,
   paymentTerms = '',
-  total = 0,
+  total: legacyTotal = 0,
   t = (key) => key,
 }) {
+  const normalizedDocument = ensureNormalizedEstimateDocument(documentModel, {
+    scope: legacyScope,
+    lineItems: legacyLineItems,
+    materialsIncluded: legacyMaterialsIncluded,
+    total: legacyTotal,
+  })
+  const scope = normalizedDocument.scope.text
+  const lineItems = normalizedDocument.sections.workBreakdown.visible
+    ? normalizedDocument.workItems
+    : []
+  const materialsIncluded = normalizedDocument.defaults.materialsIncluded
+  const total = normalizedDocument.totals.total
   const pdf = new jsPDF({
     orientation: 'portrait',
     unit: 'pt',
@@ -330,17 +332,17 @@ function buildFallbackPdf({
     cursorY += 42
 
     lineItems.forEach((item, index) => {
-      const itemMaterialsIncluded = resolveLineItemMaterialsIncluded(item, materialsIncluded)
+      const itemMaterialsIncluded = Boolean(item?.materialsIncluded)
 
       if (index > 0) {
         pdf.setDrawColor(safeColors.slate100)
         pdf.line(innerX + 14, cursorY - 10, cardX + cardWidth - 34, cursorY - 10)
       }
 
-      const itemLines = wrapMultilineText(item?.name || t('item'), 52)
+      const itemLines = wrapMultilineText(getNormalizedItemDisplayText(item) || t('item'), 52)
       const startingY = cursorY
       drawWrappedLines(itemLines.length ? itemLines : [t('item')], innerX + 16, cardWidth - 180, { size: 11, color: safeColors.slate700, lineHeight: 14 })
-      drawText(currency.format(Number(item?.amount || 0)), cardX + cardWidth - 36, startingY, { bold: true, size: 11, align: 'right' })
+      drawText(currency.format(Number(item?.total || 0)), cardX + cardWidth - 36, startingY, { bold: true, size: 11, align: 'right' })
       pdf.setFillColor(itemMaterialsIncluded ? safeColors.blue50 : safeColors.slate100)
       pdf.roundedRect(innerX + 16, cursorY + 2, 122, 18, 9, 9, 'F')
       drawText(`${t('materialsIncluded')}: ${itemMaterialsIncluded ? t('yes') : t('no')}`, innerX + 77, cursorY + 14, { bold: true, size: 8.5, color: itemMaterialsIncluded ? safeColors.blue700 : safeColors.slate700, align: 'center' })
@@ -378,6 +380,7 @@ export async function downloadEstimatePdf({
   companyName = '',
   company = {},
   lead = {},
+  documentModel,
   scope = '',
   lineItems = [],
   materialsIncluded,
@@ -457,6 +460,7 @@ export async function downloadEstimatePdf({
       companyName,
       company,
       lead,
+      documentModel,
       scope,
       lineItems,
       materialsIncluded,

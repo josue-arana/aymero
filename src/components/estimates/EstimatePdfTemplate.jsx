@@ -2,6 +2,7 @@ import { Check, FileText } from 'lucide-react'
 import { currency } from '../../utils/formatters'
 import { getLanguageLocale } from '../../utils/language'
 import { getDocumentDensityVariables } from '../../utils/documentDensity'
+import { ensureNormalizedEstimateDocument } from '../../utils/estimateDocument'
 import { getPaymentTermLabel } from '../../utils/paymentTerms'
 import '../documents/documentDensity.css'
 
@@ -44,42 +45,6 @@ function formatDisplayDate(value, language = 'en') {
   }
 
   return parsedDate.toLocaleDateString(getLanguageLocale(language), { month: 'long', day: 'numeric', year: 'numeric' })
-}
-
-function splitLineItemDescription(value, fallbackTitle) {
-  const description = String(value || '').trim()
-
-  if (!description) {
-    return {
-      title: fallbackTitle,
-      details: [],
-    }
-  }
-
-  const [firstLine, ...remainingLines] = description.split('\n')
-
-  return {
-    title: firstLine.trim() || fallbackTitle,
-    details: remainingLines.map((line) => line.trim()).filter(Boolean),
-  }
-}
-
-function normalizeDetailLine(line) {
-  const trimmed = String(line || '').trim()
-  if (!trimmed) return ''
-  return trimmed.replace(/^[-*•]\s*/, '').trim() || trimmed
-}
-
-function resolveItemMaterialsIncluded(item, fallbackValue) {
-  if (typeof item?.materialsIncluded === 'boolean') {
-    return item.materialsIncluded
-  }
-
-  if (typeof fallbackValue === 'boolean') {
-    return fallbackValue
-  }
-
-  return false
 }
 
 function HeaderPhoneIcon() {
@@ -216,10 +181,9 @@ function MaterialsIndicator({ included, t }) {
   )
 }
 
-function WorkBreakdownItem({ item, index, fallbackMaterialsIncluded, t }) {
-  const parts = splitLineItemDescription(item?.name, t('item'))
-  const details = parts.details.map(normalizeDetailLine).filter(Boolean)
-  const includesMaterials = resolveItemMaterialsIncluded(item, fallbackMaterialsIncluded)
+function WorkBreakdownItem({ item, index, t }) {
+  const details = Array.isArray(item?.detailLines) ? item.detailLines : []
+  const includesMaterials = Boolean(item?.materialsIncluded)
 
   return (
     <div
@@ -263,7 +227,7 @@ function WorkBreakdownItem({ item, index, fallbackMaterialsIncluded, t }) {
             wordBreak: 'break-word',
           }}
         >
-          {parts.title}
+          {item?.title || t('item')}
         </p>
         <div style={{ marginTop: '5px' }}>
           <MaterialsIndicator included={includesMaterials} t={t} />
@@ -295,7 +259,7 @@ function WorkBreakdownItem({ item, index, fallbackMaterialsIncluded, t }) {
       </div>
       <div style={{ paddingTop: '2px', textAlign: 'right' }}>
         <p style={{ margin: 0, fontSize: '15px', lineHeight: 1.15, fontWeight: 700, color: colors.teal600 }}>
-          {currency.format(Number(item?.amount || 0))}
+          {currency.format(Number(item?.total || 0))}
         </p>
       </div>
     </div>
@@ -312,11 +276,21 @@ export function EstimatePdfTemplate({
   paymentTerms,
   total,
   lineItems = [],
+  documentModel,
   language = 'en',
   t,
 }) {
-  const hasScope = Boolean(String(scope || '').trim())
-  const hasLineItems = lineItems.length > 0
+  const normalizedDocument = ensureNormalizedEstimateDocument(documentModel, {
+    scope,
+    lineItems,
+    total,
+    materialsIncluded,
+  })
+  const scopeText = normalizedDocument.scope.text
+  const workItems = normalizedDocument.workItems
+  const documentTotal = normalizedDocument.totals.total
+  const hasScope = normalizedDocument.sections.scope.visible
+  const hasLineItems = normalizedDocument.sections.workBreakdown.visible
   const clientAddressLines = formatAddressLines(lead?.address || lead?.location || '')
   const projectTitle = lead?.projectTitle || lead?.projectType || t('projectTitle')
 
@@ -431,7 +405,7 @@ export function EstimatePdfTemplate({
               {t('totalAmount')}
             </p>
             <p style={{ margin: '6px 0 0', fontSize: '28px', lineHeight: 1, fontWeight: 700, color: colors.slate900 }}>
-              {currency.format(total)}
+              {currency.format(documentTotal)}
             </p>
           </div>
         </div>
@@ -465,7 +439,7 @@ export function EstimatePdfTemplate({
               wordBreak: 'break-word',
             }}
           >
-            {scope}
+            {scopeText}
           </div>
         </section>
       ) : null}
@@ -486,12 +460,11 @@ export function EstimatePdfTemplate({
             {t('workBreakdown')}
           </p>
           <div style={{ marginTop: 'var(--document-work-gap)', borderTop: `1px solid ${colors.slate200}` }}>
-            {lineItems.map((item, index) => (
+            {workItems.map((item, index) => (
               <WorkBreakdownItem
-                key={`${item?.name || 'item'}-${index}`}
+                key={item?.id || `${item?.title || 'item'}-${index}`}
                 item={item}
                 index={index}
-                fallbackMaterialsIncluded={materialsIncluded}
                 t={t}
               />
             ))}
