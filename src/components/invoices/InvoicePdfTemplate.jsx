@@ -3,6 +3,7 @@ import { currencyWithCents } from '../../utils/formatters'
 import { getLanguageLocale } from '../../utils/language'
 import { calculateInvoiceTotal, getInvoiceRemainingBalance } from '../../utils/invoiceRecords'
 import { getPaymentTermLabel } from '../../utils/paymentTerms'
+import './invoiceDocument.css'
 
 function formatInvoiceDocumentDate(value, language = 'en') {
   if (!value) return ''
@@ -280,8 +281,18 @@ function dedupeDocumentPayments(payments = []) {
   })
 }
 
+const internalSamplePaymentPrefix = /^\s*aymero[_\s-]*sample[_\s-]*data(?:\s*(?:—|–|-|:)\s*|\s+)/i
+
+function sanitizeCustomerFacingPaymentDescription(value) {
+  return String(value || '')
+    .replace(internalSamplePaymentPrefix, '')
+    .trim()
+}
+
 function getPaymentDescription(payment = {}, t) {
-  const note = getFirstAvailableValue(payment?.notes, payment?.description)
+  const note = sanitizeCustomerFacingPaymentDescription(
+    getFirstAvailableValue(payment?.notes, payment?.description)
+  )
   const method = getFirstAvailableValue(payment?.method, payment?.paymentMethod, payment?.payment_method)
   const type = getFirstAvailableValue(payment?.type, payment?.paymentType, payment?.payment_type)
   const translatedDetails = [method, type]
@@ -372,19 +383,31 @@ function normalizeConfiguredPaymentMethods(value) {
     })
 }
 
+const fallbackAcceptedPaymentMethods = ['Cash', 'Check']
+
 function resolveAcceptedPaymentMethods(invoice = {}, company = {}) {
-  const configuredMethods = getFirstAvailableValue(
+  const companyMethods = normalizeConfiguredPaymentMethods(getFirstAvailableValue(
     company?.acceptedPaymentMethods,
     company?.accepted_payment_methods,
     company?.paymentMethods,
-    company?.payment_methods,
+    company?.payment_methods
+  ))
+
+  if (companyMethods.length) return companyMethods
+
+  const invoiceMethods = normalizeConfiguredPaymentMethods(getFirstAvailableValue(
     invoice?.acceptedPaymentMethods,
     invoice?.accepted_payment_methods,
     invoice?.paymentMethods,
     invoice?.payment_methods
-  )
+  ))
 
-  return normalizeConfiguredPaymentMethods(configuredMethods)
+  if (invoiceMethods.length) return invoiceMethods
+
+  // Company settings do not currently expose accepted payment methods. Keep this
+  // presentation-only fallback aligned with the application's supported payment
+  // methods until contractor-configurable payment methods are available.
+  return fallbackAcceptedPaymentMethods
 }
 
 function getReliablePaidDate(invoice = {}, payments = [], { invoiceTotal, amountPaid, isPaidInFull }) {
@@ -474,17 +497,16 @@ export function InvoicePdfTemplate({
   })
   const paidDate = formatInvoiceDocumentDate(paidDateValue, language)
   const paymentTerms = getPaymentTermLabel(invoice?.paymentTerms, t)
-  const customerFacingNotes = resolveCustomerFacingNotes(invoice)
+  const customerFacingNotes = resolveCustomerFacingNotes(invoice) || t('thankYouForYourBusiness')
   const acceptedPaymentMethods = resolveAcceptedPaymentMethods(invoice, company)
-  const showLowerContent = Boolean(customerFacingNotes || acceptedPaymentMethods.length)
   const jobLocation = resolveInvoiceJobLocation({ invoice, project, client })
 
   return (
     <article
       data-invoice-pdf-template="true"
-      className="document-sheet min-h-[1008px] border border-slate-200 bg-white p-10 font-sans text-slate-900"
+      className="invoice-document document-sheet border border-slate-200 bg-white p-10 font-sans text-slate-900"
     >
-      <header className="grid grid-cols-[minmax(0,1fr)_210px] items-start gap-8 pb-6">
+      <header className="invoice-document-header grid grid-cols-[minmax(0,1fr)_210px] items-start gap-8 pb-6">
         <CompanyBrand company={company} t={t} />
         <div className="min-w-0 text-right">
           <h1 className="m-0 text-[34px] font-bold uppercase leading-none tracking-[0.12em] text-slate-950">{t('invoice')}</h1>
@@ -496,7 +518,7 @@ export function InvoicePdfTemplate({
 
       <div className="h-px w-full bg-slate-300" aria-hidden="true" />
 
-      <section className="grid grid-cols-[28fr_34fr_38fr] py-6">
+      <section className="invoice-document-information grid grid-cols-[28fr_34fr_38fr] py-6">
         <div className="min-w-0 pr-5">
           <BillToBlock client={client} invoice={invoice} t={t} />
         </div>
@@ -506,31 +528,37 @@ export function InvoicePdfTemplate({
         <div className="min-w-0 border-l border-slate-300 pl-5">
           <DocumentLabel>{t('invoiceDetails')}</DocumentLabel>
           <dl className="mt-3 grid gap-1.5">
-            <InvoiceDetailRow label={t('invoiceNumber')} value={invoiceNumber} />
+            {/* <InvoiceDetailRow label={t('invoiceNumber')} value={invoiceNumber} /> */}
             <InvoiceDetailRow label={t('invoiceDate')} value={issueDate} />
             <InvoiceDetailRow label={t('dueDate')} value={dueDate} />
-            <InvoiceDetailRow label={t('paymentTerms')} value={paymentTerms} />
+            {/* <InvoiceDetailRow label={t('paymentTerms')} value={paymentTerms} /> */}
           </dl>
         </div>
       </section>
 
-      <section className="pt-2">
-        <div className="border-y border-slate-300">
-          <div className="grid grid-cols-[minmax(0,1fr)_132px] border-b border-slate-300 text-[10px] font-bold uppercase tracking-[0.16em] text-slate-950">
-            <span className="px-1 py-3">{t('description')}</span>
-            <span className="border-l border-slate-300 px-3 py-3 text-right">{t('amount')}</span>
-          </div>
-          <div>
+      <section className="invoice-document-line-items pt-2">
+        <table className="invoice-document-table border-y border-slate-300">
+          <colgroup>
+            <col />
+            <col style={{ width: '132px' }} />
+          </colgroup>
+          <thead>
+            <tr className="border-b border-slate-300 text-[10px] font-bold uppercase tracking-[0.16em] text-slate-950">
+              <th scope="col" className="px-1 py-3 text-left">{t('description')}</th>
+              <th scope="col" className="border-l border-slate-300 px-3 py-3 text-right">{t('amount')}</th>
+            </tr>
+          </thead>
+          <tbody>
             {displayLineItems.map((item, index) => {
               const { title, supportingLines } = splitInvoiceItemContent(item, `${t('item')} ${index + 1}`)
 
               return (
-                <div
+                <tr
                   key={item?.id || `invoice-preview-line-${index}`}
                   data-line-item-card="true"
-                  className={`grid grid-cols-[minmax(0,1fr)_132px] text-[12px] ${index < displayLineItems.length - 1 ? 'border-b border-slate-200' : ''}`}
+                  className={`text-[12px] ${index < displayLineItems.length - 1 ? 'border-b border-slate-200' : ''}`}
                 >
-                  <div className="min-w-0 px-1 py-3.5 pr-5">
+                  <td className="min-w-0 px-1 py-3.5 pr-5">
                     <p className="break-words font-bold leading-5 text-slate-950 [overflow-wrap:anywhere]">
                       <span className="mr-1.5 text-[#0f8b8d]">{index + 1}.</span>
                       {title}
@@ -542,52 +570,63 @@ export function InvoicePdfTemplate({
                         ))}
                       </div>
                     ) : null}
-                  </div>
-                  <div className="border-l border-slate-300 px-3 py-3.5 text-right font-bold leading-5 text-slate-950">
+                  </td>
+                  <td className="border-l border-slate-300 px-3 py-3.5 text-right font-bold leading-5 text-slate-950">
                     {currencyWithCents.format(Number(item?.amount || 0))}
-                  </div>
-                </div>
+                  </td>
+                </tr>
               )
             })}
-          </div>
-        </div>
+          </tbody>
+        </table>
 
-        <div className="mt-7 grid grid-cols-[minmax(0,1.2fr)_minmax(250px,0.8fr)]">
+        <div className="invoice-document-payment-summary mt-7 grid grid-cols-[minmax(0,1.2fr)_minmax(250px,0.8fr)]">
           <section className="min-w-0 pr-6">
             <DocumentLabel>{t('paymentHistory')}</DocumentLabel>
-            <div className="mt-3 border-y border-slate-300">
-              <div className="grid grid-cols-[92px_minmax(0,1fr)_92px] border-b border-slate-300 text-[9px] font-bold uppercase tracking-[0.12em] text-slate-950">
-                <span className="py-2.5 pr-3">{t('date')}</span>
-                <span className="border-l border-slate-200 px-3 py-2.5">{t('description')}</span>
-                <span className="border-l border-slate-200 py-2.5 pl-3 text-right">{t('amount')}</span>
-              </div>
-              {payments.length ? (
-                payments.map((payment, index) => {
-                  const description = getPaymentDescription(payment, t)
+            <table className="invoice-document-table mt-3 border-y border-slate-300">
+              <colgroup>
+                <col style={{ width: '92px' }} />
+                <col />
+                <col style={{ width: '92px' }} />
+              </colgroup>
+              <thead>
+                <tr className="border-b border-slate-300 text-[9px] font-bold uppercase tracking-[0.12em] text-slate-950">
+                  <th scope="col" className="py-2.5 pr-3 text-left">{t('date')}</th>
+                  <th scope="col" className="border-l border-slate-200 px-3 py-2.5 text-left">{t('description')}</th>
+                  <th scope="col" className="border-l border-slate-200 py-2.5 pl-3 text-right">{t('amount')}</th>
+                </tr>
+              </thead>
+              <tbody>
+                {payments.length ? (
+                  payments.map((payment, index) => {
+                    const description = getPaymentDescription(payment, t)
 
-                  return (
-                    <div
-                      key={payment?.id || `invoice-payment-${index}`}
-                      className={`grid grid-cols-[92px_minmax(0,1fr)_92px] text-[10.5px] leading-[1.45] ${index < payments.length - 1 ? 'border-b border-slate-200' : ''}`}
-                    >
-                      <span className="py-3 pr-3 text-slate-600">{formatInvoiceDocumentDate(getPaymentDate(payment), language)}</span>
-                      <span className="min-w-0 border-l border-slate-200 px-3 py-3">
-                        <span className="block break-words font-semibold text-slate-900 [overflow-wrap:anywhere]">{description.title}</span>
-                        {description.supportingText ? <span className="mt-0.5 block break-words text-[9.5px] text-slate-500 [overflow-wrap:anywhere]">{description.supportingText}</span> : null}
-                      </span>
-                      <span className="border-l border-slate-200 py-3 pl-3 text-right font-bold text-slate-950">
-                        {currencyWithCents.format(Number(payment?.amount || 0))}
-                      </span>
-                    </div>
-                  )
-                })
-              ) : (
-                <p className="py-5 text-[11px] text-slate-500">{t('noPayments')}</p>
-              )}
-            </div>
+                    return (
+                      <tr
+                        key={payment?.id || `invoice-payment-${index}`}
+                        className={`text-[10.5px] leading-[1.45] ${index < payments.length - 1 ? 'border-b border-slate-200' : ''}`}
+                      >
+                        <td className="py-3 pr-3 text-slate-600">{formatInvoiceDocumentDate(getPaymentDate(payment), language)}</td>
+                        <td className="min-w-0 border-l border-slate-200 px-3 py-3">
+                          <span className="block break-words font-semibold text-slate-900 [overflow-wrap:anywhere]">{description.title}</span>
+                          {description.supportingText ? <span className="mt-0.5 block break-words text-[9.5px] text-slate-500 [overflow-wrap:anywhere]">{description.supportingText}</span> : null}
+                        </td>
+                        <td className="border-l border-slate-200 py-3 pl-3 text-right font-bold text-slate-950">
+                          {currencyWithCents.format(Number(payment?.amount || 0))}
+                        </td>
+                      </tr>
+                    )
+                  })
+                ) : (
+                  <tr>
+                    <td colSpan={3} className="py-5 text-[11px] text-slate-500">{t('noPayments')}</td>
+                  </tr>
+                )}
+              </tbody>
+            </table>
           </section>
 
-          <section className="min-w-0 border-l border-slate-300 pl-6">
+          <section className="invoice-document-summary min-w-0 border-l border-slate-300 pl-6">
             <div className="grid gap-2">
               <InvoiceTotalRow label={t('subtotal')} value={subtotal} />
               {hasTaxSupport ? <InvoiceTotalRow label={t('salesTax')} value={taxAmount} /> : null}
@@ -595,12 +634,12 @@ export function InvoicePdfTemplate({
               <InvoiceTotalRow label={t('previousPayments')} value={amountPaid} deducted />
             </div>
 
-            <div className={`mt-5 border p-4 ${isPaidInFull ? 'border-emerald-300 bg-emerald-50/30' : 'border-slate-300 bg-white'}`}>
+            <div className={`invoice-document-balance mt-5 border px-4 py-[15px] ${isPaidInFull ? 'border-emerald-300 bg-emerald-50/30' : 'border-slate-300 bg-white'}`}>
               <div className="flex items-start justify-between gap-4">
                 <p className={`text-[10px] font-bold uppercase tracking-[0.18em] ${isPaidInFull ? 'text-emerald-700' : 'text-[#0f8b8d]'}`}>
                   {isPaidInFull ? t('paidInFull') : t('balanceDue')}
                 </p>
-                <p className="shrink-0 text-[20px] font-bold leading-none text-slate-950">
+                <p className="shrink-0 text-[22px] font-bold leading-none tracking-tight text-slate-950">
                   {currencyWithCents.format(isPaidInFull ? 0 : balance)}
                 </p>
               </div>
@@ -620,30 +659,26 @@ export function InvoicePdfTemplate({
         </div>
       </section>
 
-      {showLowerContent ? (
-        <section className={`mt-7 border-t border-slate-300 pt-6 ${customerFacingNotes && acceptedPaymentMethods.length ? 'grid grid-cols-2' : ''}`}>
-          {customerFacingNotes ? (
-            <div className={acceptedPaymentMethods.length ? 'min-w-0 pr-7' : 'min-w-0'}>
-              <DocumentLabel>{t('notes')}</DocumentLabel>
-              <p className="mt-3 whitespace-pre-line break-words text-[11.5px] leading-[1.55] text-slate-700 [overflow-wrap:anywhere]">{customerFacingNotes}</p>
-            </div>
-          ) : null}
-          {acceptedPaymentMethods.length ? (
-            <div className={`min-w-0 ${customerFacingNotes ? 'border-l border-slate-300 pl-7' : ''}`}>
-              <DocumentLabel>{t('acceptedPaymentMethods')}</DocumentLabel>
-              <ul className="mt-3 grid grid-cols-2 gap-x-6 gap-y-2 pl-4 text-[11.5px] leading-[1.45] text-slate-700">
-                {acceptedPaymentMethods.map((method) => (
-                  <li key={method} className="break-words pl-0.5 [overflow-wrap:anywhere]">{t(method)}</li>
-                ))}
-              </ul>
-            </div>
-          ) : null}
-        </section>
-      ) : null}
+      <section className="invoice-document-final-content mt-7 grid grid-cols-2 border-t border-slate-300 pt-6">
+        <div className="invoice-document-notes min-w-0 pr-7">
+          <DocumentLabel>{t('notes')}</DocumentLabel>
+          <p className="mt-3 whitespace-pre-line break-words text-[11.5px] leading-[1.55] text-slate-700 [overflow-wrap:anywhere]">{customerFacingNotes}</p>
+        </div>
+        <div className="invoice-document-payment-methods min-w-0 border-l border-slate-300 pl-7">
+          <DocumentLabel>{t('acceptedPaymentMethods')}</DocumentLabel>
+          <ul className={`mt-3 grid gap-x-6 gap-y-2 pl-4 text-[11.5px] leading-[1.45] text-slate-700 ${acceptedPaymentMethods.length === 1 ? 'grid-cols-1' : 'grid-cols-2'}`}>
+            {acceptedPaymentMethods.map((method) => (
+              <li key={method} className="break-words pl-0.5 [overflow-wrap:anywhere]">{t(method)}</li>
+            ))}
+          </ul>
+        </div>
+      </section>
 
-      <footer className="mt-7 border-t border-slate-300 pt-5 text-center">
-        <p className="text-[13px] font-bold leading-5 text-[#0f8b8d]">{t('thankYouForYourBusiness')}</p>
-        {company?.name ? <p className="mt-1 text-[11.5px] font-bold leading-5 text-slate-950">{company.name}</p> : null}
+      <footer className="invoice-document-footer pt-7">
+        <div className="border-t border-slate-300 pt-5 text-center">
+          <p className="text-[13px] font-bold leading-5 text-[#0f8b8d]">{t('thankYouForYourBusiness')}</p>
+          {company?.name ? <p className="mt-1 text-[11.5px] font-bold leading-5 text-slate-950">{company.name}</p> : null}
+        </div>
       </footer>
     </article>
   )

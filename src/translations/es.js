@@ -988,6 +988,8 @@ export const es = {
   "Zelle": "Zelle",
   "Credit Card": "Tarjeta de crédito",
   "Bank Transfer": "Transferencia bancaria",
+  "ACH": "ACH",
+  "Venmo": "Venmo",
   "Deposit": "Depósito",
   "Progress Payment": "Pago de avance",
   "Final Payment": "Pago final",
