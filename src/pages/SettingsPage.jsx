@@ -498,29 +498,26 @@ export function SettingsPage({ settings, onSaveSettings, onOpenCompanySetup, onC
           </InfoCard>
 
           <InfoCard title={t('customerPortalSettings')} icon={Globe2}>
-            <div className="grid gap-5 md:grid-cols-[minmax(0,240px)_1fr] md:items-end">
-              <LanguageSelect label={t('defaultPortalLanguage')} value={portalLanguage} onChange={setPortalLanguage} t={t} />
-              <fieldset>
-                <legend className="text-sm font-bold text-slate-700">{t('visibleFeatures')}</legend>
-                <div className="mt-2 grid gap-2 sm:grid-cols-3">
-                  <PortalFeatureCheckbox
-                    label={t('documents')}
-                    checked={portal.showDocuments !== false}
-                    onChange={(checked) => updatePortal('showDocuments', checked)}
-                  />
-                  <PortalFeatureCheckbox
-                    label={t('photos')}
-                    checked={portal.showPhotos !== false}
-                    onChange={(checked) => updatePortal('showPhotos', checked)}
-                  />
-                  <PortalFeatureCheckbox
-                    label={t('payments')}
-                    checked={portal.showPayments !== false}
-                    onChange={(checked) => updatePortal('showPayments', checked)}
-                  />
-                </div>
-              </fieldset>
-            </div>
+            <fieldset>
+              <legend className="text-sm font-bold text-slate-700">{t('visibleFeatures')}</legend>
+              <div className="mt-2 grid gap-2 sm:grid-cols-3">
+                <PortalFeatureCheckbox
+                  label={t('documents')}
+                  checked={portal.showDocuments !== false}
+                  onChange={(checked) => updatePortal('showDocuments', checked)}
+                />
+                <PortalFeatureCheckbox
+                  label={t('photos')}
+                  checked={portal.showPhotos !== false}
+                  onChange={(checked) => updatePortal('showPhotos', checked)}
+                />
+                <PortalFeatureCheckbox
+                  label={t('payments')}
+                  checked={portal.showPayments !== false}
+                  onChange={(checked) => updatePortal('showPayments', checked)}
+                />
+              </div>
+            </fieldset>
           </InfoCard>
 
           <InfoCard title={t('languageSettings')} icon={Languages}>
