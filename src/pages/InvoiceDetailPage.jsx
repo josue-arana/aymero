@@ -2,6 +2,7 @@ import { useEffect, useMemo, useRef, useState } from 'react'
 import { useNavigate, useParams } from 'react-router-dom'
 import { Archive, ArrowLeft, Building2, CalendarDays, CheckCircle2, ChevronRight, CreditCard, DollarSign, Eye, FileText, Pencil, RotateCcw, Save, Send, Trash2, UserRound, Wallet } from 'lucide-react'
 import { StatusBadge } from '../components/ui/StatusBadge'
+import { InvoiceDocumentPreview } from '../components/invoices/InvoiceDocumentPreview'
 import { contractorCompany } from '../data/mockInvoices'
 import { currency } from '../utils/formatters'
 import { archiveMenuItemClasses } from '../utils/buttonStyles'
@@ -18,7 +19,7 @@ import { findRelatedLeadForInvoice, normalizeInvoiceStatus } from '../utils/invo
 import { createTranslator } from '../translations'
 import { findRelatedClient } from '../utils/clients'
 import { getLanguageLocale, resolveClientFacingLanguage } from '../utils/language'
-import { getPaymentTermLabel, getPaymentTermOptions, isKnownPaymentTermValue } from '../utils/paymentTerms'
+import { getPaymentTermOptions, isKnownPaymentTermValue } from '../utils/paymentTerms'
 import { appRoutes } from '../config/appRoutes'
 
 const paymentMethods = ['Cash', 'Check', 'Zelle', 'Credit Card', 'Bank Transfer', 'Other']
@@ -58,6 +59,136 @@ function formatLocalizedInvoiceDate(value, language = 'en') {
     day: 'numeric',
     year: 'numeric',
   })
+}
+
+function getInvoiceTimelineTimestamp(value) {
+  if (!value) return null
+
+  const normalizedValue = typeof value === 'string' && /^\d{4}-\d{2}-\d{2}$/.test(value)
+    ? `${value}T12:00:00`
+    : value
+  const timestamp = new Date(normalizedValue).getTime()
+
+  return Number.isFinite(timestamp) ? timestamp : null
+}
+
+function formatInvoiceTimelineDate(value, language = 'en') {
+  if (!value) return ''
+
+  const normalizedValue = typeof value === 'string' && /^\d{4}-\d{2}-\d{2}$/.test(value)
+    ? `${value}T12:00:00`
+    : value
+
+  return getInvoiceTimelineTimestamp(normalizedValue)
+    ? formatLocalizedInvoiceDate(normalizedValue, language)
+    : ''
+}
+
+function dedupeInvoiceTimelinePayments(payments = []) {
+  const seenIds = new Set()
+
+  return payments.filter((payment) => {
+    const paymentId = String(payment?.id || '').trim()
+    if (!paymentId) return true
+    if (seenIds.has(paymentId)) return false
+
+    seenIds.add(paymentId)
+    return true
+  })
+}
+
+function getInvoicePaymentDate(payment = {}) {
+  return payment.date
+    || payment.paymentDate
+    || payment.payment_date
+    || payment.createdAt
+    || payment.created_at
+    || ''
+}
+
+function buildInvoiceTimelineEvents({ invoice, payments, total, balance, language, t }) {
+  const events = []
+  const createdAt = invoice?.createdAt || invoice?.created_at || ''
+  const sentAt = invoice?.sentAt || invoice?.sent_at || ''
+  const storedPaidAt = invoice?.paidAt || invoice?.paid_at || ''
+  const createdTimestamp = getInvoiceTimelineTimestamp(createdAt)
+  const sentTimestamp = getInvoiceTimelineTimestamp(sentAt)
+  const paidTimestamp = getInvoiceTimelineTimestamp(storedPaidAt)
+
+  if (createdTimestamp) {
+    events.push({
+      id: 'invoice-created',
+      type: 'created',
+      label: t('invoiceCreated'),
+      date: formatInvoiceTimelineDate(createdAt, language),
+      timestamp: createdTimestamp,
+      rank: 1,
+    })
+  }
+
+  if (sentTimestamp) {
+    events.push({
+      id: 'invoice-sent',
+      type: 'sent',
+      label: t('invoiceSent'),
+      date: formatInvoiceTimelineDate(sentAt, language),
+      timestamp: sentTimestamp,
+      rank: 2,
+    })
+  }
+
+  payments.forEach((payment, index) => {
+    const dateValue = getInvoicePaymentDate(payment)
+    const timestamp = getInvoiceTimelineTimestamp(dateValue)
+    const method = payment?.method || payment?.paymentMethod || payment?.payment_method || ''
+    const paymentType = payment?.type || payment?.paymentType || payment?.payment_type || ''
+
+    events.push({
+      id: `payment-${payment?.id || index}`,
+      type: 'payment',
+      label: t('paymentReceived'),
+      date: formatInvoiceTimelineDate(dateValue, language) || t('notAvailable'),
+      timestamp: timestamp ?? Number.MIN_SAFE_INTEGER + index,
+      rank: 3,
+      amount: currency.format(Number(payment?.amount || 0)),
+      metadata: [method, paymentType].filter(Boolean).map((value) => t(value)),
+      note: payment?.notes || payment?.description || '',
+    })
+  })
+
+  const latestDatedPayment = payments.reduce((latest, payment) => {
+    const dateValue = getInvoicePaymentDate(payment)
+    const timestamp = getInvoiceTimelineTimestamp(dateValue)
+
+    return timestamp && (!latest || timestamp > latest.timestamp)
+      ? { dateValue, timestamp }
+      : latest
+  }, null)
+  const storedAmountPaid = Number(invoice?.amountPaid || invoice?.amount_paid || 0)
+  const derivedPaidDate = balance === 0 && total > 0 && storedAmountPaid >= total
+    ? latestDatedPayment
+    : null
+  const completionDate = paidTimestamp
+    ? { dateValue: storedPaidAt, timestamp: paidTimestamp }
+    : derivedPaidDate
+
+  if (balance === 0 && completionDate) {
+    events.push({
+      id: 'invoice-paid-in-full',
+      type: 'paid',
+      label: t('paidInFull'),
+      date: formatInvoiceTimelineDate(completionDate.dateValue, language),
+      timestamp: completionDate.timestamp,
+      rank: 4,
+    })
+  }
+
+  return {
+    completionDate: completionDate ? formatInvoiceTimelineDate(completionDate.dateValue, language) : '',
+    events: events.sort((left, right) => (
+      right.timestamp - left.timestamp || right.rank - left.rank
+    )),
+  }
 }
 
 function translateInvoiceStatus(status, t) {
@@ -302,6 +433,29 @@ export function InvoiceDetailRoute({ companySettings, leads, clients = [], invoi
     { label: t('email'), value: clientEmail },
     { label: t('address'), value: clientAddress },
   ]
+  const invoicePreviewClient = {
+    name: invoiceClient,
+    phone: clientPhone,
+    email: clientEmail,
+    address: clientAddress,
+  }
+  const timelinePayments = dedupeInvoiceTimelinePayments(paymentHistory)
+  const { events: invoiceTimelineEvents, completionDate: paidCompletionDate } = buildInvoiceTimelineEvents({
+    invoice: currentInvoice,
+    payments: timelinePayments,
+    total: invoiceTotal,
+    balance,
+    language: appLanguage,
+    t,
+  })
+  const isPaidInFull = balance === 0
+  const isPartiallyPaid = balance > 0 && (
+    presentationStatus === 'Partially Paid'
+    || Number(currentInvoice.amountPaid || 0) > 0
+  )
+  const canRecordInvoicePayment = balance > 0
+    && !isArchived
+    && presentationStatus !== 'Canceled'
 
   async function runSingleFlightInvoiceAction(actionKey, task) {
     if (invoiceActionGuardRef.current) {
@@ -638,7 +792,7 @@ export function InvoiceDetailRoute({ companySettings, leads, clients = [], invoi
           ariaLabel={t('more')}
           showChevron
           containerClassName="shrink-0"
-          buttonClassName="inline-flex min-h-10 items-center justify-center gap-2 rounded-xl border border-slate-200 bg-white px-3 py-2 text-sm font-bold text-slate-700 shadow-sm transition hover:bg-slate-50"
+          buttonClassName="inline-flex min-h-10 items-center justify-center gap-2 rounded-xl border border-slate-200 bg-white px-3 py-2 text-sm font-bold text-slate-700 shadow-sm transition hover:bg-slate-50 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-blue-500 focus-visible:ring-offset-2"
           menuClassName="max-w-[calc(100vw-2.5rem)]"
           items={moreMenuItems}
           buttonDisabled={isInvoiceActionPending}
@@ -749,8 +903,8 @@ export function InvoiceDetailRoute({ companySettings, leads, clients = [], invoi
         </div>
       </section>
 
-      <section className="grid gap-6 lg:grid-cols-[1.3fr_0.7fr]">
-        <div className="space-y-6">
+      <section className="grid min-w-0 gap-6 lg:grid-cols-[minmax(0,1.3fr)_minmax(280px,0.7fr)]">
+        <div className="min-w-0 space-y-6">
           <section className="rounded-3xl border border-slate-200 bg-white p-5 shadow-sm sm:p-6" aria-busy={isSavingInvoice}>
             <div className="flex flex-col gap-4 sm:flex-row sm:items-center sm:justify-between">
               <div>
@@ -891,34 +1045,52 @@ export function InvoiceDetailRoute({ companySettings, leads, clients = [], invoi
               </div>
             ) : null}
           </section>
+
+          <section className="min-w-0 overflow-hidden rounded-3xl border border-slate-200 bg-white shadow-sm">
+            <div className="flex flex-col gap-3 border-b border-slate-200 px-5 py-4 sm:flex-row sm:items-center sm:justify-between sm:px-6">
+              <h2 className="text-lg font-bold text-slate-950">{t('invoicePreview')}</h2>
+              <button
+                type="button"
+                onClick={() => setShowPreview(true)}
+                className="inline-flex min-h-11 items-center justify-center gap-2 rounded-2xl border border-slate-200 bg-white px-4 py-2.5 text-sm font-bold text-slate-700 transition hover:border-blue-200 hover:bg-blue-50 hover:text-blue-700 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-blue-500 focus-visible:ring-offset-2"
+              >
+                <Eye className="h-4 w-4" aria-hidden="true" />
+                {t('previewPdf')}
+              </button>
+            </div>
+            <div className="min-w-0 overflow-hidden bg-slate-100 p-2 sm:p-3">
+              <InvoiceDocumentPreview
+                invoice={currentInvoice}
+                company={displayCompany}
+                client={invoicePreviewClient}
+                t={invoiceT}
+                uiT={t}
+                language={invoiceOutputLanguage}
+              />
+            </div>
+          </section>
         </div>
 
-        <aside className="space-y-4">
-          <section className="rounded-3xl border border-slate-200 bg-white p-5 shadow-sm">
-            <h2 className="text-lg font-bold text-slate-950">{t('paymentSummary')}</h2>
-            <div className="mt-4 space-y-3 text-sm">
-              <SummaryRow label={t('totalAmount')} value={currency.format(invoiceTotal)} />
-              <SummaryRow label={t('paymentsReceived')} value={currency.format(currentInvoice.amountPaid)} />
-              <SummaryRow label={t('remainingBalance')} value={currency.format(balance)} strong />
-            </div>
-          </section>
-          <section className="rounded-3xl border border-slate-200 bg-white p-5 shadow-sm">
-            <h2 className="text-lg font-bold text-slate-950">{t('paymentHistory')}</h2>
-            <div className="mt-4 space-y-3">
-              {paymentHistory.length ? paymentHistory.map((payment) => (
-                <div key={payment.id} className="rounded-2xl bg-slate-50 p-3 text-sm">
-                  <div className="flex justify-between gap-3"><span className="font-bold text-slate-950">{currency.format(payment.amount)}</span><span className="text-slate-500">{payment.date}</span></div>
-                  <p className="mt-1 text-slate-600">{payment.method} · {payment.type}</p>
-                  {payment.notes && <p className="mt-1 text-slate-500">{payment.notes}</p>}
-                </div>
-              )) : <p className="text-sm text-slate-500">{t('noPayments')}</p>}
-            </div>
-          </section>
+        <aside className="min-w-0">
+          <PaymentsTimelineCard
+            amountPaid={Number(currentInvoice.amountPaid || 0)}
+            balance={balance}
+            canRecordPayment={canRecordInvoicePayment}
+            completionDate={paidCompletionDate}
+            events={invoiceTimelineEvents}
+            isActionPending={isInvoiceActionPending}
+            isOverdue={isInvoiceOverdue}
+            isPaidInFull={isPaidInFull}
+            isPartiallyPaid={isPartiallyPaid}
+            onRecordPayment={() => setShowPaymentModal(true)}
+            payments={timelinePayments}
+            t={t}
+          />
         </aside>
       </section>
 
       <ConfirmRecordModal isOpen={Boolean(confirmAction)} mode={confirmAction?.mode === 'delete' ? 'delete' : 'archive'} title={confirmAction?.mode === 'delete' ? t('confirmPermanentDelete') : confirmAction?.mode === 'markPaid' ? t('confirmMarkAsPaid') : t('confirmArchive')} message={confirmAction?.mode === 'delete' ? t('permanentDeleteHelp') : confirmAction?.mode === 'markPaid' ? t('markAsPaidHelp') : t('archiveHelp')} confirmLabel={confirmAction?.mode === 'delete' ? t('deletePermanently') : confirmAction?.mode === 'markPaid' ? t('markAsPaid') : t('archive')} onCancel={() => setConfirmAction(null)} onConfirm={runConfirmAction} t={t} />
-      <InvoicePreviewModal isOpen={showPreview} invoice={currentInvoice} lead={lead} contractorCompany={displayCompany} onClose={() => setShowPreview(false)} t={t} contentT={invoiceT} language={invoiceOutputLanguage} />
+      <InvoicePreviewModal isOpen={showPreview} invoice={currentInvoice} client={invoicePreviewClient} company={displayCompany} onClose={() => setShowPreview(false)} t={t} contentT={invoiceT} language={invoiceOutputLanguage} />
       <RecordPaymentModal isOpen={showPaymentModal} remainingBalance={balance} onClose={() => setShowPaymentModal(false)} onSave={savePayment} t={t} />
       <SendToCustomerModal
         isOpen={showSendModal}
@@ -1049,30 +1221,189 @@ function EditableInfoBlock({ id, title, value, onChange }) {
   )
 }
 
-function SummaryRow({ label, value, strong = false }) {
-  return <div className="flex items-center justify-between gap-3"><span className="text-slate-500">{label}</span><span className={strong ? 'text-lg font-bold text-slate-950' : 'font-bold text-slate-800'}>{value}</span></div>
+function InvoiceTimelineEvent({ event, isLast }) {
+  const eventPresentation = {
+    created: {
+      icon: FileText,
+      iconClasses: 'bg-slate-100 text-slate-600 ring-slate-200',
+    },
+    sent: {
+      icon: Send,
+      iconClasses: 'bg-blue-50 text-blue-700 ring-blue-100',
+    },
+    payment: {
+      icon: DollarSign,
+      iconClasses: 'bg-cyan-50 text-cyan-700 ring-cyan-100',
+    },
+    paid: {
+      icon: CheckCircle2,
+      iconClasses: 'bg-emerald-50 text-emerald-700 ring-emerald-100',
+    },
+  }
+  const presentation = eventPresentation[event.type] || eventPresentation.created
+  const EventIcon = presentation.icon
+
+  return (
+    <li className="relative flex min-w-0 gap-3 pb-5 last:pb-0">
+      {!isLast ? <span className="absolute bottom-0 left-[17px] top-9 w-px bg-slate-200" aria-hidden="true" /> : null}
+      <span className={`relative z-10 inline-flex h-9 w-9 shrink-0 items-center justify-center rounded-full ring-1 ${presentation.iconClasses}`}>
+        <EventIcon className="h-4 w-4" aria-hidden="true" />
+      </span>
+      <div className="min-w-0 flex-1 pt-0.5">
+        <div className="flex min-w-0 flex-col gap-1 sm:flex-row sm:items-start sm:justify-between sm:gap-3 lg:flex-col lg:gap-1 xl:flex-row">
+          <div className="min-w-0">
+            <p className="break-words text-sm font-bold text-slate-900">{event.label}</p>
+            <p className="mt-0.5 text-xs font-semibold text-slate-500">{event.date}</p>
+          </div>
+          {event.amount ? <p className="shrink-0 text-base font-bold text-slate-950">{event.amount}</p> : null}
+        </div>
+        {event.metadata?.length ? (
+          <p className="mt-2 break-words text-xs font-semibold text-slate-600">{event.metadata.join(' · ')}</p>
+        ) : null}
+        {event.note ? (
+          <p className="mt-1 break-words text-xs leading-5 text-slate-500 [overflow-wrap:anywhere]">{event.note}</p>
+        ) : null}
+      </div>
+    </li>
+  )
 }
 
-function InvoicePreviewModal({ isOpen, invoice, lead, contractorCompany, onClose, t, contentT, language = 'en' }) {
-  if (!isOpen) return null
-  const subtotal = calculateInvoiceTotal(invoice.lineItems || []) || Number(invoice.amount || 0)
-  const balance = getRemainingBalance({ ...invoice, amount: subtotal })
-  const localizedDueDate = formatLocalizedInvoiceDate(invoice.dueDate, language)
+function PaymentsTimelineCard({
+  amountPaid,
+  balance,
+  canRecordPayment,
+  completionDate,
+  events,
+  isActionPending,
+  isOverdue,
+  isPaidInFull,
+  isPartiallyPaid,
+  onRecordPayment,
+  payments,
+  t,
+}) {
+  const summary = isPaidInFull
+    ? {
+        icon: CheckCircle2,
+        label: t('paidInFull'),
+        valueLabel: t('paymentsReceived'),
+        value: currency.format(amountPaid),
+        supportingText: completionDate ? `${t('date')}: ${completionDate}` : '',
+        classes: 'border-emerald-200 bg-emerald-50/80',
+        iconClasses: 'bg-white text-emerald-700 ring-emerald-200',
+        labelClasses: 'text-emerald-800',
+        valueClasses: 'text-emerald-700',
+      }
+    : isOverdue
+      ? {
+          icon: CalendarDays,
+          label: t('overdue'),
+          valueLabel: t('remainingBalance'),
+          value: currency.format(balance),
+          supportingText: `${t('paymentsReceived')}: ${currency.format(amountPaid)}`,
+          classes: 'border-rose-200 bg-rose-50/80',
+          iconClasses: 'bg-white text-rose-700 ring-rose-200',
+          labelClasses: 'text-rose-800',
+          valueClasses: 'text-rose-700',
+        }
+      : isPartiallyPaid
+        ? {
+            icon: Wallet,
+            label: t('partiallyPaid'),
+            valueLabel: t('remainingBalance'),
+            value: currency.format(balance),
+            supportingText: `${t('paymentsReceived')}: ${currency.format(amountPaid)}`,
+            classes: 'border-blue-200 bg-blue-50/80',
+            iconClasses: 'bg-white text-blue-700 ring-blue-200',
+            labelClasses: 'text-blue-800',
+            valueClasses: 'text-blue-950',
+          }
+        : {
+            icon: Wallet,
+            label: t('unpaid'),
+            valueLabel: t('remainingBalance'),
+            value: currency.format(balance),
+            supportingText: '',
+            classes: 'border-slate-200 bg-slate-50',
+            iconClasses: 'bg-white text-slate-700 ring-slate-200',
+            labelClasses: 'text-slate-700',
+            valueClasses: 'text-slate-950',
+          }
+  const SummaryIcon = summary.icon
+
   return (
-    <ModalShell isOpen={isOpen} onBackdropClick={onClose} panelClassName="sm:max-w-3xl sm:p-8">
+    <section className="min-w-0 rounded-3xl border border-slate-200 bg-white p-5 shadow-sm sm:p-6">
+      <h2 className="text-xl font-bold text-slate-950">{t('paymentsTimeline')}</h2>
+
+      <div className={`mt-5 rounded-2xl border p-4 ${summary.classes}`}>
+        <div className="flex min-w-0 items-start gap-3">
+          <span className={`inline-flex h-10 w-10 shrink-0 items-center justify-center rounded-xl ring-1 ${summary.iconClasses}`}>
+            <SummaryIcon className="h-5 w-5" aria-hidden="true" />
+          </span>
+          <div className="min-w-0">
+            <p className={`text-sm font-bold ${summary.labelClasses}`}>{summary.label}</p>
+            <p className="mt-2 text-xs font-bold uppercase tracking-[0.12em] text-slate-500">{summary.valueLabel}</p>
+            <p className={`mt-1 break-words text-2xl font-bold tracking-tight ${summary.valueClasses}`}>{summary.value}</p>
+            {summary.supportingText ? <p className="mt-1 text-xs font-semibold leading-5 text-slate-600">{summary.supportingText}</p> : null}
+          </div>
+        </div>
+
+        {canRecordPayment ? (
+          <button
+            type="button"
+            disabled={isActionPending}
+            onClick={onRecordPayment}
+            className="mt-4 inline-flex min-h-11 w-full items-center justify-center gap-2 rounded-2xl bg-blue-600 px-4 py-2.5 text-sm font-bold text-white transition hover:bg-blue-700 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-blue-500 focus-visible:ring-offset-2 disabled:cursor-not-allowed disabled:bg-blue-400"
+          >
+            <CreditCard className="h-4 w-4" aria-hidden="true" />
+            {t('recordPayment')}
+          </button>
+        ) : null}
+      </div>
+
+      {!payments.length ? (
+        <div className="mt-5 rounded-2xl border border-dashed border-slate-200 px-4 py-5 text-center">
+          <span className="mx-auto inline-flex h-10 w-10 items-center justify-center rounded-xl bg-slate-100 text-slate-500">
+            <CreditCard className="h-5 w-5" aria-hidden="true" />
+          </span>
+          <p className="mt-3 text-sm font-bold text-slate-900">{t('noPayments')}</p>
+          <p className="mt-1 text-sm leading-6 text-slate-500">{t('recordedPaymentsWillAppear')}</p>
+        </div>
+      ) : null}
+
+      {events.length ? (
+        <ol className="mt-6 border-t border-slate-200 pt-6">
+          {events.map((event, index) => (
+            <InvoiceTimelineEvent
+              key={event.id}
+              event={event}
+              isLast={index === events.length - 1}
+            />
+          ))}
+        </ol>
+      ) : null}
+    </section>
+  )
+}
+
+function InvoicePreviewModal({ isOpen, invoice, client, company, onClose, t, contentT, language = 'en' }) {
+  if (!isOpen) return null
+
+  return (
+    <ModalShell isOpen={isOpen} onBackdropClick={onClose} panelClassName="p-3 sm:max-w-[64rem] sm:p-4">
       <div className="mb-5 flex items-start justify-between gap-4">
         <div><p className="text-xs font-bold uppercase tracking-wide text-blue-600">{t('invoicePreview')}</p><h2 className="mt-1 text-2xl font-bold text-slate-950">{invoice.number}</h2></div>
-        <button onClick={onClose} className="rounded-xl border border-slate-200 px-3 py-2 text-sm font-bold text-slate-700 hover:bg-slate-50">{t('close')}</button>
+        <button type="button" onClick={onClose} className="rounded-xl border border-slate-200 px-3 py-2 text-sm font-bold text-slate-700 hover:bg-slate-50 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-blue-500 focus-visible:ring-offset-2">{t('close')}</button>
       </div>
-      <div className="rounded-2xl border border-slate-200 p-5">
-        <div className="grid gap-5 sm:grid-cols-2">
-          <div><h3 className="font-bold text-slate-950">{contractorCompany.name}</h3><p className="text-sm text-slate-600">{contractorCompany.phone}</p><p className="text-sm text-slate-600">{contractorCompany.email}</p><p className="text-sm text-slate-600">{contractorCompany.address}</p></div>
-          <div><p className="text-xs font-bold uppercase tracking-wide text-slate-400">{contentT('billTo')}</p><h3 className="font-bold text-slate-950">{invoice.client}</h3><p className="text-sm text-slate-600">{lead?.phone}</p><p className="text-sm text-slate-600">{lead?.email}</p><p className="text-sm text-slate-600">{lead?.address || lead?.location}</p></div>
-        </div>
-        <div className="mt-6 grid gap-3 rounded-2xl bg-slate-50 p-4 text-sm sm:grid-cols-3"><SummaryRow label={contentT('projectTitle')} value={invoice.projectTitle} /><SummaryRow label={contentT('dueDate')} value={localizedDueDate || invoice.dueDate} /><SummaryRow label={contentT('status')} value={translateInvoiceStatus(invoice.status, contentT)} /></div>
-        <div className="mt-6 overflow-hidden rounded-2xl border border-slate-200"><div className="grid grid-cols-[1fr_120px] bg-slate-50 px-4 py-3 text-xs font-bold uppercase tracking-wide text-slate-500"><span>{contentT('description')}</span><span className="text-right">{contentT('amount')}</span></div>{(invoice.lineItems || []).map((item, index) => <div key={index} className="grid grid-cols-[1fr_120px] px-4 py-3 text-sm"><span>{item.description}</span><span className="text-right font-bold">{currency.format(item.amount)}</span></div>)}</div>
-        <div className="mt-6 ml-auto max-w-sm space-y-2 text-sm"><SummaryRow label={contentT('subtotal')} value={currency.format(subtotal)} /><SummaryRow label={contentT('paymentsReceived')} value={currency.format(invoice.amountPaid)} /><SummaryRow label={contentT('remainingBalance')} value={currency.format(balance)} strong /></div>
-        <div className="mt-6 grid gap-4 sm:grid-cols-2"><div><p className="text-xs font-bold uppercase tracking-wide text-slate-400">{contentT('paymentTerms')}</p><p className="mt-2 text-sm text-slate-700">{getPaymentTermLabel(invoice.paymentTerms, contentT)}</p></div><div><p className="text-xs font-bold uppercase tracking-wide text-slate-400">{contentT('notes')}</p><p className="mt-2 text-sm text-slate-700">{invoice.notes}</p></div></div>
+      <div className="min-w-0 overflow-hidden rounded-2xl bg-slate-100 p-1 sm:p-2">
+        <InvoiceDocumentPreview
+          invoice={invoice}
+          company={company}
+          client={client}
+          t={contentT}
+          uiT={t}
+          language={language}
+        />
       </div>
     </ModalShell>
   )
