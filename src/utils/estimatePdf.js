@@ -1,7 +1,11 @@
 import html2canvas from 'html2canvas'
 import { jsPDF } from 'jspdf'
 import { currency } from './formatters'
-import { ensureNormalizedEstimateDocument } from './estimateDocument'
+import {
+  ensureNormalizedEstimateDocument,
+  ESTIMATE_LABOR_ONLY,
+  ESTIMATE_OWNER_SUPPLIED_MATERIALS,
+} from './estimateDocument'
 import { getPaymentTermLabel } from './paymentTerms'
 
 const safeColors = {
@@ -22,6 +26,87 @@ const pdfPage = {
   width: 612,
   height: 792,
   margin: 22,
+}
+
+export function calculateEstimatePageBreakOffsets({
+  contentHeight,
+  sourcePageHeight,
+  protectedRanges = [],
+}) {
+  const breaks = [0]
+  let pageStart = 0
+
+  while (contentHeight - pageStart > sourcePageHeight) {
+    const target = pageStart + sourcePageHeight
+    const containingRange = protectedRanges.find(({ start, end }) => start < target && end > target)
+    let nextBreak = target
+
+    if (containingRange) {
+      const beforeRange = containingRange.start
+      const afterRange = containingRange.end
+      const minimumUsefulPageHeight = sourcePageHeight * 0.35
+
+      nextBreak = beforeRange - pageStart >= minimumUsefulPageHeight
+        || afterRange - pageStart > sourcePageHeight
+        ? beforeRange
+        : afterRange
+    }
+
+    if (nextBreak <= pageStart || nextBreak >= contentHeight) {
+      nextBreak = Math.min(pageStart + sourcePageHeight, contentHeight)
+    }
+
+    breaks.push(nextBreak)
+    pageStart = nextBreak
+  }
+
+  breaks.push(contentHeight)
+  return breaks
+}
+
+function getEstimatePageBreakOffsets(element, sourcePageHeight) {
+  const rootRect = element.getBoundingClientRect()
+  const renderedScale = rootRect.width > 0 && element.offsetWidth > 0
+    ? rootRect.width / element.offsetWidth
+    : 1
+  const protectedRanges = Array.from(element.querySelectorAll('[data-line-item-card="true"]'))
+    .map((node) => {
+      const nodeRect = node.getBoundingClientRect()
+      return {
+        start: Math.max((nodeRect.top - rootRect.top) / renderedScale, 0),
+        end: Math.max((nodeRect.bottom - rootRect.top) / renderedScale, 0),
+      }
+    })
+    .filter(({ start, end }) => end > start)
+
+  return calculateEstimatePageBreakOffsets({
+    contentHeight: Math.max(element.scrollHeight, element.offsetHeight),
+    sourcePageHeight,
+    protectedRanges,
+  })
+}
+
+function createEstimateCanvasSlice(sourceCanvas, startY, height) {
+  const sliceCanvas = document.createElement('canvas')
+  sliceCanvas.width = sourceCanvas.width
+  sliceCanvas.height = Math.max(Math.ceil(height), 1)
+
+  const context = sliceCanvas.getContext('2d')
+  context.fillStyle = '#ffffff'
+  context.fillRect(0, 0, sliceCanvas.width, sliceCanvas.height)
+  context.drawImage(
+    sourceCanvas,
+    0,
+    Math.floor(startY),
+    sourceCanvas.width,
+    Math.ceil(height),
+    0,
+    0,
+    sourceCanvas.width,
+    Math.ceil(height)
+  )
+
+  return sliceCanvas
 }
 
 function formatDisplayDate(value) {
@@ -111,6 +196,18 @@ function estimateLineItemHeight(item) {
 
 function getNormalizedItemDisplayText(item = {}) {
   return [item?.title, item?.description].filter(Boolean).join('\n')
+}
+
+function getEstimateMaterialsLabel(item = {}, t = (key) => key) {
+  if (item?.materialsStatus === ESTIMATE_OWNER_SUPPLIED_MATERIALS) {
+    return t('ownerSuppliedMaterials')
+  }
+
+  if (item?.materialsStatus === ESTIMATE_LABOR_ONLY) {
+    return t('laborOnly')
+  }
+
+  return t('materialsIncludedTag')
 }
 
 function sanitizeCloneTree(root, clonedDoc) {
@@ -345,7 +442,7 @@ function buildFallbackPdf({
       drawText(currency.format(Number(item?.total || 0)), cardX + cardWidth - 36, startingY, { bold: true, size: 11, align: 'right' })
       pdf.setFillColor(itemMaterialsIncluded ? safeColors.blue50 : safeColors.slate100)
       pdf.roundedRect(innerX + 16, cursorY + 2, 122, 18, 9, 9, 'F')
-      drawText(`${t('materialsIncluded')}: ${itemMaterialsIncluded ? t('yes') : t('no')}`, innerX + 77, cursorY + 14, { bold: true, size: 8.5, color: itemMaterialsIncluded ? safeColors.blue700 : safeColors.slate700, align: 'center' })
+      drawText(getEstimateMaterialsLabel(item, t), innerX + 77, cursorY + 14, { bold: true, size: 8.5, color: itemMaterialsIncluded ? safeColors.blue700 : safeColors.slate700, align: 'center' })
       cursorY += 28
     })
   }
@@ -393,6 +490,14 @@ export async function downloadEstimatePdf({
   }
 
   try {
+    const pageWidth = 612
+    const pageHeight = 792
+    const margin = 36
+    const renderWidth = pageWidth - (margin * 2)
+    const printableHeight = pageHeight - (margin * 2)
+    const elementWidth = Math.max(element.scrollWidth, element.offsetWidth)
+    const sourcePageHeight = printableHeight / (renderWidth / elementWidth)
+    const pageBreakOffsets = getEstimatePageBreakOffsets(element, sourcePageHeight)
     const canvas = await html2canvas(element, {
       backgroundColor: '#ffffff',
       scale: 2,
@@ -417,32 +522,39 @@ export async function downloadEstimatePdf({
       },
     })
 
-    const imageData = canvas.toDataURL('image/png')
     const pdf = new jsPDF({
       orientation: 'portrait',
       unit: 'pt',
       format: 'letter',
       compress: true,
     })
-    const pageWidth = pdf.internal.pageSize.getWidth()
-    const pageHeight = pdf.internal.pageSize.getHeight()
-    const margin = 36
-    const renderWidth = pageWidth - (margin * 2)
-    const renderHeight = (canvas.height * renderWidth) / canvas.width
-    const printableHeight = pageHeight - (margin * 2)
+    const canvasScale = canvas.width / elementWidth
 
-    let heightLeft = renderHeight
-    let positionY = margin
+    pageBreakOffsets.slice(0, -1).forEach((pageStart, index) => {
+      const pageEnd = pageBreakOffsets[index + 1]
+      const canvasStart = pageStart * canvasScale
+      const canvasHeight = Math.min(
+        (pageEnd - pageStart) * canvasScale,
+        canvas.height - canvasStart
+      )
 
-    pdf.addImage(imageData, 'PNG', margin, positionY, renderWidth, renderHeight, undefined, 'FAST')
-    heightLeft -= printableHeight
+      if (index > 0) {
+        pdf.addPage()
+      }
 
-    while (heightLeft > 0) {
-      pdf.addPage()
-      positionY = margin - (renderHeight - heightLeft)
-      pdf.addImage(imageData, 'PNG', margin, positionY, renderWidth, renderHeight, undefined, 'FAST')
-      heightLeft -= printableHeight
-    }
+      const pageCanvas = createEstimateCanvasSlice(canvas, canvasStart, canvasHeight)
+      const renderedHeight = (pageCanvas.height * renderWidth) / pageCanvas.width
+      pdf.addImage(
+        pageCanvas.toDataURL('image/png'),
+        'PNG',
+        margin,
+        margin,
+        renderWidth,
+        renderedHeight,
+        undefined,
+        'FAST'
+      )
+    })
 
     const fileName = buildEstimatePdfFileName({
       estimateNumber,

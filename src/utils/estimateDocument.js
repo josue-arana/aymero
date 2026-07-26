@@ -1,4 +1,7 @@
 const bulletLinePattern = /^\s*([-*•])\s*(.*)$/
+export const ESTIMATE_MATERIALS_INCLUDED = 'materials_included'
+export const ESTIMATE_LABOR_ONLY = 'labor_only'
+export const ESTIMATE_OWNER_SUPPLIED_MATERIALS = 'owner_supplied_materials'
 
 function toFiniteNumber(value, fallback = 0) {
   const number = Number(value)
@@ -102,6 +105,53 @@ function splitLegacyEstimateItemText(value) {
   }
 }
 
+function normalizeEstimateMaterialsStatus(item = {}, fallbackMaterialsIncluded = false) {
+  const configuredStatus = String(
+    item?.materialsStatus
+      ?? item?.materials_status
+      ?? item?.materialStatus
+      ?? item?.material_status
+      ?? item?.materialsResponsibility
+      ?? item?.materials_responsibility
+      ?? ''
+  ).trim().toLowerCase().replace(/[\s-]+/g, '_')
+
+  if ([
+    'owner_supplied',
+    'owner_supplied_material',
+    'owner_supplied_materials',
+    'customer_supplied',
+    'customer_supplied_materials',
+  ].includes(configuredStatus)) {
+    return ESTIMATE_OWNER_SUPPLIED_MATERIALS
+  }
+
+  if ([
+    'labor',
+    'labor_only',
+    'materials_not_included',
+    'not_included',
+  ].includes(configuredStatus)) {
+    return ESTIMATE_LABOR_ONLY
+  }
+
+  if ([
+    'included',
+    'materials_included',
+    'contractor_supplied',
+  ].includes(configuredStatus)) {
+    return ESTIMATE_MATERIALS_INCLUDED
+  }
+
+  const included = typeof item?.materialsIncluded === 'boolean'
+    ? item.materialsIncluded
+    : typeof item?.materials_included === 'boolean'
+      ? item.materials_included
+      : Boolean(fallbackMaterialsIncluded)
+
+  return included ? ESTIMATE_MATERIALS_INCLUDED : ESTIMATE_LABOR_ONLY
+}
+
 function normalizeEstimateWorkItem(item = {}, {
   displayOrder,
   fallbackMaterialsIncluded,
@@ -121,22 +171,20 @@ function normalizeEstimateWorkItem(item = {}, {
     storedRate,
     quantity ? total / quantity : total
   )
-  const materialsIncluded = typeof item?.materialsIncluded === 'boolean'
-    ? item.materialsIncluded
-    : typeof item?.materials_included === 'boolean'
-      ? item.materials_included
-      : Boolean(fallbackMaterialsIncluded)
+  const materialsStatus = normalizeEstimateMaterialsStatus(item, fallbackMaterialsIncluded)
 
   return {
     id: item?.id || `${idPrefix}-${displayOrder + 1}`,
     title: textParts.title,
     description: textParts.description,
     contentBlocks: normalizeEstimateRichText(sourceText).blocks,
+    descriptionBlocks: normalizeEstimateRichText(textParts.description).blocks,
     detailLines: textParts.detailLines,
     quantity,
     rate,
     total,
-    materialsIncluded,
+    materialsIncluded: materialsStatus === ESTIMATE_MATERIALS_INCLUDED,
+    materialsStatus,
     displayOrder,
   }
 }
@@ -189,9 +237,7 @@ export function normalizeEstimateDocument({
         visible: Boolean(scopeText.trim()),
       },
       workBreakdown: {
-        // This presentation flag preserves the existing simple-scope document
-        // while still giving both authoring modes the same workItems model.
-        visible: hasDetailedItems,
+        visible: workItems.length > 0,
       },
     },
   }
@@ -204,7 +250,38 @@ export function ensureNormalizedEstimateDocument(documentModel, legacyInput = {}
     && documentModel?.scope
     && documentModel?.totals
   ) {
-    return documentModel
+    return {
+      ...documentModel,
+      workItems: documentModel.workItems.map((item, index) => {
+        const materialsStatus = normalizeEstimateMaterialsStatus(
+          item,
+          documentModel?.defaults?.materialsIncluded
+        )
+
+        return {
+          ...item,
+          contentBlocks: Array.isArray(item?.contentBlocks)
+            ? item.contentBlocks
+            : normalizeEstimateRichText([item?.title, item?.description].filter(Boolean).join('\n')).blocks,
+          descriptionBlocks: Array.isArray(item?.descriptionBlocks)
+            ? item.descriptionBlocks
+            : normalizeEstimateRichText(item?.description).blocks,
+          detailLines: Array.isArray(item?.detailLines) ? item.detailLines : [],
+          materialsIncluded: materialsStatus === ESTIMATE_MATERIALS_INCLUDED,
+          materialsStatus,
+          displayOrder: Number.isFinite(Number(item?.displayOrder))
+            ? Number(item.displayOrder)
+            : index,
+        }
+      }),
+      sections: {
+        ...documentModel.sections,
+        workBreakdown: {
+          ...documentModel?.sections?.workBreakdown,
+          visible: documentModel.workItems.length > 0,
+        },
+      },
+    }
   }
 
   return normalizeEstimateDocument(legacyInput)

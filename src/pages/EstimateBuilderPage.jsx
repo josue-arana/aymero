@@ -51,6 +51,7 @@ function normalizeLineItems(items = [], fallbackMaterialsIncluded = false) {
   }
 
   return items.map((item) => ({
+    ...(item && typeof item === 'object' ? item : {}),
     name: typeof item?.name === 'string' ? item.name : String(item?.name || ''),
     amount: Number(item?.amount || 0),
     materialsIncluded: item?.materialsIncluded ?? fallbackMaterialsIncluded,
