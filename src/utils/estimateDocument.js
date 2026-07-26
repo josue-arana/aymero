@@ -2,6 +2,8 @@ const bulletLinePattern = /^\s*([-*•])\s*(.*)$/
 export const ESTIMATE_MATERIALS_INCLUDED = 'materials_included'
 export const ESTIMATE_LABOR_ONLY = 'labor_only'
 export const ESTIMATE_OWNER_SUPPLIED_MATERIALS = 'owner_supplied_materials'
+export const ESTIMATE_PRICING_SIMPLE = 'simple'
+export const ESTIMATE_PRICING_DETAILED = 'detailed'
 
 function toFiniteNumber(value, fallback = 0) {
   const number = Number(value)
@@ -10,6 +12,55 @@ function toFiniteNumber(value, fallback = 0) {
 
 function normalizeText(value) {
   return typeof value === 'string' ? value : String(value || '')
+}
+
+export function isValidExplicitEstimateItem(item = {}) {
+  const itemText = [
+    item?.name,
+    item?.title,
+    item?.description,
+  ].map(normalizeText).join('').trim()
+  const hasStoredAmount = [item?.amount, item?.total, item?.rate].some((value) => (
+    value !== ''
+    && value !== null
+    && value !== undefined
+    && Number.isFinite(Number(value))
+    && Number(value) !== 0
+  ))
+
+  return Boolean(itemText || hasStoredAmount)
+}
+
+function isLegacySyntheticScopeItem(item = {}) {
+  const itemId = normalizeText(item?.id)
+  const itemSource = normalizeText(
+    item?.source
+      ?? item?.sourceType
+      ?? item?.source_type
+      ?? item?.itemType
+      ?? item?.item_type
+  ).trim().toLowerCase()
+
+  return itemId.startsWith('estimate-scope-')
+    || ['synthetic_scope', 'scope_total', 'simple_total'].includes(itemSource)
+}
+
+export function getValidExplicitEstimateItems(lineItems = []) {
+  return Array.isArray(lineItems)
+    ? lineItems.filter((item) => !isLegacySyntheticScopeItem(item) && isValidExplicitEstimateItem(item))
+    : []
+}
+
+export function resolveEstimatePricingMode(pricingMode, lineItems = []) {
+  const normalizedMode = normalizeText(pricingMode).trim().toLowerCase()
+
+  if (normalizedMode === ESTIMATE_PRICING_SIMPLE || normalizedMode === ESTIMATE_PRICING_DETAILED) {
+    return normalizedMode
+  }
+
+  const explicitItems = getValidExplicitEstimateItems(lineItems)
+
+  return explicitItems.length > 0 ? ESTIMATE_PRICING_DETAILED : ESTIMATE_PRICING_SIMPLE
 }
 
 export function normalizeEstimateRichText(value) {
@@ -158,7 +209,10 @@ function normalizeEstimateWorkItem(item = {}, {
   fallbackTotal = 0,
   idPrefix = 'estimate-item',
 } = {}) {
-  const sourceText = normalizeText(item?.name)
+  const sourceText = normalizeText(item?.name).trim()
+    || [normalizeText(item?.title).trim(), normalizeText(item?.description).trim()]
+      .filter(Boolean)
+      .join('\n')
   const textParts = splitLegacyEstimateItemText(sourceText)
   const quantity = toFiniteNumber(item?.quantity, 1)
   const storedTotal = item?.total ?? item?.amount
@@ -190,6 +244,7 @@ function normalizeEstimateWorkItem(item = {}, {
 }
 
 export function normalizeEstimateDocument({
+  pricingMode,
   scope = '',
   lineItems = [],
   total = 0,
@@ -203,34 +258,30 @@ export function normalizeEstimateDocument({
   const scopeText = normalizeText(scope)
   const contractorMessageText = normalizeText(messageFromContractor)
   const sourceItems = Array.isArray(lineItems) ? lineItems : []
-  const hasDetailedItems = sourceItems.length > 0
+  const normalizedPricingMode = resolveEstimatePricingMode(pricingMode, sourceItems)
+  const explicitItems = getValidExplicitEstimateItems(sourceItems)
+  const hasDetailedItems = normalizedPricingMode === ESTIMATE_PRICING_DETAILED && explicitItems.length > 0
   const normalizedTotal = toFiniteNumber(total)
   const workItems = hasDetailedItems
-    ? sourceItems.map((item, index) => normalizeEstimateWorkItem(item, {
+    ? explicitItems.map((item, index) => normalizeEstimateWorkItem(item, {
         displayOrder: index,
         fallbackMaterialsIncluded: materialsIncluded,
       }))
-    : [
-        normalizeEstimateWorkItem(
-          { name: scopeText, amount: normalizedTotal, materialsIncluded },
-          {
-            displayOrder: 0,
-            fallbackMaterialsIncluded: materialsIncluded,
-            fallbackTotal: normalizedTotal,
-            idPrefix: 'estimate-scope',
-          }
-        ),
-      ]
+    : []
   const calculatedSubtotal = hasDetailedItems
     ? workItems.reduce((sum, item) => sum + item.total, 0)
     : normalizedTotal
+  const scopeOfWork = {
+    text: scopeText,
+    contentBlocks: normalizeEstimateRichText(scopeText).blocks,
+  }
 
   return {
     version: 1,
-    scope: {
-      text: scopeText,
-      contentBlocks: normalizeEstimateRichText(scopeText).blocks,
-    },
+    pricingMode: normalizedPricingMode,
+    scope: scopeOfWork,
+    scopeOfWork,
+    simpleTotal: normalizedPricingMode === ESTIMATE_PRICING_SIMPLE ? normalizedTotal : null,
     messageFromContractor: {
       text: contractorMessageText,
       contentBlocks: normalizeEstimateRichText(contractorMessageText).blocks,
@@ -251,7 +302,7 @@ export function normalizeEstimateDocument({
         visible: Boolean(scopeText.trim()),
       },
       workBreakdown: {
-        visible: workItems.length > 0,
+        visible: normalizedPricingMode === ESTIMATE_PRICING_DETAILED && workItems.length > 0,
       },
       messageFromContractor: {
         visible: Boolean(contractorMessageText.trim()),
@@ -267,15 +318,29 @@ export function ensureNormalizedEstimateDocument(documentModel, legacyInput = {}
     && documentModel?.scope
     && documentModel?.totals
   ) {
+    const legacyWorkItems = getValidExplicitEstimateItems(documentModel.workItems)
+    const normalizedPricingMode = resolveEstimatePricingMode(documentModel.pricingMode, legacyWorkItems)
+    const normalizedWorkItems = normalizedPricingMode === ESTIMATE_PRICING_DETAILED
+      ? legacyWorkItems
+      : []
     const legacyMessageText = typeof documentModel.messageFromContractor === 'string'
       ? documentModel.messageFromContractor
       : normalizeText(documentModel?.messageFromContractor?.text)
     const legacySubtotal = documentModel.totals.subtotal === undefined
-      ? documentModel.workItems.reduce((sum, item) => sum + toFiniteNumber(item?.total), 0)
+      ? normalizedPricingMode === ESTIMATE_PRICING_DETAILED
+        ? normalizedWorkItems.reduce((sum, item) => sum + toFiniteNumber(item?.total), 0)
+        : toFiniteNumber(documentModel?.simpleTotal ?? documentModel?.totals?.total)
       : toFiniteNumber(documentModel.totals.subtotal)
+    const scopeOfWork = documentModel.scopeOfWork || documentModel.scope
 
     return {
       ...documentModel,
+      pricingMode: normalizedPricingMode,
+      scope: scopeOfWork,
+      scopeOfWork,
+      simpleTotal: normalizedPricingMode === ESTIMATE_PRICING_SIMPLE
+        ? toFiniteNumber(documentModel?.simpleTotal ?? documentModel?.totals?.total)
+        : null,
       messageFromContractor: {
         text: legacyMessageText,
         contentBlocks: Array.isArray(documentModel?.messageFromContractor?.contentBlocks)
@@ -289,7 +354,7 @@ export function ensureNormalizedEstimateDocument(documentModel, legacyInput = {}
         taxAmount: toFiniteNumber(documentModel?.totals?.taxAmount),
         total: toFiniteNumber(documentModel?.totals?.total),
       },
-      workItems: documentModel.workItems.map((item, index) => {
+      workItems: normalizedWorkItems.map((item, index) => {
         const materialsStatus = normalizeEstimateMaterialsStatus(
           item,
           documentModel?.defaults?.materialsIncluded
@@ -315,7 +380,7 @@ export function ensureNormalizedEstimateDocument(documentModel, legacyInput = {}
         ...documentModel.sections,
         workBreakdown: {
           ...documentModel?.sections?.workBreakdown,
-          visible: documentModel.workItems.length > 0,
+          visible: normalizedPricingMode === ESTIMATE_PRICING_DETAILED && normalizedWorkItems.length > 0,
         },
         messageFromContractor: {
           ...documentModel?.sections?.messageFromContractor,

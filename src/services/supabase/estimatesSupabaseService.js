@@ -1,6 +1,7 @@
 import { USE_SUPABASE, USE_SUPABASE_ESTIMATES } from '../../config/backendConfig'
 import { supabaseClient } from '../../lib/supabaseClient'
 import { normalizeSupportedLanguageOrEmpty } from '../../utils/language'
+import { resolveEstimatePricingMode } from '../../utils/estimateDocument'
 
 const TABLE_NAME = 'estimates'
 
@@ -138,8 +139,14 @@ function normalizeLineItems(lineItems) {
 
   return lineItems.map((item) => ({
     ...(item && typeof item === 'object' ? item : {}),
-    name: typeof item?.name === 'string' ? item.name : '',
-    amount: toNumber(item?.amount),
+    name: typeof item?.name === 'string' && item.name.trim()
+      ? item.name
+      : [item?.title, item?.description].filter(Boolean).join('\n'),
+    amount: toNumber(
+      item?.amount
+      ?? item?.total
+      ?? (toNumber(item?.quantity) * toNumber(item?.rate))
+    ),
     materialsIncluded: typeof item?.materialsIncluded === 'boolean'
       ? item.materialsIncluded
       : Boolean(item?.materials_included),
@@ -199,6 +206,7 @@ function toAppEstimate(row) {
     summary: row?.scope_of_work || '',
     scopeOfWork: row?.scope_of_work || '',
     lineItems,
+    pricingMode: resolveEstimatePricingMode(row?.pricing_mode, lineItems),
     subtotal: toNumber(row?.subtotal),
     discountAmount: toNumber(row?.discount_amount),
     taxAmount: toNumber(row?.tax_amount),

@@ -24,12 +24,18 @@ import { shouldUseGeneratedPdfForPrint } from '../utils/documentOutput'
 import { createTranslator } from '../translations'
 import { findLeadByProjectLookup } from '../utils/projectIdentity'
 import { findRelatedClient } from '../utils/clients'
-import { normalizeEstimateDocument } from '../utils/estimateDocument'
+import {
+  ESTIMATE_PRICING_DETAILED,
+  ESTIMATE_PRICING_SIMPLE,
+  getValidExplicitEstimateItems,
+  normalizeEstimateDocument,
+  resolveEstimatePricingMode,
+} from '../utils/estimateDocument'
 import { normalizeDocumentLanguageOverride, resolveClientFacingLanguage } from '../utils/language'
 import { getPaymentTermLabel, getPaymentTermOptions, isKnownPaymentTermValue } from '../utils/paymentTerms'
 
-const simplePricingMode = 'simple'
-const detailedPricingMode = 'detailed'
+const simplePricingMode = ESTIMATE_PRICING_SIMPLE
+const detailedPricingMode = ESTIMATE_PRICING_DETAILED
 const estimatePreviewPageWidth = defaultDocumentPreviewWidth
 
 function readEstimateScopeText(estimate = {}) {
@@ -84,8 +90,15 @@ function normalizeLineItems(items = [], fallbackMaterialsIncluded = false) {
 
   return items.map((item) => ({
     ...(item && typeof item === 'object' ? item : {}),
-    name: typeof item?.name === 'string' ? item.name : String(item?.name || ''),
-    amount: Number(item?.amount || 0),
+    name: typeof item?.name === 'string' && item.name.trim()
+      ? item.name
+      : [item?.title, item?.description].filter(Boolean).join('\n'),
+    amount: Number(
+      item?.amount
+      ?? item?.total
+      ?? (Number(item?.quantity || 0) * Number(item?.rate || 0))
+      ?? 0
+    ),
     materialsIncluded: item?.materialsIncluded ?? fallbackMaterialsIncluded,
   }))
 }
@@ -127,8 +140,13 @@ function buildEstimateDraftState({ savedEstimate = {}, lead, companySettings, t 
     false
   )
   const savedLineItems = normalizeLineItems(savedEstimate.lineItems, defaultMaterialsIncluded)
-  const hasSavedLineItems = savedLineItems.some((item) => Number(item?.amount || 0) > 0 || String(item?.name || '').trim())
+  const explicitSavedLineItems = getValidExplicitEstimateItems(savedLineItems)
+  const hasSavedLineItems = explicitSavedLineItems.length > 0
   const defaultLineItems = buildDefaultLineItems(lead?.value, defaultMaterialsIncluded, t)
+  const savedPricingMode = resolveEstimatePricingMode(
+    savedEstimate.pricingMode || savedEstimate.pricing_mode,
+    explicitSavedLineItems
+  )
 
   return {
     scope: readEstimateScopeText(savedEstimate),
@@ -137,9 +155,9 @@ function buildEstimateDraftState({ savedEstimate = {}, lead, companySettings, t 
     materialsIncluded: defaultMaterialsIncluded,
     paymentTerms: savedEstimate.paymentTerms || companySettings?.defaults?.paymentTerms || t('defaultPaymentTerms'),
     estimateLanguage: normalizeDocumentLanguageOverride(savedEstimate.estimateLanguage),
-    pricingMode: hasSavedLineItems ? detailedPricingMode : simplePricingMode,
-    lineItems: hasSavedLineItems ? savedLineItems : defaultLineItems,
-    lineItemAmountInputs: (hasSavedLineItems ? savedLineItems : defaultLineItems).map((item) => formatAmountInputValue(item.amount)),
+    pricingMode: savedPricingMode,
+    lineItems: hasSavedLineItems ? explicitSavedLineItems : defaultLineItems,
+    lineItemAmountInputs: (hasSavedLineItems ? explicitSavedLineItems : defaultLineItems).map((item) => formatAmountInputValue(item.amount)),
   }
 }
 
@@ -196,6 +214,7 @@ export function EstimateBuilderPage({ lead, clientRecord = null, t, appLanguage 
     estimateTotal: savedEstimate?.total ?? null,
     estimateSummary: readEstimateScopeText(savedEstimate),
     estimateLanguage: savedEstimate?.estimateLanguage || '',
+    pricingMode: savedEstimate?.pricingMode || savedEstimate?.pricing_mode || '',
     paymentTerms: savedEstimate?.paymentTerms || '',
     materialsIncluded: savedEstimate?.materialsIncluded ?? null,
     lineItems: Array.isArray(savedEstimate?.lineItems) ? savedEstimate.lineItems : [],
@@ -293,8 +312,9 @@ export function EstimateBuilderPage({ lead, clientRecord = null, t, appLanguage 
     [lead?.portal?.estimate?.createdAt, lead?.portal?.estimate?.created_at, lead?.portal?.estimate?.dateCreated, savedEstimate.createdAt, savedEstimate.created_at, savedEstimate.dateCreated]
   )
   const estimateDocumentModel = useMemo(() => normalizeEstimateDocument({
+    pricingMode,
     scope,
-    lineItems: isDetailedPricing ? lineItems : [],
+    lineItems,
     total: estimateTotal,
     subtotal: isDetailedPricing
       ? lineTotal
@@ -316,6 +336,7 @@ export function EstimateBuilderPage({ lead, clientRecord = null, t, appLanguage 
     lineTotal,
     materialsIncluded,
     previewEstimateDate,
+    pricingMode,
     savedEstimate,
     scope,
   ])

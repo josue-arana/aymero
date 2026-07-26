@@ -122,6 +122,23 @@ export async function printDocumentElement(element, { documentTitle = 'Document'
             break-inside: avoid;
             page-break-inside: avoid;
           }
+          [data-print-root="true"] [data-estimate-section-heading="true"],
+          [data-print-root="true"] [data-estimate-work-heading="true"],
+          [data-print-root="true"] [data-estimate-keep-together="true"],
+          [data-print-root="true"] [data-estimate-totals="true"],
+          [data-print-root="true"] [data-estimate-validity="true"],
+          [data-print-root="true"] [data-estimate-footer="true"] {
+            break-inside: avoid;
+            page-break-inside: avoid;
+          }
+          [data-print-root="true"] [data-estimate-flow-text="true"] {
+            orphans: 3;
+            widows: 3;
+          }
+          [data-print-root="true"] [data-estimate-footer="true"] {
+            break-before: avoid-page;
+            page-break-before: avoid;
+          }
           [data-print-root="true"] .invoice-document-information,
           [data-print-root="true"] .invoice-document-summary,
           [data-print-root="true"] .invoice-document-balance,

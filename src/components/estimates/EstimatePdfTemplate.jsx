@@ -9,6 +9,7 @@ import {
 import { getAcceptedPaymentMethodLabels } from '../../utils/acceptedPaymentMethods'
 import { getPaymentTermLabel } from '../../utils/paymentTerms'
 import '../documents/documentDensity.css'
+import './estimateDocument.css'
 
 const colors = {
   white: '#ffffff',
@@ -239,7 +240,7 @@ function RichWorkItemContent({ blocks = [], accentColor }) {
           {(block.items || []).map((bullet, bulletIndex) => (
             <li key={`${blockIndex}-${bulletIndex}`} style={{ display: 'grid', gridTemplateColumns: '8px minmax(0,1fr)', gap: '7px', alignItems: 'start' }}>
               <span aria-hidden="true" style={{ width: '3px', height: '3px', marginTop: '6px', borderRadius: '999px', backgroundColor: accentColor }} />
-              <span style={{ minWidth: 0, whiteSpace: 'pre-wrap', fontSize: '11.5px', lineHeight: 1.48, color: colors.ink, overflowWrap: 'anywhere', wordBreak: 'break-word' }}>
+              <span data-estimate-flow-text="true" style={{ minWidth: 0, whiteSpace: 'pre-wrap', fontSize: '11.5px', lineHeight: 1.48, color: colors.ink, overflowWrap: 'anywhere', wordBreak: 'break-word' }}>
                 {bullet.text}
               </span>
             </li>
@@ -250,7 +251,7 @@ function RichWorkItemContent({ blocks = [], accentColor }) {
 
     if (block?.type === 'paragraph') {
       return (
-        <p key={`paragraph-${blockIndex}`} style={{ margin: 0, whiteSpace: 'pre-wrap', fontSize: '11.5px', lineHeight: 1.5, color: colors.ink, overflowWrap: 'anywhere', wordBreak: 'break-word' }}>
+        <p data-estimate-flow-text="true" key={`paragraph-${blockIndex}`} style={{ margin: 0, whiteSpace: 'pre-wrap', fontSize: '11.5px', lineHeight: 1.5, color: colors.ink, overflowWrap: 'anywhere', wordBreak: 'break-word' }}>
           {block.text}
         </p>
       )
@@ -277,6 +278,7 @@ function WorkBreakdownItem({ item, index, accentColor, language, t }) {
   return (
     <div
       data-line-item-card="true"
+      data-estimate-keep-together="true"
       style={{
         display: 'grid',
         gridTemplateColumns: workBreakdownGridColumns,
@@ -309,6 +311,7 @@ function WorkBreakdownItem({ item, index, accentColor, language, t }) {
       </div>
       <div style={{ minWidth: 0 }}>
         <p
+          data-estimate-flow-text="true"
           style={{
             margin: 0,
             fontSize: '12.5px',
@@ -395,6 +398,7 @@ export function EstimatePdfTemplate({
   lead,
   estimateNumber,
   estimateDate,
+  pricingMode,
   scope,
   materialsIncluded,
   paymentTerms,
@@ -410,6 +414,7 @@ export function EstimatePdfTemplate({
   t,
 }) {
   const normalizedDocument = ensureNormalizedEstimateDocument(documentModel, {
+    pricingMode,
     scope,
     lineItems,
     total,
@@ -439,6 +444,7 @@ export function EstimatePdfTemplate({
   return (
     <article
       className="document-sheet document-estimate"
+      data-estimate-document="true"
       style={{
         ...getDocumentDensityVariables(),
         overflow: 'hidden',
@@ -451,7 +457,7 @@ export function EstimatePdfTemplate({
         color: colors.ink,
       }}
     >
-      <header style={{ display: 'flex', flexWrap: 'wrap', alignItems: 'flex-start', justifyContent: 'space-between', gap: '24px' }}>
+      <header data-estimate-keep-together="true" style={{ display: 'flex', flexWrap: 'wrap', alignItems: 'flex-start', justifyContent: 'space-between', gap: '24px' }}>
         <div style={{ flex: '1 1 430px', minWidth: 0 }}>
           <CompanyBadge company={company} accentColor={accentColor} t={t} />
         </div>
@@ -486,6 +492,7 @@ export function EstimatePdfTemplate({
 
       <section
         data-estimate-summary="true"
+        data-estimate-keep-together="true"
         style={{
           marginTop: 'var(--document-section-gap)',
           borderRadius: '16px',
@@ -549,6 +556,7 @@ export function EstimatePdfTemplate({
       {hasScope ? (
         <section data-estimate-section="true" style={{ marginTop: 'var(--document-section-gap)' }}>
           <p
+            data-estimate-section-heading="true"
             style={{
               margin: 0,
               fontSize: '11px',
@@ -562,6 +570,7 @@ export function EstimatePdfTemplate({
             {t('scopeOfWork')}
           </p>
           <div
+            data-estimate-flow-text="true"
             style={{
               marginTop: 'var(--document-scope-gap)',
               border: `1px solid ${colors.slate200}`,
@@ -583,40 +592,43 @@ export function EstimatePdfTemplate({
 
       {hasLineItems ? (
         <section data-estimate-section="true" style={{ marginTop: hasScope ? 'var(--document-card-section-gap)' : 'var(--document-section-gap)' }}>
-          <p
-            style={{
-              margin: 0,
-              fontSize: '11px',
-              lineHeight: 1.3,
-              fontWeight: 700,
-              letterSpacing: '0.22em',
-              textTransform: 'uppercase',
-              color: accentColor,
-            }}
-          >
-            {t('workBreakdown')}
-          </p>
-          <div
-            style={{
-              display: 'grid',
-              gridTemplateColumns: workBreakdownGridColumns,
-              gap: '10px',
-              marginTop: 'var(--document-work-gap)',
-              borderTop: `1px solid ${colors.slate200}`,
-              borderBottom: `1px solid ${colors.slate200}`,
-              padding: '7px 0',
-              color: colors.slate500,
-              fontSize: '9px',
-              lineHeight: 1.3,
-              fontWeight: 700,
-              letterSpacing: '0.1em',
-              textTransform: 'uppercase',
-            }}
-          >
-            <span style={{ gridColumn: '1 / 3' }} aria-hidden="true" />
-            <span style={{ textAlign: 'right' }}>{t('qty')}</span>
-            <span style={{ textAlign: 'right' }}>{t('rate')}</span>
-            <span style={{ textAlign: 'right' }}>{t('total')}</span>
+          <div data-estimate-work-heading="true">
+            <p
+              data-estimate-section-heading="true"
+              style={{
+                margin: 0,
+                fontSize: '11px',
+                lineHeight: 1.3,
+                fontWeight: 700,
+                letterSpacing: '0.22em',
+                textTransform: 'uppercase',
+                color: accentColor,
+              }}
+            >
+              {t('workBreakdown')}
+            </p>
+            <div
+              style={{
+                display: 'grid',
+                gridTemplateColumns: workBreakdownGridColumns,
+                gap: '10px',
+                marginTop: 'var(--document-work-gap)',
+                borderTop: `1px solid ${colors.slate200}`,
+                borderBottom: `1px solid ${colors.slate200}`,
+                padding: '7px 0',
+                color: colors.slate500,
+                fontSize: '9px',
+                lineHeight: 1.3,
+                fontWeight: 700,
+                letterSpacing: '0.1em',
+                textTransform: 'uppercase',
+              }}
+            >
+              <span style={{ gridColumn: '1 / 3' }} aria-hidden="true" />
+              <span style={{ textAlign: 'right' }}>{t('qty')}</span>
+              <span style={{ textAlign: 'right' }}>{t('rate')}</span>
+              <span style={{ textAlign: 'right' }}>{t('total')}</span>
+            </div>
           </div>
           <div>
             {workItems.map((item, index) => (
@@ -633,23 +645,24 @@ export function EstimatePdfTemplate({
         </section>
       ) : null}
 
-      <section
-        data-estimate-section="true"
-        data-estimate-footer-section="true"
-        style={{
-          marginTop: 'var(--document-section-gap)',
-          display: 'grid',
-          gridTemplateColumns: 'minmax(0, 1.35fr) minmax(210px, 0.65fr)',
-          gap: '20px',
-          alignItems: 'start',
-          breakInside: 'avoid',
-          pageBreakInside: 'avoid',
-        }}
-      >
+      <div data-estimate-closing-group="true">
+        <section
+          data-estimate-section="true"
+          data-estimate-footer-section="true"
+          style={{
+            marginTop: 'var(--document-section-gap)',
+            display: 'grid',
+            gridTemplateColumns: 'minmax(0, 1.35fr) minmax(210px, 0.65fr)',
+            gap: '20px',
+            alignItems: 'start',
+            breakInside: 'auto',
+            pageBreakInside: 'auto',
+          }}
+        >
         <div style={{ minWidth: 0, borderTop: `1px solid ${colors.slate300}` }}>
           <div style={{ padding: '14px 0' }}>
             <LowerSectionHeading accentColor={accentColor}>{t('paymentTerms')}</LowerSectionHeading>
-            <div style={{ marginTop: '6px', whiteSpace: 'pre-line', fontSize: '11px', lineHeight: 1.48, color: colors.ink, overflowWrap: 'anywhere', wordBreak: 'break-word' }}>
+            <div data-estimate-flow-text="true" style={{ marginTop: '6px', whiteSpace: 'pre-line', fontSize: '11px', lineHeight: 1.48, color: colors.ink, overflowWrap: 'anywhere', wordBreak: 'break-word' }}>
               {getPaymentTermLabel(paymentTerms, t)}
             </div>
           </div>
@@ -680,7 +693,7 @@ export function EstimatePdfTemplate({
                 {acceptedPaymentMethods.map((method) => (
                   <li key={method} style={{ display: 'grid', gridTemplateColumns: '6px minmax(0,1fr)', gap: '7px', alignItems: 'start', fontSize: '10.5px', lineHeight: 1.4, color: colors.ink }}>
                     <span aria-hidden="true" style={{ width: '3px', height: '3px', marginTop: '6px', borderRadius: '999px', backgroundColor: accentColor }} />
-                    <span style={{ overflowWrap: 'anywhere', wordBreak: 'break-word' }}>{method}</span>
+                    <span data-estimate-flow-text="true" style={{ overflowWrap: 'anywhere', wordBreak: 'break-word' }}>{method}</span>
                   </li>
                 ))}
               </ul>
@@ -690,6 +703,8 @@ export function EstimatePdfTemplate({
 
         <div style={{ display: 'grid', minWidth: 0, gap: '10px' }}>
           <div
+            data-estimate-totals="true"
+            data-estimate-keep-together="true"
             style={{
               border: `1px solid ${colors.slate200}`,
               borderRadius: '14px',
@@ -708,6 +723,8 @@ export function EstimatePdfTemplate({
           </div>
 
           <div
+            data-estimate-validity="true"
+            data-estimate-keep-together="true"
             style={{
               border: `1px solid ${colors.slate200}`,
               borderRadius: '14px',
@@ -722,26 +739,27 @@ export function EstimatePdfTemplate({
             </p>
           </div>
         </div>
-      </section>
+        </section>
 
-      <footer
-        data-estimate-footer="true"
-        style={{
-          marginTop: '18px',
-          borderTop: `1px solid ${colors.slate300}`,
-          paddingTop: '14px',
-          textAlign: 'center',
-          breakInside: 'avoid',
-          pageBreakInside: 'avoid',
-        }}
-      >
-        <p style={{ margin: 0, fontSize: '12px', lineHeight: 1.4, fontWeight: 700, color: accentColor }}>
-          {t('thankYouForEstimateOpportunity')}
-        </p>
-        <p style={{ margin: '4px 0 0', fontSize: '10.5px', lineHeight: 1.35, fontWeight: 650, color: colors.ink }}>
-          {company?.name || t('brandName')}
-        </p>
-      </footer>
+        <footer
+          data-estimate-footer="true"
+          style={{
+            marginTop: '18px',
+            borderTop: `1px solid ${colors.slate300}`,
+            paddingTop: '14px',
+            textAlign: 'center',
+            breakInside: 'avoid',
+            pageBreakInside: 'avoid',
+          }}
+        >
+          <p style={{ margin: 0, fontSize: '12px', lineHeight: 1.4, fontWeight: 700, color: accentColor }}>
+            {t('thankYouForEstimateOpportunity')}
+          </p>
+          <p style={{ margin: '4px 0 0', fontSize: '10.5px', lineHeight: 1.35, fontWeight: 650, color: colors.ink }}>
+            {company?.name || t('brandName')}
+          </p>
+        </footer>
+      </div>
     </article>
   )
 }

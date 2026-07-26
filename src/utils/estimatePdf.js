@@ -7,6 +7,7 @@ import {
   ESTIMATE_OWNER_SUPPLIED_MATERIALS,
 } from './estimateDocument'
 import { getAcceptedPaymentMethodLabels } from './acceptedPaymentMethods'
+import { calculateDocumentPageBreakOffsets } from './documentPagination'
 import { getPaymentTermLabel } from './paymentTerms'
 
 const safeColors = {
@@ -34,35 +35,11 @@ export function calculateEstimatePageBreakOffsets({
   sourcePageHeight,
   protectedRanges = [],
 }) {
-  const breaks = [0]
-  let pageStart = 0
-
-  while (contentHeight - pageStart > sourcePageHeight) {
-    const target = pageStart + sourcePageHeight
-    const containingRange = protectedRanges.find(({ start, end }) => start < target && end > target)
-    let nextBreak = target
-
-    if (containingRange) {
-      const beforeRange = containingRange.start
-      const afterRange = containingRange.end
-      const minimumUsefulPageHeight = sourcePageHeight * 0.35
-
-      nextBreak = beforeRange - pageStart >= minimumUsefulPageHeight
-        || afterRange - pageStart > sourcePageHeight
-        ? beforeRange
-        : afterRange
-    }
-
-    if (nextBreak <= pageStart || nextBreak >= contentHeight) {
-      nextBreak = Math.min(pageStart + sourcePageHeight, contentHeight)
-    }
-
-    breaks.push(nextBreak)
-    pageStart = nextBreak
-  }
-
-  breaks.push(contentHeight)
-  return breaks
+  return calculateDocumentPageBreakOffsets({
+    contentHeight,
+    sourcePageHeight,
+    protectedRanges,
+  })
 }
 
 function getEstimatePageBreakOffsets(element, sourcePageHeight) {
@@ -70,17 +47,103 @@ function getEstimatePageBreakOffsets(element, sourcePageHeight) {
   const renderedScale = rootRect.width > 0 && element.offsetWidth > 0
     ? rootRect.width / element.offsetWidth
     : 1
-  const protectedRanges = Array.from(element.querySelectorAll(
-    '[data-line-item-card="true"], [data-estimate-footer-section="true"], [data-estimate-footer="true"]'
-  ))
-    .map((node) => {
-      const nodeRect = node.getBoundingClientRect()
-      return {
-        start: Math.max((nodeRect.top - rootRect.top) / renderedScale, 0),
-        end: Math.max((nodeRect.bottom - rootRect.top) / renderedScale, 0),
+
+  function toSourceRange(rect, inset = 0) {
+    if (!rect || rect.height <= 0) return null
+
+    return {
+      start: Math.max((rect.top - rootRect.top - inset) / renderedScale, 0),
+      end: Math.max((rect.bottom - rootRect.top + inset) / renderedScale, 0),
+    }
+  }
+
+  function getElementRange(node) {
+    return node ? toSourceRange(node.getBoundingClientRect()) : null
+  }
+
+  function combineElementRanges(firstNode, lastNode) {
+    const firstRange = getElementRange(firstNode)
+    const lastRange = getElementRange(lastNode)
+    if (!firstRange || !lastRange) return null
+
+    return {
+      start: Math.min(firstRange.start, lastRange.start),
+      end: Math.max(firstRange.end, lastRange.end),
+    }
+  }
+
+  function getTextLineRanges(flowNode) {
+    const ownerDocument = element.ownerDocument
+    const ownerWindow = ownerDocument?.defaultView
+    const showText = ownerWindow?.NodeFilter?.SHOW_TEXT ?? 4
+    const ranges = []
+
+    const walker = ownerDocument.createTreeWalker(flowNode, showText)
+    let textNode = walker.nextNode()
+
+    while (textNode) {
+      if (String(textNode.textContent || '').trim()) {
+        const textRange = ownerDocument.createRange()
+        textRange.selectNodeContents(textNode)
+
+        Array.from(textRange.getClientRects()).forEach((rect) => {
+          const sourceRange = toSourceRange(rect, 1)
+          if (sourceRange) ranges.push(sourceRange)
+        })
+
+        textRange.detach?.()
       }
-    })
-    .filter(({ start, end }) => end > start)
+
+      textNode = walker.nextNode()
+    }
+
+    return ranges
+  }
+
+  const protectedRanges = []
+  const closingSection = element.querySelector('[data-estimate-footer-section="true"]')
+  const documentFooter = element.querySelector('[data-estimate-footer="true"]')
+  const closingGroupRange = combineElementRanges(closingSection, documentFooter)
+
+  if (closingGroupRange && closingGroupRange.end - closingGroupRange.start <= sourcePageHeight * 0.92) {
+    protectedRanges.push(closingGroupRange)
+  }
+
+  const workHeading = element.querySelector('[data-estimate-work-heading="true"]')
+  const firstWorkItem = element.querySelector('[data-line-item-card="true"]')
+  const firstWorkGroupRange = combineElementRanges(workHeading, firstWorkItem)
+
+  if (firstWorkGroupRange && firstWorkGroupRange.end - firstWorkGroupRange.start <= sourcePageHeight * 0.45) {
+    protectedRanges.push(firstWorkGroupRange)
+  }
+
+  element.querySelectorAll(
+    '[data-estimate-keep-together="true"], [data-estimate-work-heading="true"], [data-estimate-footer="true"]'
+  ).forEach((node) => {
+    const range = getElementRange(node)
+    if (range) protectedRanges.push(range)
+  })
+
+  element.querySelectorAll('[data-estimate-section-heading="true"]').forEach((heading) => {
+    const section = heading.closest('[data-estimate-section="true"]')
+    const firstFlowNode = section?.querySelector('[data-estimate-flow-text="true"]')
+    const headingRange = getElementRange(heading)
+    const firstLineRange = firstFlowNode ? getTextLineRanges(firstFlowNode)[0] : null
+    const headingGroupRange = headingRange && firstLineRange
+      ? {
+          start: Math.min(headingRange.start, firstLineRange.start),
+          end: Math.max(headingRange.end, firstLineRange.end),
+        }
+      : null
+
+    if (headingGroupRange && headingGroupRange.end - headingGroupRange.start <= sourcePageHeight * 0.35) {
+      protectedRanges.push(headingGroupRange)
+    }
+  })
+
+  element.querySelectorAll('[data-estimate-flow-text="true"]').forEach((flowNode) => {
+    protectedRanges.push(...getTextLineRanges(flowNode))
+  })
 
   return calculateEstimatePageBreakOffsets({
     contentHeight: Math.max(element.scrollHeight, element.offsetHeight),
@@ -275,6 +338,7 @@ function buildFallbackPdf({
   company = {},
   lead = {},
   documentModel,
+  pricingMode: legacyPricingMode,
   scope: legacyScope = '',
   lineItems: legacyLineItems = [],
   materialsIncluded: legacyMaterialsIncluded,
@@ -288,6 +352,7 @@ function buildFallbackPdf({
   t = (key) => key,
 }) {
   const normalizedDocument = ensureNormalizedEstimateDocument(documentModel, {
+    pricingMode: legacyPricingMode,
     scope: legacyScope,
     lineItems: legacyLineItems,
     materialsIncluded: legacyMaterialsIncluded,
@@ -540,6 +605,7 @@ export async function downloadEstimatePdf({
   company = {},
   lead = {},
   documentModel,
+  pricingMode,
   scope = '',
   lineItems = [],
   materialsIncluded,
@@ -640,6 +706,7 @@ export async function downloadEstimatePdf({
       company,
       lead,
       documentModel,
+      pricingMode,
       scope,
       lineItems,
       materialsIncluded,

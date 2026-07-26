@@ -18,6 +18,7 @@ import { shouldUseGeneratedPdfForPrint } from '../../utils/documentOutput'
 import { createTranslator } from '../../translations'
 import { tStatus } from '../../translations'
 import { getPaymentTermLabel } from '../../utils/paymentTerms'
+import { resolveEstimatePricingMode } from '../../utils/estimateDocument'
 
 function EmptyState({ message }) {
   return (
@@ -296,6 +297,10 @@ export function PortalSummary({
     lead: previewLead,
     estimateNumber,
     estimateDate: estimate?.dateCreated || estimate?.createdAt || estimate?.created_at || new Date(),
+    pricingMode: resolveEstimatePricingMode(
+      estimate?.pricingMode || estimate?.pricing_mode,
+      estimate?.lineItems
+    ),
     scope: estimate?.summary || estimate?.scopeOfWork || '',
     materialsIncluded: estimate?.materialsIncluded ?? estimate?.materials_included ?? true,
     paymentTerms: getPaymentTermLabel(estimate?.paymentTerms, t) || t('contractTermsText'),
@@ -361,6 +366,7 @@ export function PortalSummary({
         companyName: company?.name || '',
         company,
         lead: previewLead,
+        pricingMode: estimatePreviewProps.pricingMode,
         scope: estimatePreviewProps.scope,
         lineItems: estimatePreviewProps.lineItems,
         materialsIncluded: estimatePreviewProps.materialsIncluded,
