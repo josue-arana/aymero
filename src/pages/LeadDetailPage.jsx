@@ -1,5 +1,5 @@
 import { useEffect, useMemo, useRef, useState } from 'react'
-import { Archive, ArrowLeft, BriefcaseBusiness, CheckCircle2, ClipboardList, Copy, Edit3, Trash2, Undo2 } from 'lucide-react'
+import { Archive, ArrowLeft, BriefcaseBusiness, CheckCircle2, ChevronRight, ClipboardList, Copy, Edit3, Trash2, Undo2 } from 'lucide-react'
 import { useNavigate, useParams } from 'react-router-dom'
 import { ActionMenu } from '../components/common/ActionMenu'
 import { ConfirmRecordModal } from '../components/common/ConfirmRecordModal'
@@ -165,6 +165,8 @@ export function LeadDetailPage({
   const progressStageLabelKey = getLeadProgressStageLabelKey(currentStage)
   const currentStageDisplay = t(progressStageLabelKey || getLeadPipelineStageLabelKey(currentStage))
   const estimatedValueDisplay = leadHasEstimate ? currency.format(currentLead?.value || 0) : t('notEstimated')
+  const leadDisplayName = currentLead?.client || currentLead?.name || t('lead')
+  const projectDisplayTitle = currentLead?.projectTitle || currentLead?.projectType || t('unknownProject')
   const recordDetailsTitle = t(getRecordDetailsTitleKey({
     ...currentLead,
     isArchived,
@@ -539,22 +541,55 @@ export function LeadDetailPage({
       : <ClipboardList className="h-4 w-4" />
 
   return (
-    <div className="space-y-6">
-      <button onClick={onBack} className="inline-flex items-center gap-2 text-sm font-semibold text-slate-600 hover:text-slate-950">
-        <ArrowLeft className="h-4 w-4" /> {t('backToLeads')}
-      </button>
+    <div className="mx-auto max-w-6xl space-y-6">
+      <div className="flex min-w-0 items-center justify-between gap-4">
+        <nav aria-label={t('leads')} className="flex min-w-0 items-center gap-2 text-sm font-semibold">
+          <button
+            type="button"
+            onClick={onBack}
+            className="inline-flex min-h-10 shrink-0 items-center gap-2 rounded-xl px-2 text-slate-600 transition hover:bg-slate-100 hover:text-slate-950 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-blue-500 focus-visible:ring-offset-2"
+          >
+            <ArrowLeft className="h-4 w-4" aria-hidden="true" />
+            {t('leads')}
+          </button>
+          <ChevronRight className="h-4 w-4 shrink-0 text-slate-400" aria-hidden="true" />
+          <span className="truncate text-slate-950" aria-current="page">{leadDisplayName}</span>
+        </nav>
+        <ActionMenu
+          label={t('more')}
+          ariaLabel={t('more')}
+          items={moreMenuItems}
+          buttonDisabled={isLeadActionSubmitting}
+          containerClassName="shrink-0"
+          buttonClassName="inline-flex min-h-10 items-center justify-center gap-2 rounded-xl border border-slate-200 bg-white px-4 py-2 text-sm font-bold text-slate-800 shadow-sm transition hover:bg-slate-50 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-blue-500 focus-visible:ring-offset-2"
+          menuClassName="max-w-[calc(100vw-2rem)]"
+        />
+      </div>
 
-      <section className="rounded-3xl bg-gradient-to-br from-slate-950 to-slate-800 p-5 text-white shadow-xl sm:p-6">
-        <div className="flex flex-col justify-between gap-5 lg:flex-row lg:items-end">
-          <div>
-            <p className="text-sm font-semibold uppercase tracking-[0.25em] text-blue-200">{t('leads')}</p>
-            <h1 className="mt-2 text-3xl font-bold tracking-tight">{currentLead.client}</h1>
-            <p className="mt-2 text-slate-300">{currentLead.projectTitle || currentLead.projectType || t('unknownProject')}</p>
+      <section className="relative overflow-hidden rounded-3xl bg-[linear-gradient(135deg,#020617_0%,#0f172a_58%,#172554_100%)] p-5 text-white shadow-xl shadow-slate-950/15 sm:p-7 lg:p-8">
+        <div className="pointer-events-none absolute -right-24 -top-24 h-64 w-64 rounded-full bg-blue-500/10 blur-3xl" aria-hidden="true" />
+        <div className="pointer-events-none absolute -bottom-28 left-1/3 h-56 w-56 rounded-full bg-cyan-400/5 blur-3xl" aria-hidden="true" />
+        <div className="relative grid min-w-0 gap-7 lg:grid-cols-[minmax(0,1.2fr)_minmax(260px,0.8fr)] lg:items-end lg:gap-10">
+          <div className="min-w-0">
+            <p className="text-xs font-bold uppercase tracking-[0.24em] text-blue-200">{t('lead')}</p>
+            <h1 className="mt-3 break-words text-3xl font-bold tracking-tight sm:text-4xl lg:text-5xl">{leadDisplayName}</h1>
+            <p className="mt-3 max-w-2xl break-words text-sm leading-6 text-slate-300 sm:text-base">{projectDisplayTitle}</p>
             {isArchived && <span className="mt-3 inline-flex rounded-full bg-amber-100 px-3 py-1 text-xs font-bold text-amber-800">{t('archived')}</span>}
           </div>
-          <div className="flex items-center justify-between gap-3 rounded-2xl border border-white/15 bg-white/10 px-4 py-3 lg:block">
-            <p className="text-xs text-slate-300">{t('estimatedValue')}</p>
-            <p className="text-2xl font-bold">{estimatedValueDisplay}</p>
+          <div className="min-w-0 rounded-2xl border border-white/10 bg-white/[0.07] p-4 backdrop-blur-sm sm:p-5">
+            <div className="grid min-w-0 gap-4 sm:grid-cols-2">
+              <div className="min-w-0">
+                <p className="text-xs font-bold uppercase tracking-[0.15em] text-slate-400">{t('currentStage')}</p>
+                <div className="mt-2 inline-flex max-w-full items-center gap-2 rounded-full border border-blue-300/20 bg-blue-400/10 px-3 py-1.5 text-sm font-bold text-blue-100">
+                  <span className="h-2 w-2 shrink-0 rounded-full bg-blue-300" aria-hidden="true" />
+                  <span className="break-words">{currentStageDisplay}</span>
+                </div>
+              </div>
+              <div className="min-w-0 border-t border-white/10 pt-4 sm:border-l sm:border-t-0 sm:pl-4 sm:pt-0">
+                <p className="text-xs font-bold uppercase tracking-[0.15em] text-slate-400">{t('estimatedValue')}</p>
+                <p className={`mt-2 break-words font-bold text-white ${leadHasEstimate ? 'text-2xl' : 'text-base leading-7'}`}>{estimatedValueDisplay}</p>
+              </div>
+            </div>
           </div>
         </div>
       </section>
@@ -588,7 +623,6 @@ export function LeadDetailPage({
           <button disabled={isLeadActionSubmitting} onClick={() => setIsEditOpen(true)} className="flex min-h-11 items-center justify-center gap-2 rounded-2xl border border-slate-200 bg-slate-50 px-4 py-2.5 text-sm font-bold text-slate-800 transition hover:bg-white hover:shadow-sm disabled:cursor-not-allowed disabled:opacity-60">
             <Edit3 className="h-4 w-4" /> {t('editLead')}
           </button>
-          <ActionMenu label={t('more')} items={moreMenuItems} buttonDisabled={isLeadActionSubmitting} containerClassName="w-full sm:w-auto" buttonClassName="inline-flex min-h-11 w-full items-center justify-center gap-2 rounded-2xl border border-slate-200 bg-white px-4 py-2.5 text-sm font-bold text-slate-800 transition hover:bg-slate-50 sm:w-auto" />
         </div>
         {isArchived && (
           <button disabled={isLeadActionSubmitting} onClick={() => setConfirmAction({ mode: 'delete' })} className="mt-3 inline-flex w-full items-center justify-center gap-2 rounded-2xl border border-red-200 bg-red-50 px-4 py-3 text-sm font-bold text-red-700 hover:bg-red-100 disabled:cursor-not-allowed disabled:opacity-60 sm:w-auto">
