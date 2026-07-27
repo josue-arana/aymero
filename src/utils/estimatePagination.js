@@ -4,7 +4,32 @@ export const ESTIMATE_PAPER_WIDTH = 612
 export const ESTIMATE_PAPER_HEIGHT = 792
 export const ESTIMATE_PAPER_MARGIN = 36
 export const ESTIMATE_DOCUMENT_SOURCE_WIDTH = 780
-export const ESTIMATE_DOCUMENT_SOURCE_PADDING = 18
+export const ESTIMATE_DOCUMENT_SOURCE_PADDING = 0
+export const ESTIMATE_DOCUMENT_BORDER_WIDTH = 1
+export const ESTIMATE_DOCUMENT_HORIZONTAL_PADDING = 20
+export const ESTIMATE_RICH_CONTENT_BORDER_WIDTH = 1
+export const ESTIMATE_RICH_CONTENT_HORIZONTAL_PADDING = 12
+
+export function getEstimatePrintableWidthModel(sourceWidth = ESTIMATE_DOCUMENT_SOURCE_WIDTH) {
+  const printablePaperWidth = ESTIMATE_PAPER_WIDTH - (ESTIMATE_PAPER_MARGIN * 2)
+  const sourceToPaperScale = printablePaperWidth / sourceWidth
+  const documentOuterWidth = sourceWidth - (ESTIMATE_DOCUMENT_SOURCE_PADDING * 2)
+  const documentInnerWidth = documentOuterWidth
+    - (ESTIMATE_DOCUMENT_BORDER_WIDTH * 2)
+    - (ESTIMATE_DOCUMENT_HORIZONTAL_PADDING * 2)
+  const richContentWidth = documentInnerWidth
+    - (ESTIMATE_RICH_CONTENT_BORDER_WIDTH * 2)
+    - (ESTIMATE_RICH_CONTENT_HORIZONTAL_PADDING * 2)
+
+  return {
+    printablePaperWidth,
+    sourceToPaperScale,
+    documentOuterWidth,
+    documentInnerWidth,
+    richContentWidth,
+    richContentPaperWidth: richContentWidth * sourceToPaperScale,
+  }
+}
 
 export function calculateEstimatePageBreakOffsets({
   contentHeight,
@@ -168,6 +193,7 @@ export function getEstimatePaginationModel(element) {
     pageBreakOffsets,
     pages,
     pageCount: pages.length,
+    widthModel: getEstimatePrintableWidthModel(elementWidth),
   }
 }
 

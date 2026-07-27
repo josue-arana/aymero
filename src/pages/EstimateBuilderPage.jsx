@@ -40,6 +40,7 @@ import { getPaymentTermLabel, getPaymentTermOptions, isKnownPaymentTermValue } f
 import {
   ESTIMATE_DOCUMENT_SOURCE_PADDING,
   ESTIMATE_DOCUMENT_SOURCE_WIDTH,
+  ESTIMATE_PAPER_MARGIN,
 } from '../utils/estimatePagination'
 
 const simplePricingMode = ESTIMATE_PRICING_SIMPLE
@@ -595,6 +596,8 @@ export function EstimateBuilderPage({ lead, clientRecord = null, t, appLanguage 
     try {
       await printDocumentElement(pdfTemplateRef.current, {
         documentTitle: `${previewEstimateNumber} ${lead?.client || ''}`.trim(),
+        pageMarginInches: ESTIMATE_PAPER_MARGIN / 72,
+        safeInsetInches: 0,
       })
     } catch (error) {
       showToast(error?.message || t('estimatePdfGenerateFailed'), 'error')

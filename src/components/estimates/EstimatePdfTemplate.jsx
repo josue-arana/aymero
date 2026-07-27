@@ -10,6 +10,12 @@ import {
 import { getAcceptedPaymentMethodLabels } from '../../utils/acceptedPaymentMethods'
 import { getPaymentTermLabel } from '../../utils/paymentTerms'
 import { normalizeBrandColor } from '../../data/brandColors'
+import {
+  ESTIMATE_DOCUMENT_BORDER_WIDTH,
+  ESTIMATE_DOCUMENT_HORIZONTAL_PADDING,
+  ESTIMATE_RICH_CONTENT_BORDER_WIDTH,
+  ESTIMATE_RICH_CONTENT_HORIZONTAL_PADDING,
+} from '../../utils/estimatePagination'
 import '../documents/documentDensity.css'
 import './estimateDocument.css'
 
@@ -250,9 +256,9 @@ function RichWorkItemContent({ blocks = [], accentColor, fontSize = '11.5px' }) 
 
     if (block?.type === 'bulletList') {
       return (
-        <ul key={`bullets-${blockIndex}`} style={{ margin: 0, padding: 0, listStyle: 'none', display: 'grid', gap: '4px' }}>
+        <ul key={`bullets-${blockIndex}`} style={{ width: '100%', maxWidth: 'none', minWidth: 0, margin: 0, padding: 0, listStyle: 'none', display: 'grid', gap: '4px' }}>
           {(block.items || []).map((bullet, bulletIndex) => (
-            <li key={`${blockIndex}-${bulletIndex}`} style={{ display: 'grid', gridTemplateColumns: '8px minmax(0,1fr)', gap: '7px', alignItems: 'start' }}>
+            <li key={`${blockIndex}-${bulletIndex}`} style={{ display: 'grid', width: '100%', minWidth: 0, gridTemplateColumns: '5px minmax(0,1fr)', gap: '6px', alignItems: 'start' }}>
               <span aria-hidden="true" style={{ width: '3px', height: '3px', marginTop: '6px', borderRadius: '999px', backgroundColor: accentColor }} />
               <span data-estimate-flow-text="true" style={{ minWidth: 0, whiteSpace: 'pre-wrap', fontSize, lineHeight: 1.48, color: colors.ink, overflowWrap: 'anywhere', wordBreak: 'break-word' }}>
                 <InlineEstimateText segments={bullet.segments} />
@@ -265,7 +271,7 @@ function RichWorkItemContent({ blocks = [], accentColor, fontSize = '11.5px' }) 
 
     if (block?.type === 'paragraph') {
       return (
-        <p data-estimate-flow-text="true" key={`paragraph-${blockIndex}`} style={{ margin: 0, whiteSpace: 'pre-wrap', fontSize, lineHeight: 1.5, color: colors.ink, overflowWrap: 'anywhere', wordBreak: 'break-word' }}>
+        <p data-estimate-flow-text="true" key={`paragraph-${blockIndex}`} style={{ width: '100%', maxWidth: 'none', minWidth: 0, margin: 0, whiteSpace: 'pre-wrap', fontSize, lineHeight: 1.5, color: colors.ink, overflowWrap: 'anywhere', wordBreak: 'break-word' }}>
           <InlineEstimateText segments={block.segments} />
         </p>
       )
@@ -284,8 +290,9 @@ function formatEstimateQuantity(value, language) {
   })
 }
 
-const amountOnlyWorkBreakdownGridColumns = '28px minmax(0,1fr) 96px'
-const quantityRateWorkBreakdownGridColumns = '28px minmax(0,1fr) 44px 72px 82px'
+const amountOnlyWorkBreakdownGridColumns = '24px minmax(0,1fr) 88px'
+const quantityRateWorkBreakdownGridColumns = '24px minmax(0,1fr) 42px 70px 80px'
+const workBreakdownColumnGap = '8px'
 
 function WorkBreakdownItem({ item, index, accentColor, language, showQuantityRateColumns, t }) {
   const descriptionBlocks = Array.isArray(item?.descriptionBlocks) ? item.descriptionBlocks : []
@@ -301,7 +308,7 @@ function WorkBreakdownItem({ item, index, accentColor, language, showQuantityRat
       style={{
         display: 'grid',
         gridTemplateColumns,
-        gap: '10px',
+        gap: workBreakdownColumnGap,
         alignItems: 'start',
         padding: '13px 0',
         borderTop: index === 0 ? 'none' : `1px solid ${colors.slate200}`,
@@ -328,7 +335,7 @@ function WorkBreakdownItem({ item, index, accentColor, language, showQuantityRat
       >
         {index + 1}
       </div>
-      <div style={{ minWidth: 0 }}>
+      <div style={{ width: '100%', maxWidth: 'none', minWidth: 0 }}>
         <p
           data-estimate-flow-text="true"
           style={{
@@ -346,7 +353,7 @@ function WorkBreakdownItem({ item, index, accentColor, language, showQuantityRat
             : t('item')}
         </p>
         {descriptionBlocks.length ? (
-          <div style={{ marginTop: '5px', display: 'grid', gap: '3px' }}>
+          <div style={{ width: '100%', maxWidth: 'none', minWidth: 0, marginTop: '5px', display: 'grid', gap: '3px' }}>
             <RichWorkItemContent blocks={descriptionBlocks} accentColor={accentColor} />
           </div>
         ) : null}
@@ -356,15 +363,15 @@ function WorkBreakdownItem({ item, index, accentColor, language, showQuantityRat
       </div>
       {showQuantityRateColumns ? (
         <>
-          <div style={{ paddingTop: '3px', textAlign: 'right', fontSize: '11px', lineHeight: 1.4, color: colors.ink }}>
+          <div style={{ paddingTop: '3px', textAlign: 'right', whiteSpace: 'nowrap', fontSize: '11px', lineHeight: 1.4, color: colors.ink }}>
             {hasQuantityRate ? formatEstimateQuantity(item?.quantity, language) : ''}
           </div>
-          <div style={{ paddingTop: '3px', textAlign: 'right', fontSize: '11px', lineHeight: 1.4, color: colors.ink }}>
+          <div style={{ paddingTop: '3px', textAlign: 'right', whiteSpace: 'nowrap', fontSize: '11px', lineHeight: 1.4, color: colors.ink }}>
             {hasQuantityRate ? currency.format(Number(item?.rate || 0)) : ''}
           </div>
         </>
       ) : null}
-      <div style={{ paddingTop: '3px', textAlign: 'right', fontSize: '11.5px', lineHeight: 1.4, fontWeight: 700, color: colors.ink }}>
+      <div style={{ paddingTop: '3px', textAlign: 'right', whiteSpace: 'nowrap', fontSize: '11.5px', lineHeight: 1.4, fontWeight: 700, color: colors.ink }}>
         {currency.format(Number(item?.total || 0))}
       </div>
     </div>
@@ -476,9 +483,10 @@ export function EstimatePdfTemplate({
       data-estimate-document="true"
       style={{
         ...getDocumentDensityVariables(),
+        '--document-card-padding-x': `${ESTIMATE_DOCUMENT_HORIZONTAL_PADDING}px`,
         overflow: 'hidden',
         borderRadius: 'var(--document-card-radius)',
-        border: `1px solid ${colors.slate200}`,
+        border: `${ESTIMATE_DOCUMENT_BORDER_WIDTH}px solid ${colors.slate200}`,
         backgroundColor: colors.paper,
         padding: 'var(--document-card-padding-y) var(--document-card-padding-x) var(--document-card-padding-y)',
         boxShadow: '0 18px 48px rgba(15, 23, 42, 0.08)',
@@ -601,10 +609,14 @@ export function EstimatePdfTemplate({
           <div
             style={{
               marginTop: 'var(--document-scope-gap)',
-              border: `1px solid ${colors.slate200}`,
               borderRadius: '14px',
               backgroundColor: colors.white,
-              padding: '13px 15px',
+              width: '100%',
+              maxWidth: 'none',
+              minWidth: 0,
+              boxSizing: 'border-box',
+              border: `${ESTIMATE_RICH_CONTENT_BORDER_WIDTH}px solid ${colors.slate200}`,
+              padding: `13px ${ESTIMATE_RICH_CONTENT_HORIZONTAL_PADDING}px`,
               display: 'grid',
               gap: '5px',
             }}
@@ -635,7 +647,7 @@ export function EstimatePdfTemplate({
               style={{
                 display: 'grid',
                 gridTemplateColumns: workBreakdownGridColumns,
-                gap: '10px',
+                gap: workBreakdownColumnGap,
                 marginTop: 'var(--document-work-gap)',
                 borderTop: `1px solid ${colors.slate200}`,
                 borderBottom: `1px solid ${colors.slate200}`,
@@ -651,12 +663,12 @@ export function EstimatePdfTemplate({
               <span style={{ gridColumn: '1 / 3' }} aria-hidden="true" />
               {showQuantityRateColumns ? (
                 <>
-                  <span style={{ textAlign: 'right' }}>{t('qty')}</span>
-                  <span style={{ textAlign: 'right' }}>{t('rate')}</span>
-                  <span style={{ textAlign: 'right' }}>{t('total')}</span>
+                  <span style={{ textAlign: 'right', whiteSpace: 'nowrap' }}>{t('qty')}</span>
+                  <span style={{ textAlign: 'right', whiteSpace: 'nowrap' }}>{t('rate')}</span>
+                  <span style={{ textAlign: 'right', whiteSpace: 'nowrap' }}>{t('total')}</span>
                 </>
               ) : (
-                <span style={{ textAlign: 'right' }}>{t('amount')}</span>
+                <span style={{ textAlign: 'right', whiteSpace: 'nowrap' }}>{t('amount')}</span>
               )}
             </div>
           </div>
@@ -693,7 +705,7 @@ export function EstimatePdfTemplate({
         <div style={{ minWidth: 0, borderTop: `1px solid ${colors.slate300}` }}>
           <div style={{ padding: '14px 0' }}>
             <LowerSectionHeading accentColor={accentColor}>{t('paymentTerms')}</LowerSectionHeading>
-            <div data-estimate-flow-text="true" style={{ marginTop: '6px', whiteSpace: 'pre-line', fontSize: '11px', lineHeight: 1.48, color: colors.ink, overflowWrap: 'anywhere', wordBreak: 'break-word' }}>
+            <div data-estimate-flow-text="true" style={{ width: '100%', maxWidth: 'none', minWidth: 0, marginTop: '6px', whiteSpace: 'pre-line', fontSize: '11px', lineHeight: 1.48, color: colors.ink, overflowWrap: 'anywhere', wordBreak: 'break-word' }}>
               {getPaymentTermLabel(paymentTerms, t)}
             </div>
           </div>
@@ -701,7 +713,7 @@ export function EstimatePdfTemplate({
           {hasContractorMessage ? (
             <div style={{ borderTop: `1px solid ${colors.slate200}`, padding: '14px 0' }}>
               <LowerSectionHeading accentColor={accentColor}>{t('messageFromContractor')}</LowerSectionHeading>
-              <div style={{ marginTop: '7px', display: 'grid', gap: '3px' }}>
+              <div style={{ width: '100%', maxWidth: 'none', minWidth: 0, marginTop: '7px', display: 'grid', gap: '3px' }}>
                 <RichWorkItemContent blocks={contractorMessage.contentBlocks} accentColor={accentColor} />
               </div>
             </div>

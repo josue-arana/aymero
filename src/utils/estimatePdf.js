@@ -12,6 +12,7 @@ import { getAcceptedPaymentMethodLabels } from './acceptedPaymentMethods'
 import {
   ESTIMATE_PAPER_MARGIN,
   ESTIMATE_PAPER_WIDTH,
+  ESTIMATE_RICH_CONTENT_HORIZONTAL_PADDING,
   getEstimatePaginationModel,
   waitForEstimateDocumentAssets,
 } from './estimatePagination'
@@ -357,19 +358,20 @@ function buildFallbackPdf({
     const topOffset = options.topOffset || 34
     const bottomPadding = options.bottomPadding || 12
     const minHeight = options.minHeight || 84
-    const contentWidth = cardWidth - 84
+    const blockWidth = cardWidth - 48
+    const contentWidth = blockWidth - (ESTIMATE_RICH_CONTENT_HORIZONTAL_PADDING * 2)
     const blocks = options.contentBlocks || normalizeEstimateRichText(content).blocks
     const lines = buildFormattedLines(blocks, contentWidth, { size: 11 })
     const blockHeight = Math.max(minHeight, topOffset + (lines.length * lineHeight) + bottomPadding)
 
     ensureSpace(blockHeight + 12)
     pdf.setFillColor(safeColors.slate50)
-    pdf.roundedRect(innerX, cursorY, cardWidth - 48, blockHeight, 18, 18, 'F')
-    drawText(title.toUpperCase(), innerX + 18, cursorY + 18, { bold: true, size: 10, color: safeColors.slate400 })
+    pdf.roundedRect(innerX, cursorY, blockWidth, blockHeight, 18, 18, 'F')
+    drawText(title.toUpperCase(), innerX + ESTIMATE_RICH_CONTENT_HORIZONTAL_PADDING, cursorY + 18, { bold: true, size: 10, color: safeColors.slate400 })
 
     const contentStartY = cursorY + topOffset
     lines.forEach((line, index) => {
-      drawFormattedLine(line, innerX + 18, contentStartY + (index * lineHeight), {
+      drawFormattedLine(line, innerX + ESTIMATE_RICH_CONTENT_HORIZONTAL_PADDING, contentStartY + (index * lineHeight), {
         size: 11,
         color: safeColors.slate700,
       })
@@ -447,7 +449,7 @@ function buildFallbackPdf({
   }
 
   if (lineItems.length > 0) {
-    const itemDescriptionWidth = showQuantityRateColumns ? cardWidth - 300 : cardWidth - 150
+    const itemDescriptionWidth = showQuantityRateColumns ? cardWidth - 282 : cardWidth - 134
     const totalColumnX = cardX + cardWidth - 36
     const rateColumnX = totalColumnX - 88
     const quantityColumnX = rateColumnX - 66

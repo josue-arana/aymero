@@ -1,8 +1,6 @@
-const printPageMarginInches = 0.45
+const defaultPrintPageMarginInches = 0.45
 const printPageWidthInches = 8.5
-const printableWidthInches = printPageWidthInches - (printPageMarginInches * 2)
-const printSafeInsetInches = 0.2
-const printContentMaxWidthInches = printableWidthInches - printSafeInsetInches
+const defaultPrintSafeInsetInches = 0.2
 
 async function copyDocumentStyles(targetDocument) {
   const sourceNodes = Array.from(document.querySelectorAll('style, link[rel="stylesheet"]'))
@@ -58,7 +56,11 @@ function preparePrintContentNode(contentNode) {
   }
 }
 
-export async function printDocumentElement(element, { documentTitle = 'Document' } = {}) {
+export async function printDocumentElement(element, {
+  documentTitle = 'Document',
+  pageMarginInches = defaultPrintPageMarginInches,
+  safeInsetInches = defaultPrintSafeInsetInches,
+} = {}) {
   if (!element) {
     throw new Error('Document preview is not ready.')
   }
@@ -70,6 +72,14 @@ export async function printDocumentElement(element, { documentTitle = 'Document'
   }
 
   try {
+    const normalizedPageMargin = Number.isFinite(Number(pageMarginInches))
+      ? Math.max(Number(pageMarginInches), 0)
+      : defaultPrintPageMarginInches
+    const normalizedSafeInset = Number.isFinite(Number(safeInsetInches))
+      ? Math.max(Number(safeInsetInches), 0)
+      : defaultPrintSafeInsetInches
+    const printableWidthInches = printPageWidthInches - (normalizedPageMargin * 2)
+    const printContentMaxWidthInches = Math.max(printableWidthInches - normalizedSafeInset, 0)
     const contentNode = element.cloneNode(true)
     preparePrintContentNode(contentNode)
 
@@ -81,12 +91,12 @@ export async function printDocumentElement(element, { documentTitle = 'Document'
         <meta charset="utf-8" />
         <title>${escapeHtml(documentTitle)}</title>
         <style>
-          @page { size: letter; margin: ${printPageMarginInches}in; }
+          @page { size: letter; margin: ${normalizedPageMargin}in; }
           html, body { margin: 0; padding: 0; width: 100%; background: #ffffff; color: #0f172a; }
           body { font-family: ui-sans-serif, system-ui, sans-serif; }
           img { max-width: 100%; }
           [data-print-root="true"] {
-            width: calc(100% - ${printSafeInsetInches}in);
+            width: calc(100% - ${normalizedSafeInset}in);
             max-width: ${printContentMaxWidthInches}in;
             min-width: 0;
             margin: 0 auto;
@@ -152,7 +162,7 @@ export async function printDocumentElement(element, { documentTitle = 'Document'
             html, body { background: #ffffff; }
             body { -webkit-print-color-adjust: exact; print-color-adjust: exact; }
             [data-print-root="true"] {
-              width: calc(100% - ${printSafeInsetInches}in);
+              width: calc(100% - ${normalizedSafeInset}in);
               max-width: ${printContentMaxWidthInches}in;
             }
           }
@@ -165,6 +175,16 @@ export async function printDocumentElement(element, { documentTitle = 'Document'
   `)
     printWindow.document.close()
     await copyDocumentStyles(printWindow.document)
+
+    const layoutOverride = printWindow.document.createElement('style')
+    layoutOverride.textContent = `
+      @page { size: letter; margin: ${normalizedPageMargin}in; }
+      [data-print-root="true"] {
+        width: calc(100% - ${normalizedSafeInset}in);
+        max-width: ${printContentMaxWidthInches}in;
+      }
+    `
+    printWindow.document.head.appendChild(layoutOverride)
 
     const mountPoint = printWindow.document.querySelector('[data-print-root="true"]')
 

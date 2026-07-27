@@ -23,6 +23,7 @@ import { resolveEstimatePricingMode } from '../../utils/estimateDocument'
 import {
   ESTIMATE_DOCUMENT_SOURCE_PADDING,
   ESTIMATE_DOCUMENT_SOURCE_WIDTH,
+  ESTIMATE_PAPER_MARGIN,
 } from '../../utils/estimatePagination'
 
 function EmptyState({ message }) {
@@ -399,6 +400,8 @@ export function PortalSummary({
     try {
       await printDocumentElement(estimatePreviewRef.current, {
         documentTitle: `${estimateNumber} ${previewLead.client || ''}`.trim(),
+        pageMarginInches: ESTIMATE_PAPER_MARGIN / 72,
+        safeInsetInches: 0,
       })
     } catch (error) {
       showToast(error?.message || t('estimatePdfGenerateFailed'), 'error')
