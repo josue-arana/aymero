@@ -226,7 +226,23 @@ function MaterialTag({ materialsStatus, accentColor, t }) {
   )
 }
 
-function RichWorkItemContent({ blocks = [], accentColor }) {
+function InlineEstimateText({ segments = [] }) {
+  return segments.map((segment, index) => (
+    <span
+      key={index}
+      style={{
+        fontWeight: segment.bold ? 700 : 'inherit',
+        textDecoration: segment.underline ? 'underline' : 'none',
+        textDecorationThickness: segment.underline ? '1px' : undefined,
+        textUnderlineOffset: segment.underline ? '2px' : undefined,
+      }}
+    >
+      {segment.text}
+    </span>
+  ))
+}
+
+function RichWorkItemContent({ blocks = [], accentColor, fontSize = '11.5px' }) {
   return blocks.map((block, blockIndex) => {
     if (block?.type === 'lineBreak') {
       return <div key={`break-${blockIndex}`} style={{ height: '7px' }} aria-hidden="true" />
@@ -238,8 +254,8 @@ function RichWorkItemContent({ blocks = [], accentColor }) {
           {(block.items || []).map((bullet, bulletIndex) => (
             <li key={`${blockIndex}-${bulletIndex}`} style={{ display: 'grid', gridTemplateColumns: '8px minmax(0,1fr)', gap: '7px', alignItems: 'start' }}>
               <span aria-hidden="true" style={{ width: '3px', height: '3px', marginTop: '6px', borderRadius: '999px', backgroundColor: accentColor }} />
-              <span data-estimate-flow-text="true" style={{ minWidth: 0, whiteSpace: 'pre-wrap', fontSize: '11.5px', lineHeight: 1.48, color: colors.ink, overflowWrap: 'anywhere', wordBreak: 'break-word' }}>
-                {bullet.text}
+              <span data-estimate-flow-text="true" style={{ minWidth: 0, whiteSpace: 'pre-wrap', fontSize, lineHeight: 1.48, color: colors.ink, overflowWrap: 'anywhere', wordBreak: 'break-word' }}>
+                <InlineEstimateText segments={bullet.segments} />
               </span>
             </li>
           ))}
@@ -249,8 +265,8 @@ function RichWorkItemContent({ blocks = [], accentColor }) {
 
     if (block?.type === 'paragraph') {
       return (
-        <p data-estimate-flow-text="true" key={`paragraph-${blockIndex}`} style={{ margin: 0, whiteSpace: 'pre-wrap', fontSize: '11.5px', lineHeight: 1.5, color: colors.ink, overflowWrap: 'anywhere', wordBreak: 'break-word' }}>
-          {block.text}
+        <p data-estimate-flow-text="true" key={`paragraph-${blockIndex}`} style={{ margin: 0, whiteSpace: 'pre-wrap', fontSize, lineHeight: 1.5, color: colors.ink, overflowWrap: 'anywhere', wordBreak: 'break-word' }}>
+          <InlineEstimateText segments={block.segments} />
         </p>
       )
     }
@@ -325,7 +341,9 @@ function WorkBreakdownItem({ item, index, accentColor, language, showQuantityRat
             wordBreak: 'break-word',
           }}
         >
-          {item?.title || t('item')}
+          {item?.title
+            ? <InlineEstimateText segments={item?.titleSegments} />
+            : t('item')}
         </p>
         {descriptionBlocks.length ? (
           <div style={{ marginTop: '5px', display: 'grid', gap: '3px' }}>
@@ -432,7 +450,7 @@ export function EstimatePdfTemplate({
     messageFromContractor,
     validUntil,
   })
-  const scopeText = normalizedDocument.scope.text
+  const scopeContentBlocks = normalizedDocument.scope.contentBlocks
   const workItems = normalizedDocument.workItems
   const contractorMessage = normalizedDocument.messageFromContractor
   const documentTotal = normalizedDocument.totals.total
@@ -581,22 +599,17 @@ export function EstimatePdfTemplate({
             {t('scopeOfWork')}
           </p>
           <div
-            data-estimate-flow-text="true"
             style={{
               marginTop: 'var(--document-scope-gap)',
               border: `1px solid ${colors.slate200}`,
               borderRadius: '14px',
               backgroundColor: colors.white,
               padding: '13px 15px',
-              whiteSpace: 'pre-wrap',
-              fontSize: '12px',
-              lineHeight: 1.5,
-              color: colors.ink,
-              overflowWrap: 'anywhere',
-              wordBreak: 'break-word',
+              display: 'grid',
+              gap: '5px',
             }}
           >
-            {scopeText}
+            <RichWorkItemContent blocks={scopeContentBlocks} accentColor={accentColor} fontSize="12px" />
           </div>
         </section>
       ) : null}

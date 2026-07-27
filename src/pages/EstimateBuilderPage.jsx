@@ -4,6 +4,8 @@ import { Archive, ArrowLeft, Trash2, Undo2 } from 'lucide-react'
 import { SelectField } from '../components/ui/SelectField'
 import { InfoCard } from '../components/ui/InfoCard'
 import { EstimatePdfTemplate } from '../components/estimates/EstimatePdfTemplate'
+import { EstimateFormattedText } from '../components/estimates/EstimateFormattedText'
+import { LightweightFormattedTextarea } from '../components/estimates/LightweightFormattedTextarea'
 import { currency } from '../utils/formatters'
 import { getPortalData } from '../utils/portal'
 import { archivePanelButtonClasses } from '../utils/buttonStyles'
@@ -28,8 +30,10 @@ import {
   ESTIMATE_PRICING_DETAILED,
   ESTIMATE_PRICING_SIMPLE,
   getValidExplicitEstimateItems,
+  hasMeaningfulEstimateFormattedText,
   normalizeEstimateDocument,
   resolveEstimatePricingMode,
+  sanitizeEstimateFormattedText,
 } from '../utils/estimateDocument'
 import { normalizeDocumentLanguageOverride, resolveClientFacingLanguage } from '../utils/language'
 import { getPaymentTermLabel, getPaymentTermOptions, isKnownPaymentTermValue } from '../utils/paymentTerms'
@@ -164,8 +168,6 @@ function buildEstimateDraftState({ savedEstimate = {}, lead, companySettings, t 
 export function EstimateBuilderPage({ lead, clientRecord = null, t, appLanguage = 'en', companySettings, isArchived = false, projectAvailable = true, onBack, backLabel, onSaveEstimate, onSendEstimate, onConvert, onSyncContract, onOpenContract, onArchiveEstimate, onRestoreEstimate, onDeleteEstimate }) {
   const { showToast } = useToast()
   const pdfTemplateRef = useRef(null)
-  const scopeTextareaRef = useRef(null)
-  const lineItemTextareaRefs = useRef([])
   const draftDirtyRef = useRef(false)
   const lastInitializedSourceKeyRef = useRef('')
   const lastInitializedOwnerKeyRef = useRef('')
@@ -352,12 +354,22 @@ export function EstimateBuilderPage({ lead, clientRecord = null, t, appLanguage 
   }), [companySettings?.company, estimateDocumentModel, estimateOutputLanguage, estimateT, lead, paymentTerms, previewEstimateDate, previewEstimateNumber])
 
   function getEstimatePayload() {
+    const sanitizedScope = sanitizeEstimateFormattedText(scope)
+    const sanitizedLineItems = lineItems.map((item) => {
+      const sanitizedName = sanitizeEstimateFormattedText(item?.name)
+
+      return {
+        ...item,
+        name: hasMeaningfulEstimateFormattedText(sanitizedName) ? sanitizedName : '',
+      }
+    })
+
     return {
       id: savedEstimate.id || undefined,
       number: savedEstimate.number || generateEstimateNumber(lead),
       total: estimateTotal,
-      summary: scope,
-      lineItems: isDetailedPricing ? lineItems : [],
+      summary: hasMeaningfulEstimateFormattedText(sanitizedScope) ? sanitizedScope : '',
+      lineItems: isDetailedPricing ? sanitizedLineItems : [],
       materialsIncluded,
       paymentTerms,
       estimateLanguage: estimateLanguage || '',
@@ -536,42 +548,6 @@ export function EstimateBuilderPage({ lead, clientRecord = null, t, appLanguage 
     setTotalInput(formatAmountInputValue(safeValue))
   }
 
-  function insertBulletIntoTextarea(textarea, currentValue, onUpdate) {
-    if (!textarea) {
-      return
-    }
-
-    const selectionStart = textarea.selectionStart ?? textarea.value.length
-    const selectionEnd = textarea.selectionEnd ?? selectionStart
-    const prefix = currentValue.slice(0, selectionStart)
-    const suffix = currentValue.slice(selectionEnd)
-    const needsLeadingBreak = prefix.length > 0 && !prefix.endsWith('\n')
-    const bulletText = `${needsLeadingBreak ? '\n' : ''}- `
-    const nextValue = `${prefix}${bulletText}${suffix}`
-    const nextCaretPosition = prefix.length + bulletText.length
-
-    onUpdate(nextValue)
-
-    requestAnimationFrame(() => {
-      textarea.focus()
-      textarea.setSelectionRange(nextCaretPosition, nextCaretPosition)
-      autosizeLineItemTextarea(textarea)
-    })
-  }
-
-  function insertBulletIntoScope() {
-    insertBulletIntoTextarea(scopeTextareaRef.current, scope, (nextValue) => {
-      markDraftDirty()
-      setScope(nextValue)
-    })
-  }
-
-  function insertBulletIntoLineItem(index) {
-    const textarea = lineItemTextareaRefs.current[index]
-    const currentValue = lineItems[index]?.name || ''
-    insertBulletIntoTextarea(textarea, currentValue, (nextValue) => updateLineItem(index, 'name', nextValue))
-  }
-
   function useDetailedPricing() {
     markDraftDirty()
     setLineItems((items) => items.map((item) => ({
@@ -651,22 +627,16 @@ export function EstimateBuilderPage({ lead, clientRecord = null, t, appLanguage 
           </InfoCard>
           <InfoCard title={t('scopeOfWork')}>
             {isEditing ? (
-              <div className="space-y-3">
-                <textarea
-                  ref={scopeTextareaRef}
-                  value={scope}
-                  onChange={(event) => { markDraftDirty(); setScope(event.target.value) }}
-                  rows={8}
-                  className="w-full rounded-2xl border border-slate-200 bg-slate-50 p-4 text-sm leading-6 outline-none focus:border-blue-500 focus:ring-4 focus:ring-blue-100"
-                />
-                <div className="flex justify-end">
-                  <button onClick={insertBulletIntoScope} className="rounded-xl border border-slate-200 bg-white px-3 py-2 text-sm font-bold text-slate-700 hover:bg-slate-50">
-                    {t('addBullet')}
-                  </button>
-                </div>
-              </div>
-            ) : String(scope || '').trim() ? (
-              <div className="rounded-2xl bg-slate-50 p-4 text-sm leading-6 text-slate-700 whitespace-pre-line">{scope}</div>
+              <LightweightFormattedTextarea
+                value={scope}
+                onChange={(nextValue) => { markDraftDirty(); setScope(nextValue) }}
+                rows={8}
+                ariaLabel={t('scopeOfWork')}
+                t={t}
+                className="min-h-[192px] resize-y p-4 text-sm leading-6"
+              />
+            ) : hasMeaningfulEstimateFormattedText(scope) ? (
+              <EstimateFormattedText value={scope} className="rounded-2xl bg-slate-50 p-4 text-sm leading-6 text-slate-700" />
             ) : null}
           </InfoCard>
 
@@ -691,26 +661,23 @@ export function EstimateBuilderPage({ lead, clientRecord = null, t, appLanguage 
                         {isEditing ? (
                           <div className="grid gap-3 sm:grid-cols-[minmax(0,1fr)_168px] sm:items-start">
                             <div className="min-w-0 space-y-2">
-                              <div className="flex flex-wrap items-center justify-between gap-3">
-                                <label className="block text-xs font-bold uppercase tracking-[0.14em] text-slate-400">
-                                  {t('lineItemDetails')}
-                                </label>
-                                <button type="button" onClick={() => insertBulletIntoLineItem(index)} className="shrink-0 rounded-lg border border-slate-200 bg-white px-2.5 py-1.5 text-xs font-bold text-slate-700 hover:bg-slate-50">
-                                  {t('addBullet')}
-                                </button>
-                              </div>
-                              <textarea
+                              <label className="block text-xs font-bold uppercase tracking-[0.14em] text-slate-400">
+                                {t('lineItemDetails')}
+                              </label>
+                              <LightweightFormattedTextarea
                                 ref={(element) => {
-                                  lineItemTextareaRefs.current[index] = element
                                   if (element) {
                                     autosizeLineItemTextarea(element)
                                   }
                                 }}
                                 value={item.name}
-                                onChange={(event) => handleLineItemTextareaInput(index, event.target.value, event.target)}
+                                onChange={(nextValue, element) => handleLineItemTextareaInput(index, nextValue, element)}
+                                onInput={autosizeLineItemTextarea}
                                 placeholder={t('enterScopeDetails')}
                                 rows={3}
-                                className="min-h-[104px] w-full resize-none rounded-xl border border-slate-200 px-3 py-3 text-sm leading-6 outline-none focus:border-blue-500 focus:ring-4 focus:ring-blue-100"
+                                ariaLabel={t('lineItemDetails')}
+                                t={t}
+                                className="min-h-[104px] resize-none px-3 py-3 text-sm leading-6"
                               />
                             </div>
                             <div className="min-w-0 flex flex-col gap-2 sm:pt-6">
@@ -760,7 +727,7 @@ export function EstimateBuilderPage({ lead, clientRecord = null, t, appLanguage 
                           </div>
                         ) : (
                           <div className="grid gap-3 sm:grid-cols-[minmax(0,1fr)_168px] sm:items-start">
-                            <div className="rounded-xl bg-slate-50 px-3 py-3 text-sm leading-6 text-slate-700 whitespace-pre-line break-words">{item.name || t('item')}</div>
+                            <EstimateFormattedText value={item.name || t('item')} className="rounded-xl bg-slate-50 px-3 py-3 text-sm leading-6 text-slate-700" />
                             <div className="space-y-2">
                               <div className="rounded-xl bg-slate-50 px-3 py-3 text-right text-sm font-bold text-slate-900">{currency.format(Number(item.amount || 0))}</div>
                               <div className={`rounded-xl px-3 py-2 text-xs font-bold ${item.materialsIncluded ? 'bg-emerald-50 text-emerald-700 ring-1 ring-emerald-100' : 'bg-slate-50 text-slate-700 ring-1 ring-slate-200'}`}>

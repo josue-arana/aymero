@@ -1,4 +1,7 @@
-const bulletLinePattern = /^\s*([-*•])\s*(.*)$/
+const bulletLinePattern = /^\s*((?:[-•])|(?:\*(?!\*)))[ \t]*(.*)$/
+const unsupportedHtmlBlockPattern = /<(script|style|iframe|object|embed|svg|math|video|audio)\b[^>]*>[\s\S]*?<\/\1\s*>/gi
+const htmlTagPattern = /<\/?[a-z][^>]*>/gi
+const unsafeUrlPattern = /\b(?:javascript|vbscript|data\s*:\s*text\/html)\s*:[^\s<>"']*/gi
 export const ESTIMATE_MATERIALS_INCLUDED = 'materials_included'
 export const ESTIMATE_LABOR_ONLY = 'labor_only'
 export const ESTIMATE_OWNER_SUPPLIED_MATERIALS = 'owner_supplied_materials'
@@ -14,6 +17,75 @@ function toFiniteNumber(value, fallback = 0) {
 
 function normalizeText(value) {
   return typeof value === 'string' ? value : String(value || '')
+}
+
+/**
+ * Estimate rich text intentionally uses a constrained, text-only format:
+ * **bold**, ++underline++, "- " bullets, paragraphs, and line breaks.
+ * HTML is never part of the storage contract.
+ */
+export function sanitizeEstimateFormattedText(value) {
+  return normalizeText(value)
+    .replace(/\r\n?/g, '\n')
+    .replace(/<!--[\s\S]*?-->/g, '')
+    .replace(unsupportedHtmlBlockPattern, '')
+    .replace(htmlTagPattern, '')
+    .replace(unsafeUrlPattern, '')
+    .replace(/\u0000/g, '')
+    .replace(/[\u0001-\u0008\u000B\u000C\u000E-\u001F\u007F]/g, '')
+}
+
+function appendInlineSegment(segments, text, bold, underline) {
+  if (!text) return
+
+  const previous = segments[segments.length - 1]
+  if (previous && previous.bold === bold && previous.underline === underline) {
+    previous.text += text
+    return
+  }
+
+  segments.push({ text, bold, underline })
+}
+
+export function parseEstimateInlineFormatting(value) {
+  const text = sanitizeEstimateFormattedText(value)
+  const segments = []
+  let bold = false
+  let underline = false
+  let index = 0
+
+  while (index < text.length) {
+    const marker = text.slice(index, index + 2)
+    const isBoldMarker = marker === '**'
+    const isUnderlineMarker = marker === '++'
+
+    const closesActiveFormatting = (isBoldMarker && bold) || (isUnderlineMarker && underline)
+    const opensPairedFormatting = (isBoldMarker || isUnderlineMarker) && text.indexOf(marker, index + 2) !== -1
+
+    if (closesActiveFormatting || opensPairedFormatting) {
+      if (isBoldMarker) bold = !bold
+      if (isUnderlineMarker) underline = !underline
+      index += 2
+      continue
+    }
+
+    appendInlineSegment(segments, text[index], bold, underline)
+    index += 1
+  }
+
+  return segments
+}
+
+export function getEstimateFormattedPlainText(value) {
+  return parseEstimateInlineFormatting(value).map((segment) => segment.text).join('')
+}
+
+export function hasMeaningfulEstimateFormattedText(value) {
+  const plainText = getEstimateFormattedPlainText(value)
+    .replace(/^\s*[-*•]\s*/gm, '')
+    .replace(/\s/g, '')
+
+  return Boolean(plainText)
 }
 
 function hasFiniteStoredNumber(value) {
@@ -100,7 +172,7 @@ export function isValidExplicitEstimateItem(item = {}) {
     item?.name,
     item?.title,
     item?.description,
-  ].map(normalizeText).join('').trim()
+  ].map(sanitizeEstimateFormattedText).join('\n')
   const hasStoredAmount = [item?.amount, item?.total, item?.rate].some((value) => (
     value !== ''
     && value !== null
@@ -109,7 +181,7 @@ export function isValidExplicitEstimateItem(item = {}) {
     && Number(value) !== 0
   ))
 
-  return Boolean(itemText || hasStoredAmount)
+  return Boolean(hasMeaningfulEstimateFormattedText(itemText) || hasStoredAmount)
 }
 
 function isLegacySyntheticScopeItem(item = {}) {
@@ -145,7 +217,7 @@ export function resolveEstimatePricingMode(pricingMode, lineItems = []) {
 }
 
 export function normalizeEstimateRichText(value) {
-  const rawText = normalizeText(value)
+  const rawText = sanitizeEstimateFormattedText(value)
   if (!rawText) {
     return {
       rawText,
@@ -165,6 +237,7 @@ export function normalizeEstimateRichText(value) {
       type: 'paragraph',
       text: paragraphLines.join('\n'),
       lines: paragraphLines,
+      segments: parseEstimateInlineFormatting(paragraphLines.join('\n')),
     })
     paragraphLines = []
   }
@@ -187,6 +260,7 @@ export function normalizeEstimateRichText(value) {
       bulletItems.push({
         text: bulletMatch[2],
         marker: bulletMatch[1],
+        segments: parseEstimateInlineFormatting(bulletMatch[2]),
       })
       return
     }
@@ -212,7 +286,7 @@ export function normalizeEstimateRichText(value) {
 }
 
 function splitLegacyEstimateItemText(value) {
-  const sourceText = normalizeText(value).trim()
+  const sourceText = sanitizeEstimateFormattedText(value).trim()
 
   if (!sourceText) {
     return {
@@ -290,8 +364,8 @@ function normalizeEstimateWorkItem(item = {}, {
   fallbackTotal = 0,
   idPrefix = 'estimate-item',
 } = {}) {
-  const sourceText = normalizeText(item?.name).trim()
-    || [normalizeText(item?.title).trim(), normalizeText(item?.description).trim()]
+  const sourceText = sanitizeEstimateFormattedText(item?.name).trim()
+    || [sanitizeEstimateFormattedText(item?.title).trim(), sanitizeEstimateFormattedText(item?.description).trim()]
       .filter(Boolean)
       .join('\n')
   const textParts = splitLegacyEstimateItemText(sourceText)
@@ -316,6 +390,7 @@ function normalizeEstimateWorkItem(item = {}, {
   return {
     id: item?.id || `${idPrefix}-${displayOrder + 1}`,
     title: textParts.title,
+    titleSegments: parseEstimateInlineFormatting(textParts.title),
     description: textParts.description,
     contentBlocks: normalizeEstimateRichText(sourceText).blocks,
     descriptionBlocks: normalizeEstimateRichText(textParts.description).blocks,
@@ -342,8 +417,8 @@ export function normalizeEstimateDocument({
   messageFromContractor = '',
   validUntil = '',
 } = {}) {
-  const scopeText = normalizeText(scope)
-  const contractorMessageText = normalizeText(messageFromContractor)
+  const scopeText = sanitizeEstimateFormattedText(scope)
+  const contractorMessageText = sanitizeEstimateFormattedText(messageFromContractor)
   const sourceItems = Array.isArray(lineItems) ? lineItems : []
   const normalizedPricingMode = resolveEstimatePricingMode(pricingMode, sourceItems)
   const explicitItems = getValidExplicitEstimateItems(sourceItems)
@@ -387,7 +462,7 @@ export function normalizeEstimateDocument({
     },
     sections: {
       scope: {
-        visible: Boolean(scopeText.trim()),
+        visible: hasMeaningfulEstimateFormattedText(scopeText),
       },
       workBreakdown: {
         visible: normalizedPricingMode === ESTIMATE_PRICING_DETAILED && workItems.length > 0,
@@ -395,7 +470,7 @@ export function normalizeEstimateDocument({
         showQuantityRateColumns: workBreakdownPricingDisplayMode === ESTIMATE_ITEM_PRICING_QUANTITY_RATE,
       },
       messageFromContractor: {
-        visible: Boolean(contractorMessageText.trim()),
+        visible: hasMeaningfulEstimateFormattedText(contractorMessageText),
       },
     },
   }
@@ -413,15 +488,28 @@ export function ensureNormalizedEstimateDocument(documentModel, legacyInput = {}
     const normalizedWorkItems = normalizedPricingMode === ESTIMATE_PRICING_DETAILED
       ? legacyWorkItems
       : []
-    const legacyMessageText = typeof documentModel.messageFromContractor === 'string'
-      ? documentModel.messageFromContractor
-      : normalizeText(documentModel?.messageFromContractor?.text)
+    const legacyMessageText = sanitizeEstimateFormattedText(
+      typeof documentModel.messageFromContractor === 'string'
+        ? documentModel.messageFromContractor
+        : documentModel?.messageFromContractor?.text
+    )
     const legacySubtotal = documentModel.totals.subtotal === undefined
       ? normalizedPricingMode === ESTIMATE_PRICING_DETAILED
         ? normalizedWorkItems.reduce((sum, item) => sum + toFiniteNumber(item?.total), 0)
         : toFiniteNumber(documentModel?.simpleTotal ?? documentModel?.totals?.total)
       : toFiniteNumber(documentModel.totals.subtotal)
-    const scopeOfWork = documentModel.scopeOfWork || documentModel.scope
+    const legacyScopeText = sanitizeEstimateFormattedText(
+      typeof documentModel.scopeOfWork === 'string'
+        ? documentModel.scopeOfWork
+        : typeof documentModel.scope === 'string'
+          ? documentModel.scope
+          : documentModel?.scopeOfWork?.text
+            ?? documentModel?.scope?.text
+    )
+    const scopeOfWork = {
+      text: legacyScopeText,
+      contentBlocks: normalizeEstimateRichText(legacyScopeText).blocks,
+    }
     const normalizedDocumentWorkItems = normalizedWorkItems.map((item, index) => {
       const materialsStatus = normalizeEstimateMaterialsStatus(
         item,
@@ -438,12 +526,11 @@ export function ensureNormalizedEstimateDocument(documentModel, legacyInput = {}
 
       return {
         ...item,
-        contentBlocks: Array.isArray(item?.contentBlocks)
-          ? item.contentBlocks
-          : normalizeEstimateRichText([item?.title, item?.description].filter(Boolean).join('\n')).blocks,
-        descriptionBlocks: Array.isArray(item?.descriptionBlocks)
-          ? item.descriptionBlocks
-          : normalizeEstimateRichText(item?.description).blocks,
+        title: sanitizeEstimateFormattedText(item?.title),
+        description: sanitizeEstimateFormattedText(item?.description),
+        titleSegments: parseEstimateInlineFormatting(item?.title),
+        contentBlocks: normalizeEstimateRichText([item?.title, item?.description].filter(Boolean).join('\n')).blocks,
+        descriptionBlocks: normalizeEstimateRichText(item?.description).blocks,
         detailLines: Array.isArray(item?.detailLines) ? item.detailLines : [],
         pricingDisplayMode,
         quantity: pricingDisplayMode === ESTIMATE_ITEM_PRICING_QUANTITY_RATE ? quantity : null,
@@ -489,7 +576,11 @@ export function ensureNormalizedEstimateDocument(documentModel, legacyInput = {}
         },
         messageFromContractor: {
           ...documentModel?.sections?.messageFromContractor,
-          visible: Boolean(legacyMessageText.trim()),
+          visible: hasMeaningfulEstimateFormattedText(legacyMessageText),
+        },
+        scope: {
+          ...documentModel?.sections?.scope,
+          visible: hasMeaningfulEstimateFormattedText(legacyScopeText),
         },
       },
     }
