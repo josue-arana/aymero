@@ -1,24 +1,22 @@
 import { useEffect, useMemo, useRef, useState } from 'react'
-import { Archive, ArrowLeft, BriefcaseBusiness, CheckCircle2, ChevronRight, ClipboardList, Copy, Edit3, Trash2, Undo2 } from 'lucide-react'
+import { Archive, ArrowLeft, BriefcaseBusiness, CheckCircle2, ChevronRight, ClipboardList, Copy, Edit3, FileText, Send, Trash2, Undo2, UserRoundPlus } from 'lucide-react'
 import { useNavigate, useParams } from 'react-router-dom'
 import { ActionMenu } from '../components/common/ActionMenu'
 import { ConfirmRecordModal } from '../components/common/ConfirmRecordModal'
 import { useToast } from '../components/common/ToastProvider'
 import { LeadFormModal } from '../components/leads/LeadFormModal'
 import { getLeadProgressStageLabelKey, LeadProgress } from '../components/leads/LeadProgress'
-import { DetailRow } from '../components/ui/DetailRow'
-import { InfoCard } from '../components/ui/InfoCard'
-import { StatusBadge } from '../components/ui/StatusBadge'
 import { USE_SUPABASE_LEADS } from '../config/backendConfig'
+import { appRoutes } from '../config/appRoutes'
 import { useAuth } from '../contexts/AuthContext'
-import { useAnalyticsMode } from '../contexts/SimpleModeContext'
 import dataProvider from '../services/dataProvider'
 import { getLeadsContractorId } from '../services/system/leadsRuntimeService'
 import { getEstimateForLead, getEstimatedValueForLead, readLinkedEstimateDraft, writeLinkedEstimateDrafts } from '../utils/estimateLinks'
-import { currency } from '../utils/formatters'
+import { currency, formatDisplayDate } from '../utils/formatters'
 import { archiveMenuItemClasses } from '../utils/buttonStyles'
 import { getLeadNextStepKey, getLeadPipelineStage, getLeadPipelineStageLabelKey, getLeadPrimaryAction, leadPipelineStages } from '../utils/leadPipeline'
-import { getRecordDetailsTitleKey } from '../utils/recordDetailsTitle'
+import { getLanguageLocale } from '../utils/language'
+import { tStatus } from '../translations'
 
 function logLeadDetailDevError(message, error, meta) {
   if (!import.meta.env.DEV) return
@@ -37,6 +35,99 @@ function hasSavedEstimate(estimate) {
   if (Array.isArray(estimate.lineItems) && estimate.lineItems.length > 0) return true
   if (estimate.total !== undefined || estimate.totalAmount !== undefined) return true
   return Boolean(estimate.number)
+}
+
+function getActivityTimestamp(value) {
+  if (!value) return null
+
+  const normalizedValue = typeof value === 'string' && /^\d{4}-\d{2}-\d{2}$/.test(value)
+    ? `${value}T12:00:00`
+    : value
+  const timestamp = new Date(normalizedValue).getTime()
+
+  return Number.isFinite(timestamp) ? timestamp : null
+}
+
+function formatLeadActivityDate(value, language = 'en') {
+  const timestamp = getActivityTimestamp(value)
+  if (timestamp === null) return ''
+
+  return new Date(timestamp).toLocaleDateString(getLanguageLocale(language), {
+    month: 'long',
+    day: 'numeric',
+    year: 'numeric',
+  })
+}
+
+/**
+ * Lead activity is intentionally derived only from fields with authoritative dates.
+ * Stage position and generic updated_at values are never treated as historical events.
+ */
+function buildLeadActivityEvents({ lead, estimate, project, language, t }) {
+  const candidates = [
+    {
+      id: 'lead-created',
+      type: 'lead',
+      label: t('leadActivityLeadCreated'),
+      dateValue: lead?.createdAt || lead?.created_at,
+      detail: '',
+      rank: 1,
+    },
+    hasSavedEstimate(estimate)
+      ? {
+          id: `estimate-created-${estimate?.id || 'linked'}`,
+          type: 'estimate',
+          label: t('leadActivityEstimateCreated'),
+          dateValue: estimate?.createdAt || estimate?.created_at || estimate?.dateCreated,
+          detail: estimate?.number || estimate?.estimateNumber || '',
+          rank: 2,
+        }
+      : null,
+    hasSavedEstimate(estimate)
+      ? {
+          id: `estimate-sent-${estimate?.id || 'linked'}`,
+          type: 'sent',
+          label: t('leadActivityEstimateSent'),
+          dateValue: estimate?.sentAt || estimate?.sent_at,
+          detail: estimate?.number || estimate?.estimateNumber || '',
+          rank: 3,
+        }
+      : null,
+    hasSavedEstimate(estimate)
+      ? {
+          id: `lead-approved-${estimate?.id || 'linked'}`,
+          type: 'approved',
+          label: t('leadActivityLeadApproved'),
+          dateValue: estimate?.approvedAt || estimate?.approved_at,
+          detail: estimate?.number || estimate?.estimateNumber || '',
+          rank: 4,
+        }
+      : null,
+    project?.id
+      ? {
+          id: `converted-to-job-${project.id}`,
+          type: 'converted',
+          label: t('leadActivityConvertedToJob'),
+          dateValue: project?.createdAt || project?.created_at,
+          detail: project?.projectTitle || project?.title || '',
+          rank: 5,
+        }
+      : null,
+  ].filter(Boolean)
+
+  return candidates
+    .map((event) => {
+      const timestamp = getActivityTimestamp(event.dateValue)
+      if (timestamp === null) return null
+
+      return {
+        ...event,
+        timestamp,
+        date: formatLeadActivityDate(event.dateValue, language),
+      }
+    })
+    .filter(Boolean)
+    .sort((left, right) => left.timestamp - right.timestamp || left.rank - right.rank)
 }
 
 function createSafeLead(lead, fallbackId = '') {
@@ -110,7 +201,6 @@ export function LeadDetailPage({
   const navigate = useNavigate()
   const { showToast } = useToast()
   const { contractor, company, session } = useAuth()
-  const { isAnalyticsMode } = useAnalyticsMode()
   const contractorId = getLeadsContractorId({ contractor, company, session })
   const leadId = id || lead?.id || ''
   const [record, setRecord] = useState(USE_SUPABASE_LEADS ? null : lead)
@@ -120,6 +210,7 @@ export function LeadDetailPage({
   const [confirmAction, setConfirmAction] = useState(null)
   const [isLeadActionSubmitting, setIsLeadActionSubmitting] = useState(false)
   const [estimateRecord, setEstimateRecord] = useState(() => readLinkedEstimateDraft(lead || leadId, leadId || lead?.id || ''))
+  const [relatedProjectRecord, setRelatedProjectRecord] = useState(null)
   const leadActionGuardRef = useRef(false)
   const mergedLead = useMemo(() => {
     const baseLead = USE_SUPABASE_LEADS ? record : (record || lead)
@@ -153,6 +244,7 @@ export function LeadDetailPage({
   const isArchived = Boolean(currentLead?.isArchived || archivedIds.includes(currentLead?.id))
   const currentEstimate = currentLead?.portal?.estimate || null
   const leadHasEstimate = hasSavedEstimate(currentEstimate)
+  const relatedProjectId = currentLead?.projectId || currentLead?.project_id || ''
   const currentStage = getLeadPipelineStage({
     ...currentLead,
     isArchived,
@@ -167,11 +259,32 @@ export function LeadDetailPage({
   const estimatedValueDisplay = leadHasEstimate ? currency.format(currentLead?.value || 0) : t('notEstimated')
   const leadDisplayName = currentLead?.client || currentLead?.name || t('lead')
   const projectDisplayTitle = currentLead?.projectTitle || currentLead?.projectType || t('unknownProject')
-  const recordDetailsTitle = t(getRecordDetailsTitleKey({
-    ...currentLead,
-    isArchived,
-    archivedAt: isArchived ? currentLead?.archivedAt || true : currentLead?.archivedAt,
-  }))
+  const createdDateDisplay = formatDisplayDate(currentLead?.createdAt || currentLead?.created_at)
+  const jobLocationDisplay = String(currentLead?.address || currentLead?.location || '')
+    .split(',')
+    .map((part) => part.trim())
+    .filter(Boolean)
+    .join('\n')
+  const leadMetadata = [
+    { id: 'stage', label: t('currentStage'), value: currentStageDisplay },
+    currentLead?.source ? { id: 'source', label: t('leadSource'), value: currentLead.source } : null,
+    createdDateDisplay ? { id: 'created', label: t('dateCreated'), value: createdDateDisplay } : null,
+    leadHasEstimate ? { id: 'value', label: t('estimatedValue'), value: estimatedValueDisplay } : null,
+  ].filter(Boolean)
+  const relatedProject = relatedProjectRecord || (relatedProjectId
+    ? {
+        id: relatedProjectId,
+        projectTitle: currentLead?.projectTitle || currentLead?.title || '',
+        title: currentLead?.projectTitle || currentLead?.title || '',
+      }
+    : null)
+  const leadActivityEvents = buildLeadActivityEvents({
+    lead: currentLead,
+    estimate: currentEstimate,
+    project: relatedProjectRecord,
+    language,
+    t,
+  })
 
   useEffect(() => {
     if (!USE_SUPABASE_LEADS) {
@@ -293,6 +406,45 @@ export function LeadDetailPage({
     }
   }, [contractorId, lead, leadId, record])
 
+  useEffect(() => {
+    let isCancelled = false
+
+    setRelatedProjectRecord(null)
+    if (!relatedProjectId) return undefined
+
+    async function loadRelatedProject() {
+      try {
+        const response = await dataProvider.projects.getById(relatedProjectId, { contractorId })
+
+        if (isCancelled) return
+        if (response?.error) {
+          logLeadDetailDevError('[dev] LeadDetailPage could not load the linked project summary.', response.error, {
+            leadId,
+            projectId: relatedProjectId,
+          })
+          return
+        }
+
+        if (response?.data?.id) {
+          setRelatedProjectRecord(response.data)
+        }
+      } catch (error) {
+        if (!isCancelled) {
+          logLeadDetailDevError('[dev] LeadDetailPage threw while loading the linked project summary.', error, {
+            leadId,
+            projectId: relatedProjectId,
+          })
+        }
+      }
+    }
+
+    loadRelatedProject()
+
+    return () => {
+      isCancelled = true
+    }
+  }, [contractorId, leadId, relatedProjectId])
+
   if (USE_SUPABASE_LEADS && isLoading) {
     return (
       <section className="rounded-3xl border border-slate-200 bg-white p-8 text-center shadow-sm">
@@ -389,6 +541,23 @@ export function LeadDetailPage({
 
   function openEstimateBuilder() {
     navigate(`/projects/${currentLead.id}/estimate`, { state: { source: 'lead', leadId: currentLead.id } })
+  }
+
+  function openRelatedEstimate() {
+    const estimateId = currentEstimate?.id
+
+    if (!estimateId) {
+      openEstimateBuilder()
+      return
+    }
+
+    navigate(appRoutes.estimateDetail.replace(':estimateId', estimateId), {
+      state: {
+        source: 'lead',
+        leadId: currentLead.id,
+        projectId: relatedProjectId || undefined,
+      },
+    })
   }
 
   function openJobWorkspace() {
@@ -542,7 +711,7 @@ export function LeadDetailPage({
 
   return (
     <div className="mx-auto max-w-6xl space-y-6">
-      <div className="flex min-w-0 items-center justify-between gap-4">
+      <div className="flex min-w-0 items-center gap-4">
         <nav aria-label={t('leads')} className="flex min-w-0 items-center gap-2 text-sm font-semibold">
           <button
             type="button"
@@ -555,15 +724,6 @@ export function LeadDetailPage({
           <ChevronRight className="h-4 w-4 shrink-0 text-slate-400" aria-hidden="true" />
           <span className="truncate text-slate-950" aria-current="page">{leadDisplayName}</span>
         </nav>
-        <ActionMenu
-          label={t('more')}
-          ariaLabel={t('more')}
-          items={moreMenuItems}
-          buttonDisabled={isLeadActionSubmitting}
-          containerClassName="shrink-0"
-          buttonClassName="inline-flex min-h-10 items-center justify-center gap-2 rounded-xl border border-slate-200 bg-white px-4 py-2 text-sm font-bold text-slate-800 shadow-sm transition hover:bg-slate-50 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-blue-500 focus-visible:ring-offset-2"
-          menuClassName="max-w-[calc(100vw-2rem)]"
-        />
       </div>
 
       <section className="relative overflow-hidden rounded-3xl bg-[linear-gradient(135deg,#020617_0%,#0f172a_58%,#172554_100%)] p-5 text-white shadow-xl shadow-slate-950/15 sm:p-7 lg:p-8">
@@ -596,33 +756,40 @@ export function LeadDetailPage({
 
       <LeadProgress currentStage={currentStage} t={t} />
 
-      <section className={`rounded-3xl border p-5 shadow-sm ${isConvertedToJob ? 'border-emerald-200 bg-gradient-to-br from-white to-emerald-50/60' : 'border-slate-200 bg-white'}`}>
-        <div className="grid gap-5 lg:grid-cols-[minmax(0,1fr)_auto] lg:items-center">
-          <div className="min-w-0">
-            <h2 className="text-xl font-bold text-slate-950">{t('nextRecommendedAction')}</h2>
-            <div className="mt-4 grid gap-4 sm:grid-cols-2">
-              <div className={`rounded-2xl px-4 py-3 ${isConvertedToJob ? 'bg-emerald-50 ring-1 ring-emerald-100' : 'bg-slate-50'}`}>
-                <p className="text-xs font-bold uppercase tracking-[0.16em] text-slate-500">{t('currentStage')}</p>
-                <p className="mt-1.5 flex items-center gap-2 text-base font-bold text-slate-950">
-                  {isConvertedToJob && <CheckCircle2 className="h-5 w-5 shrink-0 text-emerald-600" aria-hidden="true" />}
-                  {currentStageDisplay}
-                </p>
-              </div>
-              <div className={`rounded-2xl px-4 py-3 ${isConvertedToJob ? 'bg-emerald-50 ring-1 ring-emerald-100' : 'bg-blue-50'}`}>
-                <p className={`text-xs font-bold uppercase tracking-[0.16em] ${isConvertedToJob ? 'text-emerald-700' : 'text-blue-600'}`}>{t(isConvertedToJob ? 'status' : 'nextStep')}</p>
-                <p className="mt-1.5 text-sm leading-6 text-slate-700">{nextStepDisplay}</p>
-              </div>
-            </div>
+      <section className="grid min-w-0 gap-5 lg:grid-cols-[minmax(0,2fr)_minmax(280px,1fr)] lg:items-start lg:gap-6">
+        <div className="min-w-0 space-y-5">
+      <section className={`rounded-3xl border p-4 shadow-sm sm:p-5 ${isConvertedToJob ? 'border-emerald-200 bg-gradient-to-br from-white to-emerald-50/60' : 'border-slate-200 bg-white'}`}>
+        <h2 className="text-lg font-bold text-slate-950 sm:text-xl">{t('nextRecommendedAction')}</h2>
+        <div className="mt-3 grid min-w-0 gap-3 sm:grid-cols-2 xl:grid-cols-[minmax(150px,0.65fr)_minmax(240px,1.35fr)_auto] xl:items-center">
+          <div className={`min-w-0 rounded-2xl px-3.5 py-3 ${isConvertedToJob ? 'bg-emerald-50 ring-1 ring-emerald-100' : 'bg-slate-50'}`}>
+            <p className="text-[11px] font-bold uppercase tracking-[0.16em] text-slate-500">{t('currentStage')}</p>
+            <p className="mt-1 flex items-center gap-2 text-sm font-bold text-slate-950">
+              {isConvertedToJob && <CheckCircle2 className="h-4 w-4 shrink-0 text-emerald-600" aria-hidden="true" />}
+              <span className="break-words">{currentStageDisplay}</span>
+            </p>
           </div>
-          <button disabled={isLeadActionSubmitting} onClick={handlePrimaryAction} className="flex min-h-[54px] w-full items-center justify-center gap-2 rounded-2xl bg-blue-600 px-5 py-3 text-sm font-bold text-white shadow-sm shadow-blue-600/20 transition hover:bg-blue-700 disabled:cursor-not-allowed disabled:bg-blue-400 lg:w-auto lg:min-w-52 lg:translate-y-[22px]">
+          <div className={`min-w-0 rounded-2xl px-3.5 py-3 ${isConvertedToJob ? 'bg-emerald-50 ring-1 ring-emerald-100' : 'bg-blue-50'}`}>
+            <p className={`text-[11px] font-bold uppercase tracking-[0.16em] ${isConvertedToJob ? 'text-emerald-700' : 'text-blue-600'}`}>{t(isConvertedToJob ? 'status' : 'nextStep')}</p>
+            <p className="mt-1 text-sm leading-5 text-slate-700">{nextStepDisplay}</p>
+          </div>
+          <button disabled={isLeadActionSubmitting} onClick={handlePrimaryAction} className="flex min-h-12 w-full items-center justify-center gap-2 rounded-2xl bg-blue-600 px-5 py-3 text-sm font-bold text-white shadow-sm shadow-blue-600/20 transition hover:bg-blue-700 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-blue-500 focus-visible:ring-offset-2 disabled:cursor-not-allowed disabled:bg-blue-400 sm:col-span-2 xl:col-span-1 xl:w-auto xl:min-w-44">
             {primaryActionIcon}
             {isLeadActionSubmitting ? t('saving') : primaryActionLabel}
           </button>
         </div>
-        <div className="mt-5 flex flex-col gap-3 border-t border-slate-100 pt-4 sm:flex-row sm:items-center">
-          <button disabled={isLeadActionSubmitting} onClick={() => setIsEditOpen(true)} className="flex min-h-11 items-center justify-center gap-2 rounded-2xl border border-slate-200 bg-slate-50 px-4 py-2.5 text-sm font-bold text-slate-800 transition hover:bg-white hover:shadow-sm disabled:cursor-not-allowed disabled:opacity-60">
+        <div className="mt-4 flex flex-col gap-3 border-t border-slate-100 pt-3 sm:flex-row sm:items-center">
+          <button disabled={isLeadActionSubmitting} onClick={() => setIsEditOpen(true)} className="flex min-h-10 items-center justify-center gap-2 rounded-xl border border-slate-200 bg-slate-50 px-3.5 py-2 text-sm font-bold text-slate-800 transition hover:bg-white hover:shadow-sm focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-blue-500 focus-visible:ring-offset-2 disabled:cursor-not-allowed disabled:opacity-60">
             <Edit3 className="h-4 w-4" /> {t('editLead')}
           </button>
+          <ActionMenu
+            label={t('more')}
+            ariaLabel={t('more')}
+            items={moreMenuItems}
+            buttonDisabled={isLeadActionSubmitting}
+            containerClassName="w-full sm:w-auto"
+            buttonClassName="inline-flex min-h-10 w-full items-center justify-center gap-2 rounded-xl border border-slate-200 bg-white px-3.5 py-2 text-sm font-bold text-slate-800 transition hover:bg-slate-50 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-blue-500 focus-visible:ring-offset-2 sm:w-auto"
+            menuClassName="max-w-[calc(100vw-2rem)]"
+          />
         </div>
         {isArchived && (
           <button disabled={isLeadActionSubmitting} onClick={() => setConfirmAction({ mode: 'delete' })} className="mt-3 inline-flex w-full items-center justify-center gap-2 rounded-2xl border border-red-200 bg-red-50 px-4 py-3 text-sm font-bold text-red-700 hover:bg-red-100 disabled:cursor-not-allowed disabled:opacity-60 sm:w-auto">
@@ -631,26 +798,73 @@ export function LeadDetailPage({
         )}
       </section>
 
-      <section className={`grid gap-4 ${isAnalyticsMode ? 'lg:grid-cols-2' : ''}`.trim()}>
-        <InfoCard title={t('clientInformation')}>
-          <DetailRow label={t('name')} value={currentLead.client} />
-          <DetailRow label={t('phone')} value={currentLead.phone || t('notAdded')} />
-          <DetailRow label={t('email')} value={currentLead.email || t('notAdded')} />
-          <DetailRow label={t('address')} value={currentLead.address || currentLead.location || t('unknownAddress')} />
-        </InfoCard>
-        {isAnalyticsMode && (
-          <InfoCard title={recordDetailsTitle}>
-            <DetailRow label={t('status')} value={<StatusBadge status={isArchived ? 'Archived' : currentLead.status} t={t} />} />
-            <DetailRow label={t('priority')} value={currentLead.priority} />
-            <DetailRow label={t('source')} value={currentLead.source || t('notAdded')} />
-            <DetailRow label={t('projectType')} value={currentLead.projectType || t('unknownProject')} />
-          </InfoCard>
-        )}
-      </section>
+      <section className="rounded-3xl border border-slate-200 bg-white p-4 shadow-sm sm:p-5">
+        <h2 className="text-lg font-bold text-slate-950 sm:text-xl">{t('leadDetails')}</h2>
 
-      <section className="rounded-3xl border border-slate-200 bg-white p-5 shadow-sm">
-        <h2 className="text-xl font-bold text-slate-950">{t('notes')}</h2>
-        <p className="mt-3 text-sm leading-6 text-slate-600">{currentLead.notes || t('followUpWithClient')}</p>
+        <dl className="mt-4 grid grid-cols-[repeat(auto-fit,minmax(140px,1fr))] gap-x-4 gap-y-4 rounded-2xl bg-slate-50 px-4 py-3">
+          {leadMetadata.map((item) => (
+            <div key={item.id} className="min-w-0">
+              <dt className="text-[11px] font-bold uppercase tracking-[0.14em] text-slate-500">{item.label}</dt>
+              <dd className="mt-1 break-words text-sm font-bold leading-5 text-slate-900">{item.value}</dd>
+            </div>
+          ))}
+        </dl>
+
+        <div className={`mt-5 grid gap-6 border-t border-slate-100 pt-5 ${jobLocationDisplay ? 'md:grid-cols-2' : ''}`}>
+          <section aria-labelledby="lead-contact-title">
+            <h3 id="lead-contact-title" className="text-xs font-bold uppercase tracking-[0.16em] text-slate-500">{t('contact')}</h3>
+            <dl className="mt-3 space-y-2.5">
+              <div className="grid min-w-0 gap-0.5 sm:grid-cols-[80px_minmax(0,1fr)] sm:gap-3">
+                <dt className="text-xs font-semibold text-slate-500">{t('name')}</dt>
+                <dd className="break-words text-sm font-semibold text-slate-900">{leadDisplayName}</dd>
+              </div>
+              {currentLead.phone && (
+                <div className="grid min-w-0 gap-0.5 sm:grid-cols-[80px_minmax(0,1fr)] sm:gap-3">
+                  <dt className="text-xs font-semibold text-slate-500">{t('phone')}</dt>
+                  <dd className="min-w-0 text-sm font-semibold">
+                    <a href={`tel:${String(currentLead.phone).replace(/[^\d+]/g, '')}`} className="break-words text-blue-700 underline-offset-4 hover:underline focus-visible:rounded focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-blue-500">{currentLead.phone}</a>
+                  </dd>
+                </div>
+              )}
+              {currentLead.email && (
+                <div className="grid min-w-0 gap-0.5 sm:grid-cols-[80px_minmax(0,1fr)] sm:gap-3">
+                  <dt className="text-xs font-semibold text-slate-500">{t('email')}</dt>
+                  <dd className="min-w-0 text-sm font-semibold">
+                    <a href={`mailto:${currentLead.email}`} className="break-all text-blue-700 underline-offset-4 hover:underline focus-visible:rounded focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-blue-500">{currentLead.email}</a>
+                  </dd>
+                </div>
+              )}
+            </dl>
+          </section>
+
+          {jobLocationDisplay && (
+            <section aria-labelledby="lead-location-title">
+              <h3 id="lead-location-title" className="text-xs font-bold uppercase tracking-[0.16em] text-slate-500">{t('jobLocation')}</h3>
+              <address className="mt-3 whitespace-pre-line break-words text-sm font-semibold not-italic leading-6 text-slate-900">{jobLocationDisplay}</address>
+            </section>
+          )}
+        </div>
+
+        <section className="mt-5 border-t border-slate-100 pt-4" aria-labelledby="lead-notes-title">
+          <h3 id="lead-notes-title" className="text-xs font-bold uppercase tracking-[0.16em] text-slate-500">{t('notes')}</h3>
+          <p className={`mt-2 whitespace-pre-wrap break-words text-sm leading-6 ${currentLead.notes ? 'text-slate-700' : 'text-slate-500'}`}>
+            {currentLead.notes || t('noNotesAdded')}
+          </p>
+        </section>
+      </section>
+        </div>
+
+        <aside className="min-w-0 space-y-5">
+          <RelatedLeadRecordsCard
+            estimate={leadHasEstimate ? currentEstimate : null}
+            estimateTotal={leadHasEstimate ? Number(currentLead?.value || 0) : null}
+            project={relatedProject}
+            onOpenEstimate={leadHasEstimate ? openRelatedEstimate : null}
+            onOpenProject={relatedProjectId ? openJobWorkspace : null}
+            t={t}
+          />
+          <LeadActivityCard events={leadActivityEvents} t={t} />
+        </aside>
       </section>
 
       <LeadFormModal
@@ -674,6 +888,142 @@ export function LeadDetailPage({
         t={t}
       />
     </div>
+  )
+}
+
+function LeadActivityEvent({ event, isLast }) {
+  const presentationByType = {
+    lead: {
+      icon: UserRoundPlus,
+      classes: 'bg-slate-100 text-slate-600 ring-slate-200',
+    },
+    estimate: {
+      icon: FileText,
+      classes: 'bg-cyan-50 text-cyan-700 ring-cyan-100',
+    },
+    sent: {
+      icon: Send,
+      classes: 'bg-blue-50 text-blue-700 ring-blue-100',
+    },
+    approved: {
+      icon: CheckCircle2,
+      classes: 'bg-emerald-50 text-emerald-700 ring-emerald-100',
+    },
+    converted: {
+      icon: BriefcaseBusiness,
+      classes: 'bg-emerald-50 text-emerald-700 ring-emerald-100',
+    },
+  }
+  const presentation = presentationByType[event.type] || presentationByType.lead
+  const EventIcon = presentation.icon
+
+  return (
+    <li className="relative flex min-w-0 gap-3 pb-5 last:pb-0">
+      {!isLast ? <span className="absolute bottom-0 left-[17px] top-9 w-px bg-slate-200" aria-hidden="true" /> : null}
+      <span className={`relative z-10 inline-flex h-9 w-9 shrink-0 items-center justify-center rounded-full ring-1 ${presentation.classes}`}>
+        <EventIcon className="h-4 w-4" aria-hidden="true" />
+      </span>
+      <div className="min-w-0 flex-1 pt-0.5">
+        <p className="break-words text-sm font-bold text-slate-900">{event.label}</p>
+        <time dateTime={new Date(event.timestamp).toISOString()} className="mt-0.5 block text-xs font-semibold text-slate-500">{event.date}</time>
+        {event.detail ? <p className="mt-1 break-words text-xs leading-5 text-slate-500 [overflow-wrap:anywhere]">{event.detail}</p> : null}
+      </div>
+    </li>
+  )
+}
+
+function LeadActivityCard({ events, t }) {
+  return (
+    <section className="min-w-0 rounded-3xl border border-slate-200 bg-white p-5 shadow-sm" aria-labelledby="lead-activity-title">
+      <h2 id="lead-activity-title" className="text-lg font-bold text-slate-950 sm:text-xl">{t('leadActivity')}</h2>
+      {events.length ? (
+        <ol className="mt-5">
+          {events.map((event, index) => (
+            <LeadActivityEvent
+              key={event.id}
+              event={event}
+              isLast={index === events.length - 1}
+            />
+          ))}
+        </ol>
+      ) : (
+        <p className="mt-4 rounded-2xl border border-dashed border-slate-200 px-4 py-4 text-sm leading-6 text-slate-500">
+          {t('noLeadActivityRecorded')}
+        </p>
+      )}
+    </section>
+  )
+}
+
+function RelatedRecordSection({ eyebrow, title, metadata, actionLabel, onAction }) {
+  const visibleMetadata = metadata.filter((item) => item?.value !== undefined && item?.value !== null && String(item.value).trim())
+
+  return (
+    <section className="min-w-0">
+      <p className="text-[11px] font-bold uppercase tracking-[0.16em] text-slate-500">{eyebrow}</p>
+      <h3 className="mt-1 break-words text-sm font-bold text-slate-950 [overflow-wrap:anywhere]">{title}</h3>
+      {visibleMetadata.length ? (
+        <dl className="mt-3 space-y-2">
+          {visibleMetadata.map((item) => (
+            <div key={item.label} className="flex min-w-0 items-start justify-between gap-3">
+              <dt className="shrink-0 text-xs font-semibold text-slate-500">{item.label}</dt>
+              <dd className="min-w-0 break-words text-right text-xs font-bold text-slate-800 [overflow-wrap:anywhere]">{item.value}</dd>
+            </div>
+          ))}
+        </dl>
+      ) : null}
+      {onAction ? (
+        <button
+          type="button"
+          onClick={onAction}
+          className="mt-3 inline-flex min-h-10 w-full items-center justify-center rounded-xl border border-slate-200 bg-white px-3 py-2 text-sm font-bold text-blue-700 transition hover:bg-slate-50 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-blue-500 focus-visible:ring-offset-2"
+        >
+          {actionLabel}
+        </button>
+      ) : null}
+    </section>
+  )
+}
+
+function RelatedLeadRecordsCard({ estimate, estimateTotal, project, onOpenEstimate, onOpenProject, t }) {
+  if (!estimate && !project) return null
+
+  const estimateTitle = estimate?.number || estimate?.estimateNumber || estimate?.title || t('relatedEstimate')
+  const estimateStatus = estimate?.status ? tStatus(t, estimate.status) : ''
+  const projectTitle = project?.projectTitle || project?.title || t('relatedProject')
+  const projectStatus = project?.projectStatus || project?.status
+
+  return (
+    <section className="min-w-0 rounded-3xl border border-slate-200 bg-white p-5 shadow-sm" aria-labelledby="related-lead-records-title">
+      <h2 id="related-lead-records-title" className="text-lg font-bold text-slate-950">{t('relatedRecords')}</h2>
+      <div className="mt-4 space-y-4">
+        {estimate ? (
+          <RelatedRecordSection
+            eyebrow={t('relatedEstimate')}
+            title={estimateTitle}
+            metadata={[
+              estimateStatus ? { label: t('status'), value: estimateStatus } : null,
+              estimateTotal !== null ? { label: t('total'), value: currency.format(estimateTotal) } : null,
+            ].filter(Boolean)}
+            actionLabel={t('openEstimate')}
+            onAction={onOpenEstimate}
+          />
+        ) : null}
+        {project ? (
+          <div className={estimate ? 'border-t border-slate-100 pt-4' : ''}>
+            <RelatedRecordSection
+              eyebrow={t('relatedProject')}
+              title={projectTitle}
+              metadata={[
+                projectStatus ? { label: t('status'), value: tStatus(t, projectStatus) } : null,
+              ].filter(Boolean)}
+              actionLabel={t('openProject')}
+              onAction={onOpenProject}
+            />
+          </div>
+        ) : null}
+      </div>
+    </section>
   )
 }
 
