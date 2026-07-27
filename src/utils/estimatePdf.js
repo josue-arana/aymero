@@ -9,8 +9,15 @@ import {
   normalizeEstimateRichText,
 } from './estimateDocument'
 import { getAcceptedPaymentMethodLabels } from './acceptedPaymentMethods'
-import { calculateDocumentPageBreakOffsets } from './documentPagination'
+import {
+  ESTIMATE_PAPER_MARGIN,
+  ESTIMATE_PAPER_WIDTH,
+  getEstimatePaginationModel,
+  waitForEstimateDocumentAssets,
+} from './estimatePagination'
 import { getPaymentTermLabel } from './paymentTerms'
+
+export { calculateEstimatePageBreakOffsets } from './estimatePagination'
 
 const safeColors = {
   white: '#ffffff',
@@ -30,128 +37,6 @@ const pdfPage = {
   width: 612,
   height: 792,
   margin: 22,
-}
-
-export function calculateEstimatePageBreakOffsets({
-  contentHeight,
-  sourcePageHeight,
-  protectedRanges = [],
-}) {
-  return calculateDocumentPageBreakOffsets({
-    contentHeight,
-    sourcePageHeight,
-    protectedRanges,
-  })
-}
-
-function getEstimatePageBreakOffsets(element, sourcePageHeight) {
-  const rootRect = element.getBoundingClientRect()
-  const renderedScale = rootRect.width > 0 && element.offsetWidth > 0
-    ? rootRect.width / element.offsetWidth
-    : 1
-
-  function toSourceRange(rect, inset = 0) {
-    if (!rect || rect.height <= 0) return null
-
-    return {
-      start: Math.max((rect.top - rootRect.top - inset) / renderedScale, 0),
-      end: Math.max((rect.bottom - rootRect.top + inset) / renderedScale, 0),
-    }
-  }
-
-  function getElementRange(node) {
-    return node ? toSourceRange(node.getBoundingClientRect()) : null
-  }
-
-  function combineElementRanges(firstNode, lastNode) {
-    const firstRange = getElementRange(firstNode)
-    const lastRange = getElementRange(lastNode)
-    if (!firstRange || !lastRange) return null
-
-    return {
-      start: Math.min(firstRange.start, lastRange.start),
-      end: Math.max(firstRange.end, lastRange.end),
-    }
-  }
-
-  function getTextLineRanges(flowNode) {
-    const ownerDocument = element.ownerDocument
-    const ownerWindow = ownerDocument?.defaultView
-    const showText = ownerWindow?.NodeFilter?.SHOW_TEXT ?? 4
-    const ranges = []
-
-    const walker = ownerDocument.createTreeWalker(flowNode, showText)
-    let textNode = walker.nextNode()
-
-    while (textNode) {
-      if (String(textNode.textContent || '').trim()) {
-        const textRange = ownerDocument.createRange()
-        textRange.selectNodeContents(textNode)
-
-        Array.from(textRange.getClientRects()).forEach((rect) => {
-          const sourceRange = toSourceRange(rect, 1)
-          if (sourceRange) ranges.push(sourceRange)
-        })
-
-        textRange.detach?.()
-      }
-
-      textNode = walker.nextNode()
-    }
-
-    return ranges
-  }
-
-  const protectedRanges = []
-  const closingSection = element.querySelector('[data-estimate-footer-section="true"]')
-  const documentFooter = element.querySelector('[data-estimate-footer="true"]')
-  const closingGroupRange = combineElementRanges(closingSection, documentFooter)
-
-  if (closingGroupRange && closingGroupRange.end - closingGroupRange.start <= sourcePageHeight * 0.92) {
-    protectedRanges.push(closingGroupRange)
-  }
-
-  const workHeading = element.querySelector('[data-estimate-work-heading="true"]')
-  const firstWorkItem = element.querySelector('[data-line-item-card="true"]')
-  const firstWorkGroupRange = combineElementRanges(workHeading, firstWorkItem)
-
-  if (firstWorkGroupRange && firstWorkGroupRange.end - firstWorkGroupRange.start <= sourcePageHeight * 0.45) {
-    protectedRanges.push(firstWorkGroupRange)
-  }
-
-  element.querySelectorAll(
-    '[data-estimate-keep-together="true"], [data-estimate-work-heading="true"], [data-estimate-footer="true"]'
-  ).forEach((node) => {
-    const range = getElementRange(node)
-    if (range) protectedRanges.push(range)
-  })
-
-  element.querySelectorAll('[data-estimate-section-heading="true"]').forEach((heading) => {
-    const section = heading.closest('[data-estimate-section="true"]')
-    const firstFlowNode = section?.querySelector('[data-estimate-flow-text="true"]')
-    const headingRange = getElementRange(heading)
-    const firstLineRange = firstFlowNode ? getTextLineRanges(firstFlowNode)[0] : null
-    const headingGroupRange = headingRange && firstLineRange
-      ? {
-          start: Math.min(headingRange.start, firstLineRange.start),
-          end: Math.max(headingRange.end, firstLineRange.end),
-        }
-      : null
-
-    if (headingGroupRange && headingGroupRange.end - headingGroupRange.start <= sourcePageHeight * 0.35) {
-      protectedRanges.push(headingGroupRange)
-    }
-  })
-
-  element.querySelectorAll('[data-estimate-flow-text="true"]').forEach((flowNode) => {
-    protectedRanges.push(...getTextLineRanges(flowNode))
-  })
-
-  return calculateEstimatePageBreakOffsets({
-    contentHeight: Math.max(element.scrollHeight, element.offsetHeight),
-    sourcePageHeight,
-    protectedRanges,
-  })
 }
 
 function createEstimateCanvasSlice(sourceCanvas, startY, height) {
@@ -713,14 +598,16 @@ export async function downloadEstimatePdf({
   }
 
   try {
-    const pageWidth = 612
-    const pageHeight = 792
-    const margin = 36
+    await waitForEstimateDocumentAssets(element)
+
+    const pageWidth = ESTIMATE_PAPER_WIDTH
+    const margin = ESTIMATE_PAPER_MARGIN
     const renderWidth = pageWidth - (margin * 2)
-    const printableHeight = pageHeight - (margin * 2)
-    const elementWidth = Math.max(element.scrollWidth, element.offsetWidth)
-    const sourcePageHeight = printableHeight / (renderWidth / elementWidth)
-    const pageBreakOffsets = getEstimatePageBreakOffsets(element, sourcePageHeight)
+    const pagination = getEstimatePaginationModel(element)
+    if (!pagination?.pageCount) {
+      throw new Error('Estimate PDF pagination could not be calculated.')
+    }
+    const { elementWidth, pages } = pagination
     const canvas = await html2canvas(element, {
       backgroundColor: '#ffffff',
       scale: 2,
@@ -753,11 +640,10 @@ export async function downloadEstimatePdf({
     })
     const canvasScale = canvas.width / elementWidth
 
-    pageBreakOffsets.slice(0, -1).forEach((pageStart, index) => {
-      const pageEnd = pageBreakOffsets[index + 1]
-      const canvasStart = pageStart * canvasScale
+    pages.forEach((page, index) => {
+      const canvasStart = page.start * canvasScale
       const canvasHeight = Math.min(
-        (pageEnd - pageStart) * canvasScale,
+        page.height * canvasScale,
         canvas.height - canvasStart
       )
 

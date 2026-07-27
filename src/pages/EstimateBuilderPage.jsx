@@ -6,13 +6,13 @@ import { InfoCard } from '../components/ui/InfoCard'
 import { EstimatePdfTemplate } from '../components/estimates/EstimatePdfTemplate'
 import { EstimateFormattedText } from '../components/estimates/EstimateFormattedText'
 import { LightweightFormattedTextarea } from '../components/estimates/LightweightFormattedTextarea'
+import { PaginatedEstimatePreview } from '../components/estimates/PaginatedEstimatePreview'
 import { currency } from '../utils/formatters'
 import { getPortalData } from '../utils/portal'
 import { archivePanelButtonClasses } from '../utils/buttonStyles'
 import { ConfirmRecordModal } from '../components/common/ConfirmRecordModal'
 import { SendToCustomerModal } from '../components/common/SendToCustomerModal'
 import { ModalShell } from '../components/common/ModalShell'
-import { ScaledDocumentPreview, defaultDocumentPreviewWidth } from '../components/common/ScaledDocumentPreview'
 import { useToast } from '../components/common/ToastProvider'
 import dataProvider from '../services/dataProvider'
 import { useAuth } from '../contexts/AuthContext'
@@ -37,10 +37,14 @@ import {
 } from '../utils/estimateDocument'
 import { normalizeDocumentLanguageOverride, resolveClientFacingLanguage } from '../utils/language'
 import { getPaymentTermLabel, getPaymentTermOptions, isKnownPaymentTermValue } from '../utils/paymentTerms'
+import {
+  ESTIMATE_DOCUMENT_SOURCE_PADDING,
+  ESTIMATE_DOCUMENT_SOURCE_WIDTH,
+} from '../utils/estimatePagination'
 
 const simplePricingMode = ESTIMATE_PRICING_SIMPLE
 const detailedPricingMode = ESTIMATE_PRICING_DETAILED
-const estimatePreviewPageWidth = defaultDocumentPreviewWidth
+const estimatePreviewPageWidth = ESTIMATE_DOCUMENT_SOURCE_WIDTH
 
 function readEstimateScopeText(estimate = {}) {
   return estimate?.summary || estimate?.scopeOfWork || estimate?.scope_of_work || ''
@@ -838,9 +842,9 @@ export function EstimateBuilderPage({ lead, clientRecord = null, t, appLanguage 
       <ModalShell isOpen={showPreviewModal} onBackdropClick={() => setShowPreviewModal(false)} panelClassName="p-2 sm:max-w-[64rem] sm:p-3 lg:max-w-[68rem]">
         <div className="rounded-3xl bg-white text-slate-950">
           <div className="p-1">
-            <ScaledDocumentPreview pageWidth={estimatePreviewPageWidth} pagePadding={18}>
+            <PaginatedEstimatePreview t={estimateT}>
               <EstimatePdfTemplate {...estimatePreviewProps} />
-            </ScaledDocumentPreview>
+            </PaginatedEstimatePreview>
           </div>
           <div className="mt-6 grid gap-3 sm:grid-cols-2">
             <button onClick={handlePrint} className="rounded-2xl bg-slate-950 px-4 py-3 text-sm font-bold text-white hover:bg-slate-800">{shouldUsePdfForPrint ? t('downloadPdf') : t('print')}</button>
@@ -852,7 +856,7 @@ export function EstimateBuilderPage({ lead, clientRecord = null, t, appLanguage 
       <div
           ref={pdfTemplateRef}
           data-estimate-pdf-root="true"
-          style={{ width: `${estimatePreviewPageWidth}px`, backgroundColor: '#ffffff', color: '#0f172a', padding: '18px', boxSizing: 'border-box' }}
+          style={{ width: `${estimatePreviewPageWidth}px`, backgroundColor: '#ffffff', color: '#0f172a', padding: `${ESTIMATE_DOCUMENT_SOURCE_PADDING}px`, boxSizing: 'border-box' }}
         >
           <EstimatePdfTemplate {...estimatePreviewProps} />
         </div>
@@ -865,9 +869,9 @@ function EstimatePreviewCard(props) {
   return (
     <InfoCard title={props.t('previewEstimate')} bodyClassName="min-w-0 overflow-hidden">
       <div className="rounded-[28px] bg-slate-50 p-2 sm:p-3">
-        <ScaledDocumentPreview pageWidth={estimatePreviewPageWidth} pagePadding={18}>
+        <PaginatedEstimatePreview t={props.t}>
           <EstimatePdfTemplate {...props} />
-        </ScaledDocumentPreview>
+        </PaginatedEstimatePreview>
       </div>
     </InfoCard>
   )
