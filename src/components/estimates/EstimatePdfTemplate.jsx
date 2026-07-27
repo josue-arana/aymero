@@ -6,6 +6,7 @@ import {
   ESTIMATE_ITEM_PRICING_QUANTITY_RATE,
   ESTIMATE_LABOR_ONLY,
   ESTIMATE_OWNER_SUPPLIED_MATERIALS,
+  getEstimateTextSizeCss,
 } from '../../utils/estimateDocument'
 import { getAcceptedPaymentMethodLabels } from '../../utils/acceptedPaymentMethods'
 import { getPaymentTermLabel } from '../../utils/paymentTerms'
@@ -248,7 +249,7 @@ function InlineEstimateText({ segments = [] }) {
   ))
 }
 
-function RichWorkItemContent({ blocks = [], accentColor, fontSize = '11.5px' }) {
+function RichWorkItemContent({ blocks = [], accentColor }) {
   return blocks.map((block, blockIndex) => {
     if (block?.type === 'lineBreak') {
       return <div key={`break-${blockIndex}`} style={{ height: '7px' }} aria-hidden="true" />
@@ -256,11 +257,15 @@ function RichWorkItemContent({ blocks = [], accentColor, fontSize = '11.5px' }) 
 
     if (block?.type === 'bulletList') {
       return (
-        <ul key={`bullets-${blockIndex}`} style={{ width: '100%', maxWidth: 'none', minWidth: 0, margin: 0, padding: 0, listStyle: 'none', display: 'grid', gap: '4px' }}>
+        <ul
+          key={`bullets-${blockIndex}`}
+          data-estimate-rich-list="true"
+          style={{ width: '100%', maxWidth: 'none', minWidth: 0, margin: 0, padding: 0, listStyle: 'none', display: 'grid', gap: '4px' }}
+        >
           {(block.items || []).map((bullet, bulletIndex) => (
             <li key={`${blockIndex}-${bulletIndex}`} style={{ display: 'grid', width: '100%', minWidth: 0, gridTemplateColumns: '5px minmax(0,1fr)', gap: '6px', alignItems: 'start' }}>
               <span aria-hidden="true" style={{ width: '3px', height: '3px', marginTop: '6px', borderRadius: '999px', backgroundColor: accentColor }} />
-              <span data-estimate-flow-text="true" style={{ minWidth: 0, whiteSpace: 'pre-wrap', fontSize, lineHeight: 1.48, color: colors.ink, overflowWrap: 'anywhere', wordBreak: 'break-word' }}>
+              <span data-estimate-flow-text="true" style={{ minWidth: 0, whiteSpace: 'pre-wrap', fontSize: getEstimateTextSizeCss(bullet?.size), lineHeight: 1.48, color: colors.ink, overflowWrap: 'anywhere', wordBreak: 'break-word' }}>
                 <InlineEstimateText segments={bullet.segments} />
               </span>
             </li>
@@ -271,7 +276,7 @@ function RichWorkItemContent({ blocks = [], accentColor, fontSize = '11.5px' }) 
 
     if (block?.type === 'paragraph') {
       return (
-        <p data-estimate-flow-text="true" key={`paragraph-${blockIndex}`} style={{ width: '100%', maxWidth: 'none', minWidth: 0, margin: 0, whiteSpace: 'pre-wrap', fontSize, lineHeight: 1.5, color: colors.ink, overflowWrap: 'anywhere', wordBreak: 'break-word' }}>
+        <p data-estimate-flow-text="true" key={`paragraph-${blockIndex}`} style={{ width: '100%', maxWidth: 'none', minWidth: 0, margin: 0, whiteSpace: 'pre-wrap', fontSize: getEstimateTextSizeCss(block?.size), lineHeight: 1.5, color: colors.ink, overflowWrap: 'anywhere', wordBreak: 'break-word' }}>
           <InlineEstimateText segments={block.segments} />
         </p>
       )
@@ -340,7 +345,7 @@ function WorkBreakdownItem({ item, index, accentColor, language, showQuantityRat
           data-estimate-flow-text="true"
           style={{
             margin: 0,
-            fontSize: '12.5px',
+            fontSize: getEstimateTextSizeCss(item?.titleSize),
             lineHeight: 1.4,
             fontWeight: 700,
             color: colors.ink,
@@ -540,6 +545,7 @@ export function EstimatePdfTemplate({
       >
         <div style={{ display: 'grid', gridTemplateColumns: 'minmax(0,1.05fr) minmax(0,1.35fr) minmax(112px,0.8fr) minmax(144px,1fr)', alignItems: 'stretch' }}>
           <div
+            data-estimate-scope-box="true"
             style={{
               minWidth: 0,
               padding: 'var(--document-summary-padding-y) var(--document-summary-padding-x)',
@@ -617,11 +623,27 @@ export function EstimatePdfTemplate({
               boxSizing: 'border-box',
               border: `${ESTIMATE_RICH_CONTENT_BORDER_WIDTH}px solid ${colors.slate200}`,
               padding: `13px ${ESTIMATE_RICH_CONTENT_HORIZONTAL_PADDING}px`,
-              display: 'grid',
-              gap: '5px',
+              display: 'block',
             }}
           >
-            <RichWorkItemContent blocks={scopeContentBlocks} accentColor={accentColor} fontSize="12px" />
+            <div
+              data-estimate-scope-rich-content="true"
+              style={{
+                width: '100%',
+                maxWidth: 'none',
+                minWidth: 0,
+                margin: 0,
+                padding: 0,
+                paddingInline: 0,
+                boxSizing: 'border-box',
+                display: 'grid',
+                gridTemplateColumns: 'minmax(0, 1fr)',
+                gap: '5px',
+                overflow: 'visible',
+              }}
+            >
+              <RichWorkItemContent blocks={scopeContentBlocks} accentColor={accentColor} />
+            </div>
           </div>
         </section>
       ) : null}

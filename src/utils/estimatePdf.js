@@ -6,6 +6,7 @@ import {
   ESTIMATE_ITEM_PRICING_QUANTITY_RATE,
   ESTIMATE_LABOR_ONLY,
   ESTIMATE_OWNER_SUPPLIED_MATERIALS,
+  getEstimateTextSizePoints,
   normalizeEstimateRichText,
 } from './estimateDocument'
 import { getAcceptedPaymentMethodLabels } from './acceptedPaymentMethods'
@@ -316,17 +317,36 @@ function buildFallbackPdf({
 
       if (block?.type === 'bulletList') {
         ;(block.items || []).forEach((item) => {
-          const bulletSegments = [
-            { text: '• ', bold: false, underline: false },
-            ...(item?.segments || []),
-          ]
-          lines.push(...wrapFormattedSegments(bulletSegments, maxWidth, options))
+          const size = getEstimateTextSizePoints(item?.size)
+          const bulletIndent = 9
+          const itemLines = wrapFormattedSegments(
+            item?.segments || [],
+            Math.max(maxWidth - bulletIndent, 1),
+            { ...options, size }
+          )
+
+          itemLines.forEach((line, lineIndex) => {
+            const contentRuns = line.map((run) => ({
+              ...run,
+              fontSize: size,
+              lineIndent: lineIndex === 0 ? 0 : bulletIndent,
+            }))
+
+            lines.push(lineIndex === 0
+              ? [
+                  { text: '• ', bold: false, underline: false, fontSize: size, lineIndent: 0 },
+                  ...contentRuns,
+                ]
+              : contentRuns)
+          })
         })
         return
       }
 
       if (block?.type === 'paragraph') {
-        lines.push(...wrapFormattedSegments(block?.segments || [], maxWidth, options))
+        const size = getEstimateTextSizePoints(block?.size)
+        lines.push(...wrapFormattedSegments(block?.segments || [], maxWidth, { ...options, size })
+          .map((line) => line.map((run) => ({ ...run, fontSize: size }))))
       }
     })
 
@@ -334,11 +354,11 @@ function buildFallbackPdf({
   }
 
   function drawFormattedLine(runs, x, y, options = {}) {
-    const size = options.size || 11
-    let cursorX = x
+    const size = options.size || runs?.[0]?.fontSize || getEstimateTextSizePoints()
+    let cursorX = x + Number(runs?.[0]?.lineIndent || 0)
 
     ;(runs || []).forEach((run) => {
-      setFormattedRunFont(run, size)
+      setFormattedRunFont(run, run?.fontSize || size)
       pdf.setTextColor(options.color || safeColors.slate700)
       pdf.text(run.text, cursorX, y)
       const runWidth = pdf.getTextWidth(run.text)
@@ -354,15 +374,22 @@ function buildFallbackPdf({
   }
 
   function drawSectionBlock(title, content, options = {}) {
-    const lineHeight = options.lineHeight || 16
     const topOffset = options.topOffset || 34
     const bottomPadding = options.bottomPadding || 12
     const minHeight = options.minHeight || 84
     const blockWidth = cardWidth - 48
     const contentWidth = blockWidth - (ESTIMATE_RICH_CONTENT_HORIZONTAL_PADDING * 2)
     const blocks = options.contentBlocks || normalizeEstimateRichText(content).blocks
-    const lines = buildFormattedLines(blocks, contentWidth, { size: 11 })
-    const blockHeight = Math.max(minHeight, topOffset + (lines.length * lineHeight) + bottomPadding)
+    const lines = buildFormattedLines(blocks, contentWidth)
+    const lineHeights = lines.map((line) => (
+      line.length
+        ? Math.max(options.lineHeight || 0, (line[0]?.fontSize || getEstimateTextSizePoints()) * 1.48)
+        : 7
+    ))
+    const blockHeight = Math.max(
+      minHeight,
+      topOffset + lineHeights.reduce((sum, height) => sum + height, 0) + bottomPadding
+    )
 
     ensureSpace(blockHeight + 12)
     pdf.setFillColor(safeColors.slate50)
@@ -370,11 +397,12 @@ function buildFallbackPdf({
     drawText(title.toUpperCase(), innerX + ESTIMATE_RICH_CONTENT_HORIZONTAL_PADDING, cursorY + 18, { bold: true, size: 10, color: safeColors.slate400 })
 
     const contentStartY = cursorY + topOffset
+    let contentCursorY = contentStartY
     lines.forEach((line, index) => {
-      drawFormattedLine(line, innerX + ESTIMATE_RICH_CONTENT_HORIZONTAL_PADDING, contentStartY + (index * lineHeight), {
-        size: 11,
+      drawFormattedLine(line, innerX + ESTIMATE_RICH_CONTENT_HORIZONTAL_PADDING, contentCursorY, {
         color: safeColors.slate700,
       })
+      contentCursorY += lineHeights[index]
     })
 
     cursorY += blockHeight
@@ -458,18 +486,27 @@ function buildFallbackPdf({
       const titleLines = wrapFormattedSegments(
         titleSegments.length ? titleSegments : [{ text: t('item'), bold: true, underline: false }],
         itemDescriptionWidth,
-        { size: 11 }
-      )
+        { size: getEstimateTextSizePoints(item?.titleSize) }
+      ).map((line) => line.map((run) => ({
+        ...run,
+        fontSize: getEstimateTextSizePoints(item?.titleSize),
+      })))
       const descriptionLines = buildFormattedLines(
         item?.descriptionBlocks || [],
-        itemDescriptionWidth,
-        { size: 11 }
+        itemDescriptionWidth
       )
+      const formattedLines = [
+        ...titleLines,
+        ...(item?.descriptionBlocks?.length ? descriptionLines : []),
+      ]
+      const contentHeight = formattedLines.reduce((height, line) => (
+        height + Math.max(14, (line?.[0]?.fontSize || getEstimateTextSizePoints()) * 1.48)
+      ), 0)
 
       return {
         titleLines,
         descriptionLines: item?.descriptionBlocks?.length ? descriptionLines : [],
-        height: ((titleLines.length + (item?.descriptionBlocks?.length ? descriptionLines.length : 0)) * 14) + 50,
+        height: contentHeight + 50,
       }
     })
     const estimatedItemsHeight = formattedLineItems.reduce((sum, item) => sum + item.height, 0)
@@ -500,9 +537,13 @@ function buildFallbackPdf({
       const formattedItem = formattedLineItems[index]
       const startingY = cursorY
       ;[...formattedItem.titleLines, ...formattedItem.descriptionLines].forEach((line) => {
-        ensureSpace(26)
-        drawFormattedLine(line, innerX + 16, cursorY, { size: 11, color: safeColors.slate700 })
-        cursorY += 14
+        const lineHeight = Math.max(
+          14,
+          (line?.[0]?.fontSize || getEstimateTextSizePoints()) * 1.48
+        )
+        ensureSpace(lineHeight + 12)
+        drawFormattedLine(line, innerX + 16, cursorY, { color: safeColors.slate700 })
+        cursorY += lineHeight
       })
       if (showQuantityRateColumns && hasQuantityRate) {
         drawText(Number(item?.quantity || 0).toLocaleString(undefined, { maximumFractionDigits: 2 }), quantityColumnX, startingY, { size: 10, align: 'right' })

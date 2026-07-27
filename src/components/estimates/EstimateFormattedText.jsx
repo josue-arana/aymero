@@ -1,4 +1,7 @@
-import { normalizeEstimateRichText } from '../../utils/estimateDocument'
+import {
+  getEstimateTextSizeCss,
+  normalizeEstimateRichText,
+} from '../../utils/estimateDocument'
 
 function InlineFormattedText({ segments = [] }) {
   return segments.map((segment, index) => {
@@ -24,7 +27,10 @@ export function EstimateFormattedText({ value, className = '' }) {
           return (
             <ul key={`bullets-${blockIndex}`} className="list-disc space-y-1 pl-5">
               {block.items.map((item, itemIndex) => (
-                <li key={`${blockIndex}-${itemIndex}`}>
+                <li
+                  key={`${blockIndex}-${itemIndex}`}
+                  style={{ fontSize: getEstimateTextSizeCss(item.size) }}
+                >
                   <InlineFormattedText segments={item.segments} />
                 </li>
               ))}
@@ -34,7 +40,11 @@ export function EstimateFormattedText({ value, className = '' }) {
 
         if (block.type === 'paragraph') {
           return (
-            <p key={`paragraph-${blockIndex}`} className="whitespace-pre-wrap">
+            <p
+              key={`paragraph-${blockIndex}`}
+              className="whitespace-pre-wrap"
+              style={{ fontSize: getEstimateTextSizeCss(block.size) }}
+            >
               <InlineFormattedText segments={block.segments} />
             </p>
           )
