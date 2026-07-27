@@ -3,6 +3,7 @@ import { jsPDF } from 'jspdf'
 import { currency } from './formatters'
 import {
   ensureNormalizedEstimateDocument,
+  ESTIMATE_ITEM_PRICING_QUANTITY_RATE,
   ESTIMATE_LABOR_ONLY,
   ESTIMATE_OWNER_SUPPLIED_MATERIALS,
 } from './estimateDocument'
@@ -263,8 +264,8 @@ function wrapMultilineText(text, maxChars) {
     .flatMap((line) => (line.trim() ? wrapLine(line, maxChars) : ['']))
 }
 
-function estimateLineItemHeight(item) {
-  const nameLines = wrapMultilineText(getNormalizedItemDisplayText(item), 52)
+function estimateLineItemHeight(item, maxChars = 52) {
+  const nameLines = wrapMultilineText(getNormalizedItemDisplayText(item), maxChars)
   const detailHeight = Math.max(nameLines.length, 1) * 14
   const detailsHeight = 22
   return detailHeight + detailsHeight + 14
@@ -367,6 +368,7 @@ function buildFallbackPdf({
   const lineItems = normalizedDocument.sections.workBreakdown.visible
     ? normalizedDocument.workItems
     : []
+  const showQuantityRateColumns = Boolean(normalizedDocument.sections.workBreakdown.showQuantityRateColumns)
   const materialsIncluded = normalizedDocument.defaults.materialsIncluded
   const total = normalizedDocument.totals.total
   const subtotal = normalizedDocument.totals.subtotal
@@ -512,28 +514,49 @@ function buildFallbackPdf({
   }
 
   if (lineItems.length > 0) {
-    const estimatedItemsHeight = lineItems.reduce((sum, item) => sum + estimateLineItemHeight(item), 0)
+    const itemDescriptionMaxChars = showQuantityRateColumns ? 38 : 64
+    const itemDescriptionWidth = showQuantityRateColumns ? cardWidth - 300 : cardWidth - 150
+    const totalColumnX = cardX + cardWidth - 36
+    const rateColumnX = totalColumnX - 88
+    const quantityColumnX = rateColumnX - 66
+    const estimatedItemsHeight = lineItems.reduce((sum, item) => (
+      sum + estimateLineItemHeight(item, itemDescriptionMaxChars)
+    ), 0)
     ensureSpace(estimatedItemsHeight + 60)
     pdf.setDrawColor(safeColors.slate200)
     pdf.roundedRect(innerX, cursorY, cardWidth - 40, estimatedItemsHeight + 34, 18, 18, 'S')
     pdf.setFillColor(safeColors.slate50)
     pdf.roundedRect(innerX, cursorY, cardWidth - 40, 26, 18, 18, 'F')
     drawText(t('item').toUpperCase(), innerX + 16, cursorY + 17, { bold: true, size: 10, color: safeColors.slate500 })
-    drawText(t('amount').toUpperCase(), cardX + cardWidth - 36, cursorY + 17, { bold: true, size: 10, color: safeColors.slate500, align: 'right' })
+    if (showQuantityRateColumns) {
+      drawText(t('qty').toUpperCase(), quantityColumnX, cursorY + 17, { bold: true, size: 9, color: safeColors.slate500, align: 'right' })
+      drawText(t('rate').toUpperCase(), rateColumnX, cursorY + 17, { bold: true, size: 9, color: safeColors.slate500, align: 'right' })
+      drawText(t('total').toUpperCase(), totalColumnX, cursorY + 17, { bold: true, size: 9, color: safeColors.slate500, align: 'right' })
+    } else {
+      drawText(t('amount').toUpperCase(), totalColumnX, cursorY + 17, { bold: true, size: 10, color: safeColors.slate500, align: 'right' })
+    }
     cursorY += 42
 
     lineItems.forEach((item, index) => {
       const itemMaterialsIncluded = Boolean(item?.materialsIncluded)
+      const hasQuantityRate = item?.pricingDisplayMode === ESTIMATE_ITEM_PRICING_QUANTITY_RATE
 
       if (index > 0) {
         pdf.setDrawColor(safeColors.slate100)
         pdf.line(innerX + 14, cursorY - 10, cardX + cardWidth - 34, cursorY - 10)
       }
 
-      const itemLines = wrapMultilineText(getNormalizedItemDisplayText(item) || t('item'), 52)
+      const itemLines = wrapMultilineText(
+        getNormalizedItemDisplayText(item) || t('item'),
+        itemDescriptionMaxChars
+      )
       const startingY = cursorY
-      drawWrappedLines(itemLines.length ? itemLines : [t('item')], innerX + 16, cardWidth - 180, { size: 11, color: safeColors.slate700, lineHeight: 14 })
-      drawText(currency.format(Number(item?.total || 0)), cardX + cardWidth - 36, startingY, { bold: true, size: 11, align: 'right' })
+      drawWrappedLines(itemLines.length ? itemLines : [t('item')], innerX + 16, itemDescriptionWidth, { size: 11, color: safeColors.slate700, lineHeight: 14 })
+      if (showQuantityRateColumns && hasQuantityRate) {
+        drawText(Number(item?.quantity || 0).toLocaleString(undefined, { maximumFractionDigits: 2 }), quantityColumnX, startingY, { size: 10, align: 'right' })
+        drawText(currency.format(Number(item?.rate || 0)), rateColumnX, startingY, { size: 10, align: 'right' })
+      }
+      drawText(currency.format(Number(item?.total || 0)), totalColumnX, startingY, { bold: true, size: 11, align: 'right' })
       pdf.setFillColor(itemMaterialsIncluded ? safeColors.blue50 : safeColors.slate100)
       pdf.roundedRect(innerX + 16, cursorY + 2, 122, 18, 9, 9, 'F')
       drawText(getEstimateMaterialsLabel(item, t), innerX + 77, cursorY + 14, { bold: true, size: 8.5, color: itemMaterialsIncluded ? safeColors.blue700 : safeColors.slate700, align: 'center' })

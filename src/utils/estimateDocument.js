@@ -4,6 +4,8 @@ export const ESTIMATE_LABOR_ONLY = 'labor_only'
 export const ESTIMATE_OWNER_SUPPLIED_MATERIALS = 'owner_supplied_materials'
 export const ESTIMATE_PRICING_SIMPLE = 'simple'
 export const ESTIMATE_PRICING_DETAILED = 'detailed'
+export const ESTIMATE_ITEM_PRICING_AMOUNT_ONLY = 'amountOnly'
+export const ESTIMATE_ITEM_PRICING_QUANTITY_RATE = 'quantityRate'
 
 function toFiniteNumber(value, fallback = 0) {
   const number = Number(value)
@@ -12,6 +14,85 @@ function toFiniteNumber(value, fallback = 0) {
 
 function normalizeText(value) {
   return typeof value === 'string' ? value : String(value || '')
+}
+
+function hasFiniteStoredNumber(value) {
+  return value !== ''
+    && value !== null
+    && value !== undefined
+    && Number.isFinite(Number(value))
+}
+
+function nearlyEqual(left, right) {
+  const leftNumber = Number(left)
+  const rightNumber = Number(right)
+  if (!Number.isFinite(leftNumber) || !Number.isFinite(rightNumber)) return false
+
+  return Math.abs(leftNumber - rightNumber) <= Math.max(0.005, Math.abs(rightNumber) * 0.000001)
+}
+
+function normalizeItemPricingDisplayMode(value) {
+  const normalizedValue = normalizeText(value).trim().toLowerCase().replace(/[\s_-]+/g, '')
+
+  if (normalizedValue === 'amountonly') return ESTIMATE_ITEM_PRICING_AMOUNT_ONLY
+  if (normalizedValue === 'quantityrate') return ESTIMATE_ITEM_PRICING_QUANTITY_RATE
+  return ''
+}
+
+/**
+ * The current builder stores one amount and does not collect quantity/rate.
+ * Quantity/rate columns are therefore reserved for records with both explicit
+ * values and a meaningful multiplication. The ambiguous legacy shape
+ * quantity=1, rate=total remains amount-only unless an explicit display marker
+ * says those values were intentional.
+ */
+export function resolveEstimateItemPricingDisplayMode(item = {}, normalizedValues = {}) {
+  const configuredMode = normalizeItemPricingDisplayMode(
+    item?.pricingDisplayMode
+      ?? item?.pricing_display_mode
+      ?? item?.priceDisplayMode
+      ?? item?.price_display_mode
+  )
+
+  if (configuredMode === ESTIMATE_ITEM_PRICING_AMOUNT_ONLY) {
+    return ESTIMATE_ITEM_PRICING_AMOUNT_ONLY
+  }
+
+  const hasStoredQuantity = hasFiniteStoredNumber(item?.quantity)
+  const hasStoredRate = hasFiniteStoredNumber(item?.rate)
+  if (!hasStoredQuantity || !hasStoredRate) {
+    return ESTIMATE_ITEM_PRICING_AMOUNT_ONLY
+  }
+
+  const quantity = toFiniteNumber(normalizedValues.quantity ?? item.quantity)
+  const rate = toFiniteNumber(normalizedValues.rate ?? item.rate)
+  const total = toFiniteNumber(
+    normalizedValues.total
+      ?? item?.total
+      ?? item?.amount,
+    quantity * rate
+  )
+  const hasMeaningfulCalculation = quantity > 0 && nearlyEqual(quantity * rate, total)
+
+  if (!hasMeaningfulCalculation) {
+    return ESTIMATE_ITEM_PRICING_AMOUNT_ONLY
+  }
+
+  if (configuredMode === ESTIMATE_ITEM_PRICING_QUANTITY_RATE) {
+    return ESTIMATE_ITEM_PRICING_QUANTITY_RATE
+  }
+
+  const isAmbiguousSyntheticDefault = nearlyEqual(quantity, 1) && nearlyEqual(rate, total)
+
+  return isAmbiguousSyntheticDefault
+    ? ESTIMATE_ITEM_PRICING_AMOUNT_ONLY
+    : ESTIMATE_ITEM_PRICING_QUANTITY_RATE
+}
+
+export function getEstimateWorkBreakdownPricingDisplayMode(workItems = []) {
+  return workItems.some((item) => item?.pricingDisplayMode === ESTIMATE_ITEM_PRICING_QUANTITY_RATE)
+    ? ESTIMATE_ITEM_PRICING_QUANTITY_RATE
+    : ESTIMATE_ITEM_PRICING_AMOUNT_ONLY
 }
 
 export function isValidExplicitEstimateItem(item = {}) {
@@ -225,6 +306,11 @@ function normalizeEstimateWorkItem(item = {}, {
     storedRate,
     quantity ? total / quantity : total
   )
+  const pricingDisplayMode = resolveEstimateItemPricingDisplayMode(item, {
+    quantity,
+    rate,
+    total,
+  })
   const materialsStatus = normalizeEstimateMaterialsStatus(item, fallbackMaterialsIncluded)
 
   return {
@@ -234,8 +320,9 @@ function normalizeEstimateWorkItem(item = {}, {
     contentBlocks: normalizeEstimateRichText(sourceText).blocks,
     descriptionBlocks: normalizeEstimateRichText(textParts.description).blocks,
     detailLines: textParts.detailLines,
-    quantity,
-    rate,
+    pricingDisplayMode,
+    quantity: pricingDisplayMode === ESTIMATE_ITEM_PRICING_QUANTITY_RATE ? quantity : null,
+    rate: pricingDisplayMode === ESTIMATE_ITEM_PRICING_QUANTITY_RATE ? rate : null,
     total,
     materialsIncluded: materialsStatus === ESTIMATE_MATERIALS_INCLUDED,
     materialsStatus,
@@ -271,6 +358,7 @@ export function normalizeEstimateDocument({
   const calculatedSubtotal = hasDetailedItems
     ? workItems.reduce((sum, item) => sum + item.total, 0)
     : normalizedTotal
+  const workBreakdownPricingDisplayMode = getEstimateWorkBreakdownPricingDisplayMode(workItems)
   const scopeOfWork = {
     text: scopeText,
     contentBlocks: normalizeEstimateRichText(scopeText).blocks,
@@ -303,6 +391,8 @@ export function normalizeEstimateDocument({
       },
       workBreakdown: {
         visible: normalizedPricingMode === ESTIMATE_PRICING_DETAILED && workItems.length > 0,
+        pricingDisplayMode: workBreakdownPricingDisplayMode,
+        showQuantityRateColumns: workBreakdownPricingDisplayMode === ESTIMATE_ITEM_PRICING_QUANTITY_RATE,
       },
       messageFromContractor: {
         visible: Boolean(contractorMessageText.trim()),
@@ -332,6 +422,40 @@ export function ensureNormalizedEstimateDocument(documentModel, legacyInput = {}
         : toFiniteNumber(documentModel?.simpleTotal ?? documentModel?.totals?.total)
       : toFiniteNumber(documentModel.totals.subtotal)
     const scopeOfWork = documentModel.scopeOfWork || documentModel.scope
+    const normalizedDocumentWorkItems = normalizedWorkItems.map((item, index) => {
+      const materialsStatus = normalizeEstimateMaterialsStatus(
+        item,
+        documentModel?.defaults?.materialsIncluded
+      )
+      const quantity = toFiniteNumber(item?.quantity, 1)
+      const total = toFiniteNumber(item?.total)
+      const rate = toFiniteNumber(item?.rate, quantity ? total / quantity : total)
+      const pricingDisplayMode = resolveEstimateItemPricingDisplayMode(item, {
+        quantity,
+        rate,
+        total,
+      })
+
+      return {
+        ...item,
+        contentBlocks: Array.isArray(item?.contentBlocks)
+          ? item.contentBlocks
+          : normalizeEstimateRichText([item?.title, item?.description].filter(Boolean).join('\n')).blocks,
+        descriptionBlocks: Array.isArray(item?.descriptionBlocks)
+          ? item.descriptionBlocks
+          : normalizeEstimateRichText(item?.description).blocks,
+        detailLines: Array.isArray(item?.detailLines) ? item.detailLines : [],
+        pricingDisplayMode,
+        quantity: pricingDisplayMode === ESTIMATE_ITEM_PRICING_QUANTITY_RATE ? quantity : null,
+        rate: pricingDisplayMode === ESTIMATE_ITEM_PRICING_QUANTITY_RATE ? rate : null,
+        materialsIncluded: materialsStatus === ESTIMATE_MATERIALS_INCLUDED,
+        materialsStatus,
+        displayOrder: Number.isFinite(Number(item?.displayOrder))
+          ? Number(item.displayOrder)
+          : index,
+      }
+    })
+    const workBreakdownPricingDisplayMode = getEstimateWorkBreakdownPricingDisplayMode(normalizedDocumentWorkItems)
 
     return {
       ...documentModel,
@@ -354,33 +478,14 @@ export function ensureNormalizedEstimateDocument(documentModel, legacyInput = {}
         taxAmount: toFiniteNumber(documentModel?.totals?.taxAmount),
         total: toFiniteNumber(documentModel?.totals?.total),
       },
-      workItems: normalizedWorkItems.map((item, index) => {
-        const materialsStatus = normalizeEstimateMaterialsStatus(
-          item,
-          documentModel?.defaults?.materialsIncluded
-        )
-
-        return {
-          ...item,
-          contentBlocks: Array.isArray(item?.contentBlocks)
-            ? item.contentBlocks
-            : normalizeEstimateRichText([item?.title, item?.description].filter(Boolean).join('\n')).blocks,
-          descriptionBlocks: Array.isArray(item?.descriptionBlocks)
-            ? item.descriptionBlocks
-            : normalizeEstimateRichText(item?.description).blocks,
-          detailLines: Array.isArray(item?.detailLines) ? item.detailLines : [],
-          materialsIncluded: materialsStatus === ESTIMATE_MATERIALS_INCLUDED,
-          materialsStatus,
-          displayOrder: Number.isFinite(Number(item?.displayOrder))
-            ? Number(item.displayOrder)
-            : index,
-        }
-      }),
+      workItems: normalizedDocumentWorkItems,
       sections: {
         ...documentModel.sections,
         workBreakdown: {
           ...documentModel?.sections?.workBreakdown,
           visible: normalizedPricingMode === ESTIMATE_PRICING_DETAILED && normalizedWorkItems.length > 0,
+          pricingDisplayMode: workBreakdownPricingDisplayMode,
+          showQuantityRateColumns: workBreakdownPricingDisplayMode === ESTIMATE_ITEM_PRICING_QUANTITY_RATE,
         },
         messageFromContractor: {
           ...documentModel?.sections?.messageFromContractor,
