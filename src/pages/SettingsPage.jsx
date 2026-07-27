@@ -492,58 +492,78 @@ export function SettingsPage({ settings, onSaveSettings, onOpenCompanySetup, onC
           </InfoCard>
 
           <InfoCard title={t('estimateInvoiceDefaults')} icon={FileText}>
-            <div className="grid gap-4 sm:grid-cols-2">
-              <label className="block text-sm font-bold text-slate-700 sm:col-span-2">
-                {t('onboardingDefaultPaymentTerms')}
+            <p id="estimate-invoice-defaults-help" className="text-sm leading-6 text-slate-600">{t('estimateInvoiceDefaultsHelp')}</p>
+            <div className="mt-4 grid gap-4 md:grid-cols-2 lg:grid-cols-[minmax(0,1.5fr)_minmax(0,1fr)_minmax(0,1fr)]">
+              <label className="flex min-w-0 flex-col text-sm font-bold text-slate-700">
+                <span className="lg:min-h-10">{t('onboardingDefaultPaymentTerms')}</span>
                 <select value={defaults.paymentTerms || ''} onChange={(event) => updateDefaults('paymentTerms', event.target.value)} className="mt-2 w-full rounded-2xl border border-slate-200 bg-slate-50 px-4 py-3 text-sm outline-none focus:border-blue-500 focus:ring-4 focus:ring-blue-100">
                   {paymentTermOptions.map(([value, label]) => <option key={value} value={value}>{label}</option>)}
                 </select>
               </label>
-              <SettingsInput type="number" label={t('defaultDepositPercentage')} value={defaults.depositPercentage} onChange={(value) => updateDefaults('depositPercentage', Number(value || 0))} />
-              <SettingsInput type="number" label={t('defaultInvoiceDueDays')} value={defaults.invoiceDueDays} onChange={(value) => updateDefaults('invoiceDueDays', Number(value || 0))} />
-              <ToggleRow label={t('defaultMaterialsIncluded')} checked={Boolean(defaults.materialsIncluded)} onChange={(checked) => updateDefaults('materialsIncluded', checked)} t={t} />
+              <SettingsNumberInput
+                label={t('defaultDepositPercentage')}
+                suffix="%"
+                value={defaults.depositPercentage}
+                onChange={(value) => updateDefaults('depositPercentage', Number(value || 0))}
+              />
+              <SettingsNumberInput
+                label={t('defaultInvoiceDueDays')}
+                suffix={t('days')}
+                value={defaults.invoiceDueDays}
+                onChange={(value) => updateDefaults('invoiceDueDays', Number(value || 0))}
+              />
             </div>
-            <div className="mt-5 border-t border-slate-200 pt-5">
-              <fieldset aria-describedby="accepted-payment-methods-help accepted-payment-methods-hint">
-                <legend className="flex items-center gap-2 text-sm font-bold text-slate-950">
-                  <CreditCard className="h-4 w-4 text-blue-600" aria-hidden="true" />
-                  {t('acceptedPaymentMethods')}
-                </legend>
-                <p id="accepted-payment-methods-help" className="mt-2 text-sm leading-6 text-slate-600">{t('acceptedPaymentMethodsHelp')}</p>
-                <p id="accepted-payment-methods-hint" className="mt-1 text-xs leading-5 text-slate-500">{t('acceptedPaymentMethodsSelectionHint')}</p>
-                <div className="mt-4 grid gap-2 sm:grid-cols-2">
-                  {ACCEPTED_PAYMENT_METHOD_OPTIONS.map((option) => {
-                    const checked = acceptedPaymentMethods.methods.includes(option.value)
+            <div className="mt-5 border-t border-slate-200 pt-4">
+              <label className="flex cursor-pointer items-start gap-3">
+                <input
+                  type="checkbox"
+                  checked={Boolean(defaults.materialsIncluded)}
+                  onChange={(event) => updateDefaults('materialsIncluded', event.target.checked)}
+                  aria-describedby="default-materials-included-help"
+                  className="mt-0.5 h-4 w-4 shrink-0 rounded border-slate-300 text-blue-600 focus:ring-blue-500"
+                />
+                <span className="min-w-0">
+                  <span className="block text-sm font-semibold text-slate-700">{t('defaultMaterialsIncluded')}</span>
+                  <span id="default-materials-included-help" className="mt-1 block text-xs leading-5 text-slate-500">{t('defaultMaterialsIncludedHelp')}</span>
+                </span>
+              </label>
+            </div>
+          </InfoCard>
 
-                    return (
-                      <label key={option.value} className={`flex min-h-11 cursor-pointer items-center gap-3 rounded-2xl border px-3 py-2.5 text-sm font-semibold transition ${checked ? 'border-blue-300 bg-blue-50 text-blue-900' : 'border-slate-200 bg-slate-50 text-slate-700 hover:bg-white'}`}>
-                        <input
-                          type="checkbox"
-                          checked={checked}
-                          onChange={(event) => toggleAcceptedPaymentMethod(option.value, event.target.checked)}
-                          className="h-4 w-4 rounded border-slate-300 text-blue-600 focus:ring-blue-500"
-                        />
-                        <span>{t(option.labelKey)}</span>
-                      </label>
-                    )
-                  })}
-                </div>
-                {acceptedPaymentMethods.methods.includes(OTHER_PAYMENT_METHOD) ? (
-                  <label htmlFor="custom-payment-method" className="mt-4 block text-sm font-bold text-slate-700">
-                    {t('customPaymentMethod')}
-                    <input
-                      id="custom-payment-method"
-                      value={acceptedPaymentMethods.otherLabel}
-                      onChange={(event) => updateCustomPaymentMethod(event.target.value)}
-                      aria-invalid={Boolean(paymentMethodsError)}
-                      aria-describedby={paymentMethodsError ? 'custom-payment-method-error' : undefined}
-                      className={`mt-2 w-full rounded-2xl border bg-slate-50 px-4 py-3 text-sm outline-none focus:ring-4 ${paymentMethodsError ? 'border-rose-400 focus:border-rose-500 focus:ring-rose-100' : 'border-slate-200 focus:border-blue-500 focus:ring-blue-100'}`}
+          <InfoCard title={t('acceptedPaymentMethods')} icon={CreditCard}>
+            <fieldset aria-describedby="accepted-payment-methods-help accepted-payment-methods-hint">
+              <legend className="sr-only">{t('acceptedPaymentMethods')}</legend>
+              <p id="accepted-payment-methods-help" className="text-sm leading-6 text-slate-600">{t('acceptedPaymentMethodsHelp')}</p>
+              <p id="accepted-payment-methods-hint" className="mt-1 text-xs leading-5 text-slate-500">{t('acceptedPaymentMethodsSelectionHint')}</p>
+              <div className="mt-4 grid gap-2 sm:grid-cols-2 lg:grid-cols-3">
+                {ACCEPTED_PAYMENT_METHOD_OPTIONS.map((option) => {
+                  const checked = acceptedPaymentMethods.methods.includes(option.value)
+
+                  return (
+                    <PortalFeatureCheckbox
+                      key={option.value}
+                      label={t(option.labelKey)}
+                      checked={checked}
+                      onChange={(nextChecked) => toggleAcceptedPaymentMethod(option.value, nextChecked)}
                     />
-                    {paymentMethodsError ? <span id="custom-payment-method-error" className="mt-2 block text-sm font-semibold text-rose-600">{paymentMethodsError}</span> : null}
-                  </label>
-                ) : null}
-              </fieldset>
-            </div>
+                  )
+                })}
+              </div>
+              {acceptedPaymentMethods.methods.includes(OTHER_PAYMENT_METHOD) ? (
+                <label htmlFor="custom-payment-method" className="mt-4 block text-sm font-bold text-slate-700">
+                  {t('customPaymentMethod')}
+                  <input
+                    id="custom-payment-method"
+                    value={acceptedPaymentMethods.otherLabel}
+                    onChange={(event) => updateCustomPaymentMethod(event.target.value)}
+                    aria-invalid={Boolean(paymentMethodsError)}
+                    aria-describedby={paymentMethodsError ? 'custom-payment-method-error' : undefined}
+                    className={`mt-2 w-full rounded-2xl border bg-slate-50 px-4 py-3 text-sm outline-none focus:ring-4 ${paymentMethodsError ? 'border-rose-400 focus:border-rose-500 focus:ring-rose-100' : 'border-slate-200 focus:border-blue-500 focus:ring-blue-100'}`}
+                  />
+                  {paymentMethodsError ? <span id="custom-payment-method-error" className="mt-2 block text-sm font-semibold text-rose-600">{paymentMethodsError}</span> : null}
+                </label>
+              ) : null}
+            </fieldset>
           </InfoCard>
 
           <InfoCard title={t('languageSettings')} icon={Languages}>
@@ -713,6 +733,23 @@ function SettingsInput({ label, value, onChange, type = 'text' }) {
     <label className="block text-sm font-bold text-slate-700">
       {label}
       <input type={type} value={value ?? ''} onChange={(event) => onChange(event.target.value)} className="mt-2 w-full rounded-2xl border border-slate-200 bg-slate-50 px-4 py-3 text-sm outline-none focus:border-blue-500 focus:ring-4 focus:ring-blue-100" />
+    </label>
+  )
+}
+
+function SettingsNumberInput({ label, value, onChange, suffix }) {
+  return (
+    <label className="flex min-w-0 flex-col text-sm font-bold text-slate-700">
+      <span className="lg:min-h-10">{label}</span>
+      <span className="relative mt-2 block">
+        <input
+          type="number"
+          value={value ?? ''}
+          onChange={(event) => onChange(event.target.value)}
+          className="w-full rounded-2xl border border-slate-200 bg-slate-50 py-3 pl-4 pr-14 text-sm outline-none focus:border-blue-500 focus:ring-4 focus:ring-blue-100"
+        />
+        <span aria-hidden="true" className="pointer-events-none absolute inset-y-0 right-4 flex items-center text-xs font-semibold text-slate-500">{suffix}</span>
+      </span>
     </label>
   )
 }
