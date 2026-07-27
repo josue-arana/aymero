@@ -24,15 +24,54 @@ import { shouldUseGeneratedPdfForPrint } from '../utils/documentOutput'
 import { createTranslator } from '../translations'
 import { findLeadByProjectLookup } from '../utils/projectIdentity'
 import { findRelatedClient } from '../utils/clients'
+import {
+  ESTIMATE_PRICING_DETAILED,
+  ESTIMATE_PRICING_SIMPLE,
+  getValidExplicitEstimateItems,
+  normalizeEstimateDocument,
+  resolveEstimatePricingMode,
+} from '../utils/estimateDocument'
 import { normalizeDocumentLanguageOverride, resolveClientFacingLanguage } from '../utils/language'
 import { getPaymentTermLabel, getPaymentTermOptions, isKnownPaymentTermValue } from '../utils/paymentTerms'
 
-const simplePricingMode = 'simple'
-const detailedPricingMode = 'detailed'
+const simplePricingMode = ESTIMATE_PRICING_SIMPLE
+const detailedPricingMode = ESTIMATE_PRICING_DETAILED
 const estimatePreviewPageWidth = defaultDocumentPreviewWidth
 
 function readEstimateScopeText(estimate = {}) {
   return estimate?.summary || estimate?.scopeOfWork || estimate?.scope_of_work || ''
+}
+
+function readEstimateContractorMessage(estimate = {}) {
+  return (
+    estimate?.messageFromContractor
+    || estimate?.message_from_contractor
+    || estimate?.customerMessage
+    || estimate?.customer_message
+    || estimate?.publicNotes
+    || estimate?.public_notes
+    || estimate?.notes
+    || ''
+  )
+}
+
+function resolveEstimateValidUntil(estimate = {}, estimateDate, expirationDays = 30) {
+  const explicitDate = (
+    estimate?.validUntil
+    || estimate?.valid_until
+    || estimate?.expirationDate
+    || estimate?.expiration_date
+    || estimate?.expiresAt
+    || estimate?.expires_at
+  )
+
+  if (explicitDate) return explicitDate
+
+  const parsedDate = new Date(estimateDate)
+  if (Number.isNaN(parsedDate.getTime())) return ''
+
+  parsedDate.setDate(parsedDate.getDate() + Number(expirationDays || 30))
+  return parsedDate.toISOString()
 }
 
 function resolveMaterialsIncludedDefault(...values) {
@@ -50,8 +89,16 @@ function normalizeLineItems(items = [], fallbackMaterialsIncluded = false) {
   }
 
   return items.map((item) => ({
-    name: typeof item?.name === 'string' ? item.name : String(item?.name || ''),
-    amount: Number(item?.amount || 0),
+    ...(item && typeof item === 'object' ? item : {}),
+    name: typeof item?.name === 'string' && item.name.trim()
+      ? item.name
+      : [item?.title, item?.description].filter(Boolean).join('\n'),
+    amount: Number(
+      item?.amount
+      ?? item?.total
+      ?? (Number(item?.quantity || 0) * Number(item?.rate || 0))
+      ?? 0
+    ),
     materialsIncluded: item?.materialsIncluded ?? fallbackMaterialsIncluded,
   }))
 }
@@ -93,8 +140,13 @@ function buildEstimateDraftState({ savedEstimate = {}, lead, companySettings, t 
     false
   )
   const savedLineItems = normalizeLineItems(savedEstimate.lineItems, defaultMaterialsIncluded)
-  const hasSavedLineItems = savedLineItems.some((item) => Number(item?.amount || 0) > 0 || String(item?.name || '').trim())
+  const explicitSavedLineItems = getValidExplicitEstimateItems(savedLineItems)
+  const hasSavedLineItems = explicitSavedLineItems.length > 0
   const defaultLineItems = buildDefaultLineItems(lead?.value, defaultMaterialsIncluded, t)
+  const savedPricingMode = resolveEstimatePricingMode(
+    savedEstimate.pricingMode || savedEstimate.pricing_mode,
+    explicitSavedLineItems
+  )
 
   return {
     scope: readEstimateScopeText(savedEstimate),
@@ -103,9 +155,9 @@ function buildEstimateDraftState({ savedEstimate = {}, lead, companySettings, t 
     materialsIncluded: defaultMaterialsIncluded,
     paymentTerms: savedEstimate.paymentTerms || companySettings?.defaults?.paymentTerms || t('defaultPaymentTerms'),
     estimateLanguage: normalizeDocumentLanguageOverride(savedEstimate.estimateLanguage),
-    pricingMode: hasSavedLineItems ? detailedPricingMode : simplePricingMode,
-    lineItems: hasSavedLineItems ? savedLineItems : defaultLineItems,
-    lineItemAmountInputs: (hasSavedLineItems ? savedLineItems : defaultLineItems).map((item) => formatAmountInputValue(item.amount)),
+    pricingMode: savedPricingMode,
+    lineItems: hasSavedLineItems ? explicitSavedLineItems : defaultLineItems,
+    lineItemAmountInputs: (hasSavedLineItems ? explicitSavedLineItems : defaultLineItems).map((item) => formatAmountInputValue(item.amount)),
   }
 }
 
@@ -162,6 +214,7 @@ export function EstimateBuilderPage({ lead, clientRecord = null, t, appLanguage 
     estimateTotal: savedEstimate?.total ?? null,
     estimateSummary: readEstimateScopeText(savedEstimate),
     estimateLanguage: savedEstimate?.estimateLanguage || '',
+    pricingMode: savedEstimate?.pricingMode || savedEstimate?.pricing_mode || '',
     paymentTerms: savedEstimate?.paymentTerms || '',
     materialsIncluded: savedEstimate?.materialsIncluded ?? null,
     lineItems: Array.isArray(savedEstimate?.lineItems) ? savedEstimate.lineItems : [],
@@ -258,19 +311,45 @@ export function EstimateBuilderPage({ lead, clientRecord = null, t, appLanguage 
     ),
     [lead?.portal?.estimate?.createdAt, lead?.portal?.estimate?.created_at, lead?.portal?.estimate?.dateCreated, savedEstimate.createdAt, savedEstimate.created_at, savedEstimate.dateCreated]
   )
+  const estimateDocumentModel = useMemo(() => normalizeEstimateDocument({
+    pricingMode,
+    scope,
+    lineItems,
+    total: estimateTotal,
+    subtotal: isDetailedPricing
+      ? lineTotal
+      : Number(savedEstimate?.subtotal || estimateTotal),
+    discountAmount: savedEstimate?.discountAmount,
+    taxAmount: savedEstimate?.taxAmount,
+    materialsIncluded,
+    messageFromContractor: readEstimateContractorMessage(savedEstimate),
+    validUntil: resolveEstimateValidUntil(
+      savedEstimate,
+      previewEstimateDate,
+      companySettings?.defaults?.estimateExpirationDays
+    ),
+  }), [
+    companySettings?.defaults?.estimateExpirationDays,
+    estimateTotal,
+    isDetailedPricing,
+    lineItems,
+    lineTotal,
+    materialsIncluded,
+    previewEstimateDate,
+    pricingMode,
+    savedEstimate,
+    scope,
+  ])
   const estimatePreviewProps = useMemo(() => ({
     company: companySettings?.company,
     lead,
     estimateNumber: previewEstimateNumber,
     estimateDate: previewEstimateDate,
-    scope,
-    materialsIncluded,
+    documentModel: estimateDocumentModel,
     paymentTerms: getPaymentTermLabel(paymentTerms, estimateT),
-    total: estimateTotal,
-    lineItems: isDetailedPricing ? lineItems : [],
     language: estimateOutputLanguage,
     t: estimateT,
-  }), [companySettings?.company, estimateOutputLanguage, estimateT, estimateTotal, isDetailedPricing, lead, lineItems, materialsIncluded, paymentTerms, previewEstimateDate, previewEstimateNumber, scope])
+  }), [companySettings?.company, estimateDocumentModel, estimateOutputLanguage, estimateT, lead, paymentTerms, previewEstimateDate, previewEstimateNumber])
 
   function getEstimatePayload() {
     return {
@@ -517,11 +596,8 @@ export function EstimateBuilderPage({ lead, clientRecord = null, t, appLanguage 
         companyName: companySettings?.company?.name,
         company: companySettings?.company || {},
         lead,
-        scope,
-        lineItems: isDetailedPricing ? lineItems : [],
-        materialsIncluded,
+        documentModel: estimateDocumentModel,
         paymentTerms,
-        total: estimateTotal,
         t: estimateT,
       })
       showToast(t('estimatePdfGenerated'))

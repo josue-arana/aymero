@@ -1,4 +1,5 @@
 import { forwardRef, useEffect, useState } from 'react'
+import { normalizeBrandColor } from '../../data/brandColors'
 import { currencyWithCents } from '../../utils/formatters'
 import { getLanguageLocale } from '../../utils/language'
 import { calculateInvoiceTotal, getInvoiceRemainingBalance } from '../../utils/invoiceRecords'
@@ -143,6 +144,7 @@ function CompanyContactRow({ icon: Icon, children }) {
 
 function CompanyBrand({ company = {}, t }) {
   const [logoFailed, setLogoFailed] = useState(false)
+  const accentColor = normalizeBrandColor(company?.primaryColor || company?.primary_color)
   const companyName = company?.name || t('brandName')
   const initials = getCompanyInitials(companyName) || t('brandInitials')
   const companySubtitle = getFirstAvailableValue(
@@ -168,7 +170,7 @@ function CompanyBrand({ company = {}, t }) {
       ) : (
         <div
           className="flex h-[68px] w-[68px] shrink-0 items-center justify-center text-xl font-bold text-white"
-          style={{ backgroundColor: company?.primaryColor || '#0f8b8d' }}
+          style={{ backgroundColor: accentColor }}
         >
           {initials}
         </div>

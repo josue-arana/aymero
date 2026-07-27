@@ -4,6 +4,7 @@ import { BrandLogo } from '../components/common/BrandLogo'
 import { LanguageToggleButton } from '../components/common/LanguageToggleButton'
 import { useToast } from '../components/common/ToastProvider'
 import { useAuth } from '../contexts/AuthContext'
+import { normalizeBrandColor } from '../data/brandColors'
 import { createDefaultCompanySettings } from '../data/defaultCompanySettings'
 import { getPaymentTermOptions } from '../utils/paymentTerms'
 
@@ -549,6 +550,7 @@ function StepContent({ step, draft, updateCompany, updateDefaults, handleLogoUpl
 
   if (step === 3) {
     const initials = (company.name || 'Aymero').split(/\s+/).map((part) => part[0]).join('').slice(0, 2).toUpperCase()
+    const onboardingBrandColor = normalizeBrandColor(company.primaryColor)
     return (
       <div>
         <h1 ref={headingRef} tabIndex="-1" className="text-3xl font-bold tracking-tight outline-none sm:text-4xl">{t('onboardingBrandingTitle')}</h1>
@@ -564,18 +566,18 @@ function StepContent({ step, draft, updateCompany, updateDefaults, handleLogoUpl
             <label htmlFor="onboarding-color" className="block text-sm font-bold text-slate-700">
               {t('onboardingPrimaryColorOptional')}
               <div className="mt-2 flex items-center gap-3 rounded-2xl border border-slate-200 bg-white p-3">
-                <input id="onboarding-color" type="color" value={company.primaryColor || '#2563eb'} onChange={(event) => updateCompany('primaryColor', event.target.value)} className="h-10 w-14 cursor-pointer rounded-lg border-0 bg-transparent" />
-                <span className="font-mono text-sm text-slate-600">{company.primaryColor || '#2563eb'}</span>
+                <input id="onboarding-color" type="color" value={onboardingBrandColor} onChange={(event) => updateCompany('primaryColor', normalizeBrandColor(event.target.value))} className="h-10 w-14 cursor-pointer rounded-lg border-0 bg-transparent" />
+                <span className="font-mono text-sm text-slate-600">{onboardingBrandColor}</span>
               </div>
             </label>
           </div>
           <div className="rounded-3xl border border-slate-200 bg-white p-5 shadow-xl shadow-slate-950/5">
             <p className="text-xs font-bold uppercase tracking-[0.2em] text-slate-400">{t('onboardingLivePreview')}</p>
             <div className="mt-6 flex items-center gap-3">
-              {company.logo ? <img src={company.logo} alt={t('onboardingLogoPreviewAlt')} className="h-14 w-14 rounded-2xl object-cover ring-1 ring-slate-200" /> : <span className="flex h-14 w-14 items-center justify-center rounded-2xl text-lg font-bold text-white" style={{ backgroundColor: company.primaryColor || '#2563eb' }}>{initials}</span>}
+              {company.logo ? <img src={company.logo} alt={t('onboardingLogoPreviewAlt')} className="h-14 w-14 rounded-2xl object-cover ring-1 ring-slate-200" /> : <span className="flex h-14 w-14 items-center justify-center rounded-2xl text-lg font-bold text-white" style={{ backgroundColor: onboardingBrandColor }}>{initials}</span>}
               <div className="min-w-0"><p className="truncate font-bold text-slate-950">{company.name || t('brandName')}</p><p className="text-sm text-slate-500">{t('onboardingWorkspacePreview')}</p></div>
             </div>
-            <div className="mt-7 h-2 rounded-full" style={{ backgroundColor: company.primaryColor || '#2563eb' }} />
+            <div className="mt-7 h-2 rounded-full" style={{ backgroundColor: onboardingBrandColor }} />
           </div>
         </div>
       </div>

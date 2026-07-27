@@ -1,6 +1,13 @@
 import html2canvas from 'html2canvas'
 import { jsPDF } from 'jspdf'
 import { currency } from './formatters'
+import {
+  ensureNormalizedEstimateDocument,
+  ESTIMATE_LABOR_ONLY,
+  ESTIMATE_OWNER_SUPPLIED_MATERIALS,
+} from './estimateDocument'
+import { getAcceptedPaymentMethodLabels } from './acceptedPaymentMethods'
+import { calculateDocumentPageBreakOffsets } from './documentPagination'
 import { getPaymentTermLabel } from './paymentTerms'
 
 const safeColors = {
@@ -23,6 +30,151 @@ const pdfPage = {
   margin: 22,
 }
 
+export function calculateEstimatePageBreakOffsets({
+  contentHeight,
+  sourcePageHeight,
+  protectedRanges = [],
+}) {
+  return calculateDocumentPageBreakOffsets({
+    contentHeight,
+    sourcePageHeight,
+    protectedRanges,
+  })
+}
+
+function getEstimatePageBreakOffsets(element, sourcePageHeight) {
+  const rootRect = element.getBoundingClientRect()
+  const renderedScale = rootRect.width > 0 && element.offsetWidth > 0
+    ? rootRect.width / element.offsetWidth
+    : 1
+
+  function toSourceRange(rect, inset = 0) {
+    if (!rect || rect.height <= 0) return null
+
+    return {
+      start: Math.max((rect.top - rootRect.top - inset) / renderedScale, 0),
+      end: Math.max((rect.bottom - rootRect.top + inset) / renderedScale, 0),
+    }
+  }
+
+  function getElementRange(node) {
+    return node ? toSourceRange(node.getBoundingClientRect()) : null
+  }
+
+  function combineElementRanges(firstNode, lastNode) {
+    const firstRange = getElementRange(firstNode)
+    const lastRange = getElementRange(lastNode)
+    if (!firstRange || !lastRange) return null
+
+    return {
+      start: Math.min(firstRange.start, lastRange.start),
+      end: Math.max(firstRange.end, lastRange.end),
+    }
+  }
+
+  function getTextLineRanges(flowNode) {
+    const ownerDocument = element.ownerDocument
+    const ownerWindow = ownerDocument?.defaultView
+    const showText = ownerWindow?.NodeFilter?.SHOW_TEXT ?? 4
+    const ranges = []
+
+    const walker = ownerDocument.createTreeWalker(flowNode, showText)
+    let textNode = walker.nextNode()
+
+    while (textNode) {
+      if (String(textNode.textContent || '').trim()) {
+        const textRange = ownerDocument.createRange()
+        textRange.selectNodeContents(textNode)
+
+        Array.from(textRange.getClientRects()).forEach((rect) => {
+          const sourceRange = toSourceRange(rect, 1)
+          if (sourceRange) ranges.push(sourceRange)
+        })
+
+        textRange.detach?.()
+      }
+
+      textNode = walker.nextNode()
+    }
+
+    return ranges
+  }
+
+  const protectedRanges = []
+  const closingSection = element.querySelector('[data-estimate-footer-section="true"]')
+  const documentFooter = element.querySelector('[data-estimate-footer="true"]')
+  const closingGroupRange = combineElementRanges(closingSection, documentFooter)
+
+  if (closingGroupRange && closingGroupRange.end - closingGroupRange.start <= sourcePageHeight * 0.92) {
+    protectedRanges.push(closingGroupRange)
+  }
+
+  const workHeading = element.querySelector('[data-estimate-work-heading="true"]')
+  const firstWorkItem = element.querySelector('[data-line-item-card="true"]')
+  const firstWorkGroupRange = combineElementRanges(workHeading, firstWorkItem)
+
+  if (firstWorkGroupRange && firstWorkGroupRange.end - firstWorkGroupRange.start <= sourcePageHeight * 0.45) {
+    protectedRanges.push(firstWorkGroupRange)
+  }
+
+  element.querySelectorAll(
+    '[data-estimate-keep-together="true"], [data-estimate-work-heading="true"], [data-estimate-footer="true"]'
+  ).forEach((node) => {
+    const range = getElementRange(node)
+    if (range) protectedRanges.push(range)
+  })
+
+  element.querySelectorAll('[data-estimate-section-heading="true"]').forEach((heading) => {
+    const section = heading.closest('[data-estimate-section="true"]')
+    const firstFlowNode = section?.querySelector('[data-estimate-flow-text="true"]')
+    const headingRange = getElementRange(heading)
+    const firstLineRange = firstFlowNode ? getTextLineRanges(firstFlowNode)[0] : null
+    const headingGroupRange = headingRange && firstLineRange
+      ? {
+          start: Math.min(headingRange.start, firstLineRange.start),
+          end: Math.max(headingRange.end, firstLineRange.end),
+        }
+      : null
+
+    if (headingGroupRange && headingGroupRange.end - headingGroupRange.start <= sourcePageHeight * 0.35) {
+      protectedRanges.push(headingGroupRange)
+    }
+  })
+
+  element.querySelectorAll('[data-estimate-flow-text="true"]').forEach((flowNode) => {
+    protectedRanges.push(...getTextLineRanges(flowNode))
+  })
+
+  return calculateEstimatePageBreakOffsets({
+    contentHeight: Math.max(element.scrollHeight, element.offsetHeight),
+    sourcePageHeight,
+    protectedRanges,
+  })
+}
+
+function createEstimateCanvasSlice(sourceCanvas, startY, height) {
+  const sliceCanvas = document.createElement('canvas')
+  sliceCanvas.width = sourceCanvas.width
+  sliceCanvas.height = Math.max(Math.ceil(height), 1)
+
+  const context = sliceCanvas.getContext('2d')
+  context.fillStyle = '#ffffff'
+  context.fillRect(0, 0, sliceCanvas.width, sliceCanvas.height)
+  context.drawImage(
+    sourceCanvas,
+    0,
+    Math.floor(startY),
+    sourceCanvas.width,
+    Math.ceil(height),
+    0,
+    0,
+    sourceCanvas.width,
+    Math.ceil(height)
+  )
+
+  return sliceCanvas
+}
+
 function formatDisplayDate(value) {
   if (!value) {
     return new Date().toLocaleDateString(undefined, { month: 'long', day: 'numeric', year: 'numeric' })
@@ -34,6 +186,16 @@ function formatDisplayDate(value) {
   }
 
   return parsedDate.toLocaleDateString(undefined, { month: 'long', day: 'numeric', year: 'numeric' })
+}
+
+function resolveValidUntil(value, estimateDate) {
+  if (value) return value
+
+  const parsedDate = new Date(estimateDate)
+  if (Number.isNaN(parsedDate.getTime())) return ''
+
+  parsedDate.setDate(parsedDate.getDate() + 30)
+  return parsedDate.toISOString()
 }
 
 function toAsciiText(value) {
@@ -102,26 +264,26 @@ function wrapMultilineText(text, maxChars) {
 }
 
 function estimateLineItemHeight(item) {
-  const nameLines = wrapMultilineText(item?.name || '', 52)
+  const nameLines = wrapMultilineText(getNormalizedItemDisplayText(item), 52)
   const detailHeight = Math.max(nameLines.length, 1) * 14
   const detailsHeight = 22
   return detailHeight + detailsHeight + 14
 }
 
-function resolveLineItemMaterialsIncluded(item, fallbackMaterialsIncluded) {
-  if (typeof item?.materialsIncluded === 'boolean') {
-    return item.materialsIncluded
+function getNormalizedItemDisplayText(item = {}) {
+  return [item?.title, item?.description].filter(Boolean).join('\n')
+}
+
+function getEstimateMaterialsLabel(item = {}, t = (key) => key) {
+  if (item?.materialsStatus === ESTIMATE_OWNER_SUPPLIED_MATERIALS) {
+    return t('ownerSuppliedMaterials')
   }
 
-  if (typeof item?.materials_included === 'boolean') {
-    return item.materials_included
+  if (item?.materialsStatus === ESTIMATE_LABOR_ONLY) {
+    return t('laborOnly')
   }
 
-  if (typeof fallbackMaterialsIncluded === 'boolean') {
-    return fallbackMaterialsIncluded
-  }
-
-  return false
+  return t('materialsIncludedTag')
 }
 
 function sanitizeCloneTree(root, clonedDoc) {
@@ -175,13 +337,44 @@ function buildFallbackPdf({
   companyName = '',
   company = {},
   lead = {},
-  scope = '',
-  lineItems = [],
-  materialsIncluded,
+  documentModel,
+  pricingMode: legacyPricingMode,
+  scope: legacyScope = '',
+  lineItems: legacyLineItems = [],
+  materialsIncluded: legacyMaterialsIncluded,
   paymentTerms = '',
-  total = 0,
+  total: legacyTotal = 0,
+  subtotal: legacySubtotal,
+  discountAmount: legacyDiscountAmount,
+  taxAmount: legacyTaxAmount,
+  messageFromContractor: legacyMessageFromContractor = '',
+  validUntil: legacyValidUntil = '',
   t = (key) => key,
 }) {
+  const normalizedDocument = ensureNormalizedEstimateDocument(documentModel, {
+    pricingMode: legacyPricingMode,
+    scope: legacyScope,
+    lineItems: legacyLineItems,
+    materialsIncluded: legacyMaterialsIncluded,
+    total: legacyTotal,
+    subtotal: legacySubtotal,
+    discountAmount: legacyDiscountAmount,
+    taxAmount: legacyTaxAmount,
+    messageFromContractor: legacyMessageFromContractor,
+    validUntil: legacyValidUntil,
+  })
+  const scope = normalizedDocument.scope.text
+  const lineItems = normalizedDocument.sections.workBreakdown.visible
+    ? normalizedDocument.workItems
+    : []
+  const materialsIncluded = normalizedDocument.defaults.materialsIncluded
+  const total = normalizedDocument.totals.total
+  const subtotal = normalizedDocument.totals.subtotal
+  const discountAmount = normalizedDocument.totals.discountAmount
+  const taxAmount = normalizedDocument.totals.taxAmount
+  const contractorMessage = normalizedDocument.messageFromContractor.text
+  const acceptedPaymentMethods = getAcceptedPaymentMethodLabels(company?.acceptedPaymentMethods, t)
+  const validUntil = resolveValidUntil(normalizedDocument.validUntil, estimateDate)
   const pdf = new jsPDF({
     orientation: 'portrait',
     unit: 'pt',
@@ -330,25 +523,58 @@ function buildFallbackPdf({
     cursorY += 42
 
     lineItems.forEach((item, index) => {
-      const itemMaterialsIncluded = resolveLineItemMaterialsIncluded(item, materialsIncluded)
+      const itemMaterialsIncluded = Boolean(item?.materialsIncluded)
 
       if (index > 0) {
         pdf.setDrawColor(safeColors.slate100)
         pdf.line(innerX + 14, cursorY - 10, cardX + cardWidth - 34, cursorY - 10)
       }
 
-      const itemLines = wrapMultilineText(item?.name || t('item'), 52)
+      const itemLines = wrapMultilineText(getNormalizedItemDisplayText(item) || t('item'), 52)
       const startingY = cursorY
       drawWrappedLines(itemLines.length ? itemLines : [t('item')], innerX + 16, cardWidth - 180, { size: 11, color: safeColors.slate700, lineHeight: 14 })
-      drawText(currency.format(Number(item?.amount || 0)), cardX + cardWidth - 36, startingY, { bold: true, size: 11, align: 'right' })
+      drawText(currency.format(Number(item?.total || 0)), cardX + cardWidth - 36, startingY, { bold: true, size: 11, align: 'right' })
       pdf.setFillColor(itemMaterialsIncluded ? safeColors.blue50 : safeColors.slate100)
       pdf.roundedRect(innerX + 16, cursorY + 2, 122, 18, 9, 9, 'F')
-      drawText(`${t('materialsIncluded')}: ${itemMaterialsIncluded ? t('yes') : t('no')}`, innerX + 77, cursorY + 14, { bold: true, size: 8.5, color: itemMaterialsIncluded ? safeColors.blue700 : safeColors.slate700, align: 'center' })
+      drawText(getEstimateMaterialsLabel(item, t), innerX + 77, cursorY + 14, { bold: true, size: 8.5, color: itemMaterialsIncluded ? safeColors.blue700 : safeColors.slate700, align: 'center' })
       cursorY += 28
     })
   }
 
   drawSectionBlock(t('paymentTerms'), getPaymentTermLabel(paymentTerms, t))
+  if (contractorMessage.trim()) {
+    drawSectionBlock(t('messageFromContractor'), contractorMessage)
+  }
+  if (acceptedPaymentMethods.length) {
+    drawSectionBlock(t('acceptedPaymentMethods'), acceptedPaymentMethods.map((method) => `• ${method}`).join('\n'))
+  }
+
+  const totalsLines = [
+    `${t('subtotal')}: ${currency.format(subtotal)}`,
+    ...(discountAmount > 0 ? [`${t('discount')}: -${currency.format(discountAmount)}`] : []),
+    ...(taxAmount > 0 ? [`${t('salesTax')}: ${currency.format(taxAmount)}`] : []),
+    `${t('totalEstimate')}: ${currency.format(total)}`,
+  ]
+  drawSectionBlock(t('totalEstimate'), totalsLines.join('\n'), { minHeight: 76 })
+  drawSectionBlock(t('validUntil'), formatDisplayDate(validUntil), { minHeight: 62 })
+
+  ensureSpace(50)
+  pdf.setDrawColor(safeColors.slate200)
+  pdf.line(innerX, cursorY, cardX + cardWidth - 20, cursorY)
+  cursorY += 18
+  drawText(t('thankYouForEstimateOpportunity'), cardX + (cardWidth / 2), cursorY, {
+    bold: true,
+    size: 11,
+    color: safeColors.blue700,
+    align: 'center',
+  })
+  cursorY += 16
+  drawText(company?.name || companyName || t('brandName'), cardX + (cardWidth / 2), cursorY, {
+    bold: true,
+    size: 9.5,
+    color: safeColors.slate900,
+    align: 'center',
+  })
 
   const fileName = buildEstimatePdfFileName({
     estimateNumber,
@@ -378,11 +604,18 @@ export async function downloadEstimatePdf({
   companyName = '',
   company = {},
   lead = {},
+  documentModel,
+  pricingMode,
   scope = '',
   lineItems = [],
   materialsIncluded,
   paymentTerms = '',
   total = 0,
+  subtotal,
+  discountAmount,
+  taxAmount,
+  messageFromContractor = '',
+  validUntil = '',
   t = (key) => key,
 } = {}) {
   if (!element) {
@@ -390,6 +623,14 @@ export async function downloadEstimatePdf({
   }
 
   try {
+    const pageWidth = 612
+    const pageHeight = 792
+    const margin = 36
+    const renderWidth = pageWidth - (margin * 2)
+    const printableHeight = pageHeight - (margin * 2)
+    const elementWidth = Math.max(element.scrollWidth, element.offsetWidth)
+    const sourcePageHeight = printableHeight / (renderWidth / elementWidth)
+    const pageBreakOffsets = getEstimatePageBreakOffsets(element, sourcePageHeight)
     const canvas = await html2canvas(element, {
       backgroundColor: '#ffffff',
       scale: 2,
@@ -414,32 +655,39 @@ export async function downloadEstimatePdf({
       },
     })
 
-    const imageData = canvas.toDataURL('image/png')
     const pdf = new jsPDF({
       orientation: 'portrait',
       unit: 'pt',
       format: 'letter',
       compress: true,
     })
-    const pageWidth = pdf.internal.pageSize.getWidth()
-    const pageHeight = pdf.internal.pageSize.getHeight()
-    const margin = 36
-    const renderWidth = pageWidth - (margin * 2)
-    const renderHeight = (canvas.height * renderWidth) / canvas.width
-    const printableHeight = pageHeight - (margin * 2)
+    const canvasScale = canvas.width / elementWidth
 
-    let heightLeft = renderHeight
-    let positionY = margin
+    pageBreakOffsets.slice(0, -1).forEach((pageStart, index) => {
+      const pageEnd = pageBreakOffsets[index + 1]
+      const canvasStart = pageStart * canvasScale
+      const canvasHeight = Math.min(
+        (pageEnd - pageStart) * canvasScale,
+        canvas.height - canvasStart
+      )
 
-    pdf.addImage(imageData, 'PNG', margin, positionY, renderWidth, renderHeight, undefined, 'FAST')
-    heightLeft -= printableHeight
+      if (index > 0) {
+        pdf.addPage()
+      }
 
-    while (heightLeft > 0) {
-      pdf.addPage()
-      positionY = margin - (renderHeight - heightLeft)
-      pdf.addImage(imageData, 'PNG', margin, positionY, renderWidth, renderHeight, undefined, 'FAST')
-      heightLeft -= printableHeight
-    }
+      const pageCanvas = createEstimateCanvasSlice(canvas, canvasStart, canvasHeight)
+      const renderedHeight = (pageCanvas.height * renderWidth) / pageCanvas.width
+      pdf.addImage(
+        pageCanvas.toDataURL('image/png'),
+        'PNG',
+        margin,
+        margin,
+        renderWidth,
+        renderedHeight,
+        undefined,
+        'FAST'
+      )
+    })
 
     const fileName = buildEstimatePdfFileName({
       estimateNumber,
@@ -457,11 +705,18 @@ export async function downloadEstimatePdf({
       companyName,
       company,
       lead,
+      documentModel,
+      pricingMode,
       scope,
       lineItems,
       materialsIncluded,
       paymentTerms,
       total,
+      subtotal,
+      discountAmount,
+      taxAmount,
+      messageFromContractor,
+      validUntil,
       t,
       error,
     })

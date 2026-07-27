@@ -18,6 +18,7 @@ import { shouldUseGeneratedPdfForPrint } from '../../utils/documentOutput'
 import { createTranslator } from '../../translations'
 import { tStatus } from '../../translations'
 import { getPaymentTermLabel } from '../../utils/paymentTerms'
+import { resolveEstimatePricingMode } from '../../utils/estimateDocument'
 
 function EmptyState({ message }) {
   return (
@@ -296,10 +297,36 @@ export function PortalSummary({
     lead: previewLead,
     estimateNumber,
     estimateDate: estimate?.dateCreated || estimate?.createdAt || estimate?.created_at || new Date(),
+    pricingMode: resolveEstimatePricingMode(
+      estimate?.pricingMode || estimate?.pricing_mode,
+      estimate?.lineItems
+    ),
     scope: estimate?.summary || estimate?.scopeOfWork || '',
     materialsIncluded: estimate?.materialsIncluded ?? estimate?.materials_included ?? true,
     paymentTerms: getPaymentTermLabel(estimate?.paymentTerms, t) || t('contractTermsText'),
     total: Number(estimate?.total ?? estimate?.totalAmount ?? estimate?.amount ?? 0),
+    subtotal: estimate?.subtotal,
+    discountAmount: estimate?.discountAmount ?? estimate?.discount_amount,
+    taxAmount: estimate?.taxAmount ?? estimate?.tax_amount,
+    messageFromContractor: (
+      estimate?.messageFromContractor
+      || estimate?.message_from_contractor
+      || estimate?.customerMessage
+      || estimate?.customer_message
+      || estimate?.publicNotes
+      || estimate?.public_notes
+      || estimate?.notes
+      || ''
+    ),
+    validUntil: (
+      estimate?.validUntil
+      || estimate?.valid_until
+      || estimate?.expirationDate
+      || estimate?.expiration_date
+      || estimate?.expiresAt
+      || estimate?.expires_at
+      || ''
+    ),
     lineItems: Array.isArray(estimate?.lineItems) ? estimate.lineItems : [],
     t,
   }), [company, estimate, estimateNumber, previewLead, t])
@@ -339,11 +366,17 @@ export function PortalSummary({
         companyName: company?.name || '',
         company,
         lead: previewLead,
+        pricingMode: estimatePreviewProps.pricingMode,
         scope: estimatePreviewProps.scope,
         lineItems: estimatePreviewProps.lineItems,
         materialsIncluded: estimatePreviewProps.materialsIncluded,
         paymentTerms: estimatePreviewProps.paymentTerms,
         total: estimatePreviewProps.total,
+        subtotal: estimatePreviewProps.subtotal,
+        discountAmount: estimatePreviewProps.discountAmount,
+        taxAmount: estimatePreviewProps.taxAmount,
+        messageFromContractor: estimatePreviewProps.messageFromContractor,
+        validUntil: estimatePreviewProps.validUntil,
         t,
       })
       showToast(t('estimatePdfGenerated'))

@@ -191,7 +191,8 @@ export function LeadFormModal({ isOpen, mode = 'create', lead, clients = [], def
       email: trimmedEmail,
       value: normalizeValue(form.value),
       location: form.location || form.address,
-      nextStep: form.nextStep || form.notes || t('followUpWithClient'),
+      notes: form.notes.trim(),
+      nextStep: form.nextStep || '',
       projectStatus: form.projectStatus || (form.status === 'Won' ? 'Signed' : 'Lead'),
     }
 

@@ -1,4 +1,5 @@
 import { USE_SUPABASE_SETTINGS } from '../../config/backendConfig'
+import { normalizeBrandColor } from '../../data/brandColors'
 import { createDefaultCompanySettings } from '../../data/defaultCompanySettings'
 import { supabaseClient } from '../../lib/supabaseClient'
 import { serializeAcceptedPaymentMethods } from '../../utils/acceptedPaymentMethods'
@@ -145,7 +146,10 @@ function toAppSettings(row) {
       website: row?.website || '',
       licenseNumber: row?.license_number || '',
       logo: row?.logo_file_path || defaults.company.logo,
-      primaryColor: row?.primary_brand_color || defaults.company.primaryColor,
+      primaryColor: normalizeBrandColor(
+        row?.primary_brand_color,
+        defaults.company.primaryColor
+      ),
       acceptedPaymentMethods: row?.accepted_payment_methods ?? defaults.company.acceptedPaymentMethods,
     },
     defaults: {
@@ -191,7 +195,7 @@ function toSupabasePayload(contractorId, settings = {}) {
     website: normalized.company.website || null,
     license_number: normalized.company.licenseNumber || null,
     logo_file_path: normalized.company.logo || null,
-    primary_brand_color: normalized.company.primaryColor || null,
+    primary_brand_color: normalizeBrandColor(normalized.company.primaryColor),
     accepted_payment_methods: serializeAcceptedPaymentMethods(normalized.company.acceptedPaymentMethods),
     default_payment_terms: normalized.defaults.paymentTerms || null,
     default_tax_rate: Number(normalized.defaults.taxRate ?? 0),

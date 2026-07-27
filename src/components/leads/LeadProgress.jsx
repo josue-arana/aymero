@@ -32,10 +32,10 @@ export function LeadProgress({ currentStage, t }) {
   const currentIndex = getLeadProgressIndex(currentStage)
 
   return (
-    <section className="rounded-3xl border border-slate-200 bg-white px-3 py-5 shadow-sm sm:px-5 sm:py-6" aria-labelledby="lead-progress-title">
-      <div className="mb-5 px-1 sm:mb-6">
+    <section className="rounded-3xl border border-slate-200 bg-white p-4 shadow-sm sm:p-6" aria-labelledby="lead-progress-title">
+      <div className="mb-4 sm:mb-5">
         <h2 id="lead-progress-title" className="text-lg font-bold text-slate-950 sm:text-xl">{t('leadProgress')}</h2>
-        <p className="mt-1 text-sm text-slate-500">{t('leadProgressHelp')}</p>
+        <p className="mt-1.5 text-sm leading-5 text-slate-500">{t('leadProgressHelp')}</p>
       </div>
 
       <ol className="grid grid-cols-5" aria-label={t('leadProgress')}>
@@ -85,7 +85,7 @@ export function LeadProgress({ currentStage, t }) {
                   {isCompleted ? <Check className="h-3.5 w-3.5 sm:h-4 sm:w-4" strokeWidth={3} /> : index + 1}
                 </span>
               </div>
-              <span className={`mx-auto mt-2 block max-w-28 break-words px-0.5 text-[11px] font-bold leading-tight sm:text-xs ${
+              <span className={`mx-auto mt-2.5 flex min-h-8 max-w-28 items-start justify-center break-words px-0.5 text-[11px] font-bold leading-tight sm:min-h-9 sm:text-xs ${
                 isCompleted
                   ? 'text-emerald-700'
                   : isCurrent

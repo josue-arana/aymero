@@ -120,6 +120,11 @@ function toNumber(value) {
   return Number.isFinite(parsed) ? parsed : 0
 }
 
+function normalizeOptionalText(value) {
+  if (typeof value !== 'string') return value || null
+  return value.trim() || null
+}
+
 function normalizeOptionalUuid(value, fieldName) {
   if (!value) return null
 
@@ -240,7 +245,7 @@ export function mapUiLeadToLeadRow(contractorId, lead = {}) {
     estimated_value: toNumber(lead.value ?? lead.estimated_value),
     status: mapStatusToDb(lead.status),
     priority: mapPriorityToDb(lead.priority),
-    notes: lead.notes || lead.nextStep || null,
+    notes: normalizeOptionalText(lead.notes),
     sample_data_key: lead.sampleDataKey || lead.sample_data_key || null,
   }
 }
@@ -320,8 +325,8 @@ function mapUiLeadUpdatesToLeadRow(updates = {}) {
     payload.priority = mapPriorityToDb(updates.priority)
   }
 
-  if (hasOwnField(updates, 'notes') || hasOwnField(updates, 'nextStep')) {
-    payload.notes = updates.notes || updates.nextStep || null
+  if (hasOwnField(updates, 'notes')) {
+    payload.notes = normalizeOptionalText(updates.notes)
   }
 
   return payload

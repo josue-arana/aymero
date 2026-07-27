@@ -1,0 +1,55 @@
+.document-estimate {
+  -webkit-print-color-adjust: exact;
+  print-color-adjust: exact;
+}
+
+.document-estimate [data-estimate-flow-text="true"] {
+  orphans: 3;
+  widows: 3;
+}
+
+.document-estimate [data-estimate-section-heading="true"],
+.document-estimate [data-estimate-work-heading="true"],
+.document-estimate [data-estimate-keep-together="true"],
+.document-estimate [data-estimate-totals="true"],
+.document-estimate [data-estimate-validity="true"],
+.document-estimate [data-estimate-footer="true"] {
+  break-inside: avoid;
+  page-break-inside: avoid;
+}
+
+@page {
+  size: letter portrait;
+  margin: 0.45in;
+}
+
+@media print {
+  .document-estimate {
+    width: 100% !important;
+    max-width: 100% !important;
+    margin: 0 !important;
+    border-radius: 0 !important;
+    box-shadow: none !important;
+    overflow: visible !important;
+  }
+
+  .document-estimate [data-estimate-section="true"],
+  .document-estimate [data-estimate-footer-section="true"] {
+    break-inside: auto;
+    page-break-inside: auto;
+  }
+
+  .document-estimate [data-estimate-work-heading="true"],
+  .document-estimate [data-line-item-card="true"],
+  .document-estimate [data-estimate-totals="true"],
+  .document-estimate [data-estimate-validity="true"],
+  .document-estimate [data-estimate-footer="true"] {
+    break-inside: avoid;
+    page-break-inside: avoid;
+  }
+
+  .document-estimate [data-estimate-footer="true"] {
+    break-before: avoid-page;
+    page-break-before: avoid;
+  }
+}
