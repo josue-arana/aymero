@@ -1,4 +1,5 @@
 import { normalizeAcceptedPaymentMethods } from '../utils/acceptedPaymentMethods'
+import { DEFAULT_BRAND_COLOR, normalizeBrandColor } from './brandColors'
 
 const baseCompanySettings = {
   appLanguage: 'en',
@@ -13,7 +14,7 @@ const baseCompanySettings = {
     website: 'www.northline.example',
     licenseNumber: 'MHIC-000000',
     logo: '',
-    primaryColor: '#2563eb',
+    primaryColor: DEFAULT_BRAND_COLOR,
     acceptedPaymentMethods: {
       methods: [],
       otherLabel: '',
@@ -75,6 +76,9 @@ export function createDefaultCompanySettings(overrides = {}) {
     company: {
       ...baseCompanySettings.company,
       ...(safeOverrides.company || {}),
+      primaryColor: normalizeBrandColor(
+        safeOverrides.company?.primaryColor ?? baseCompanySettings.company.primaryColor
+      ),
       acceptedPaymentMethods: normalizeAcceptedPaymentMethods(
         safeOverrides.company?.acceptedPaymentMethods
           ?? baseCompanySettings.company.acceptedPaymentMethods

@@ -1,18 +1,30 @@
-export const DEFAULT_BRAND_COLOR = '#2563eb'
+export const DEFAULT_BRAND_COLOR = '#2563EB'
 
-// Canonical colors offered by Aymero's company branding controls.
-// Previously saved custom colors remain valid, but new selections are limited
-// to this intentionally small, document-safe palette.
-export const SUPPORTED_BRAND_COLORS = [
-  { value: '#2563eb', labelKey: 'brandColorBlue' },
-  { value: '#0f8b8d', labelKey: 'brandColorTeal' },
-  { value: '#059669', labelKey: 'brandColorGreen' },
-  { value: '#7c3aed', labelKey: 'brandColorPurple' },
-  { value: '#e11d48', labelKey: 'brandColorRose' },
-  { value: '#c2410c', labelKey: 'brandColorOrange' },
-]
+// These names mirror the exact colors offered by the former Settings swatch
+// control. They are read-only compatibility aliases; all new writes use HEX.
+export const LEGACY_BRAND_COLOR_MAP = Object.freeze({
+  blue: '#2563EB',
+  teal: '#0F8B8D',
+  green: '#059669',
+  purple: '#7C3AED',
+  rose: '#E11D48',
+  orange: '#C2410C',
+})
+
+export function parseBrandColor(value) {
+  const input = String(value || '').trim()
+  const match = input.match(/^#?([0-9a-f]{6})$/i)
+  return match ? `#${match[1].toUpperCase()}` : null
+}
 
 export function normalizeBrandColor(value, fallback = DEFAULT_BRAND_COLOR) {
-  const normalized = String(value || '').trim().toLowerCase()
-  return /^#[0-9a-f]{6}$/.test(normalized) ? normalized : fallback
+  const input = String(value || '').trim()
+  const parsedColor = parseBrandColor(input)
+
+  if (parsedColor) return parsedColor
+
+  const legacyColor = LEGACY_BRAND_COLOR_MAP[input.toLowerCase()]
+  if (legacyColor) return legacyColor
+
+  return parseBrandColor(fallback) || DEFAULT_BRAND_COLOR
 }

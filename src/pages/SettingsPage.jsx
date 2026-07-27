@@ -1,5 +1,5 @@
 import { useEffect, useMemo, useState } from 'react'
-import { Building2, Check, CreditCard, FileText, Globe2, ImageUp, Languages, Palette, Save } from 'lucide-react'
+import { Building2, CreditCard, FileText, Globe2, ImageUp, Languages, Palette, Save } from 'lucide-react'
 import { useToast } from '../components/common/ToastProvider'
 import { InfoCard } from '../components/ui/InfoCard'
 import { USE_SUPABASE_SETTINGS } from '../config/backendConfig'
@@ -23,7 +23,7 @@ import {
 } from '../services/sampleWorkspaceService'
 import {
   normalizeBrandColor,
-  SUPPORTED_BRAND_COLORS,
+  parseBrandColor,
 } from '../data/brandColors'
 
 function getSettingsUiErrorMessage(error, t) {
@@ -41,6 +41,9 @@ export function SettingsPage({ settings, onSaveSettings, onOpenCompanySetup, onC
   const [successMessage, setSuccessMessage] = useState('')
   const [settingsLoadError, setSettingsLoadError] = useState('')
   const [paymentMethodsError, setPaymentMethodsError] = useState('')
+  const [brandColorInput, setBrandColorInput] = useState(() => normalizeBrandColor(settings?.company?.primaryColor))
+  const [brandColorError, setBrandColorError] = useState('')
+  const [isSaving, setIsSaving] = useState(false)
   const [sampleAction, setSampleAction] = useState('')
   const [sampleProgress, setSampleProgress] = useState(null)
 
@@ -56,6 +59,11 @@ export function SettingsPage({ settings, onSaveSettings, onOpenCompanySetup, onC
     setDraft(settings)
     setPaymentMethodsError('')
   }, [settings])
+
+  useEffect(() => {
+    setBrandColorInput(normalizeBrandColor(draft?.company?.primaryColor))
+    setBrandColorError('')
+  }, [draft?.company?.primaryColor])
 
   // Try to load canonical settings from the data provider (no-op in local
   // mode). If the data provider returns a value, use it; otherwise keep the
@@ -139,7 +147,47 @@ export function SettingsPage({ settings, onSaveSettings, onOpenCompanySetup, onC
     reader.readAsDataURL(file)
   }
 
+  function handleBrandColorPickerChange(value) {
+    const canonicalColor = normalizeBrandColor(value)
+    setBrandColorInput(canonicalColor)
+    setBrandColorError('')
+    updateCompany('primaryColor', canonicalColor)
+  }
+
+  function handleBrandColorTextChange(value) {
+    const canonicalColor = parseBrandColor(value)
+
+    if (canonicalColor) {
+      setBrandColorInput(canonicalColor)
+      setBrandColorError('')
+      updateCompany('primaryColor', canonicalColor)
+      return
+    }
+
+    setBrandColorInput(value)
+    setBrandColorError('')
+  }
+
+  function validateBrandColorInput() {
+    const canonicalColor = parseBrandColor(brandColorInput)
+
+    if (!canonicalColor) {
+      setBrandColorError(t('invalidHexColor'))
+      return null
+    }
+
+    setBrandColorInput(canonicalColor)
+    setBrandColorError('')
+    updateCompany('primaryColor', canonicalColor)
+    return canonicalColor
+  }
+
   async function saveSettings() {
+    if (isSaving) return
+
+    const canonicalBrandColor = validateBrandColorInput()
+    if (!canonicalBrandColor) return
+
     const acceptedPaymentMethods = normalizeAcceptedPaymentMethods(
       draft?.company?.acceptedPaymentMethods
     )
@@ -159,6 +207,7 @@ export function SettingsPage({ settings, onSaveSettings, onOpenCompanySetup, onC
       ...draft,
       company: {
         ...(draft?.company || {}),
+        primaryColor: canonicalBrandColor,
         acceptedPaymentMethods: serializeAcceptedPaymentMethods(acceptedPaymentMethods),
       },
       portal: {
@@ -169,6 +218,7 @@ export function SettingsPage({ settings, onSaveSettings, onOpenCompanySetup, onC
     }
     // Persist through the data provider (no-op in local mode) and then
     // update App state so the visible company settings refresh immediately.
+    setIsSaving(true)
     try {
       const res = await dataProvider?.settings?.updateSettings?.(nextSettings, { contractorId })
 
@@ -221,6 +271,8 @@ export function SettingsPage({ settings, onSaveSettings, onOpenCompanySetup, onC
       setSuccessMessage(t('settingsSaved'))
       window.setTimeout(() => setSuccessMessage(''), 2500)
       return
+    } finally {
+      setIsSaving(false)
     }
     setSuccessMessage(t('settingsSaved'))
     window.setTimeout(() => setSuccessMessage(''), 2500)
@@ -232,9 +284,6 @@ export function SettingsPage({ settings, onSaveSettings, onOpenCompanySetup, onC
   const acceptedPaymentMethods = normalizeAcceptedPaymentMethods(company.acceptedPaymentMethods)
   const paymentTermOptions = getPaymentTermOptions(t, defaults.paymentTerms)
   const selectedBrandColor = normalizeBrandColor(company.primaryColor)
-  const selectedBrandColorOption = SUPPORTED_BRAND_COLORS.find(
-    (option) => option.value === selectedBrandColor
-  )
   const previewTotal = useMemo(() => new Intl.NumberFormat(
     language === 'es' ? 'es-US' : 'en-US',
     {
@@ -549,7 +598,6 @@ export function SettingsPage({ settings, onSaveSettings, onOpenCompanySetup, onC
               </span>
               <div>
                 <h2 id="company-branding-heading" className="text-base font-bold text-slate-950">{t('branding')}</h2>
-                <p className="mt-1 text-sm leading-6 text-slate-600">{t('brandingHelp')}</p>
               </div>
             </div>
 
@@ -576,40 +624,41 @@ export function SettingsPage({ settings, onSaveSettings, onOpenCompanySetup, onC
               </button>
             )}
 
-            <fieldset className="mt-5 border-t border-slate-200 pt-5">
+            <fieldset className="mt-5 border-t border-slate-200 pt-5" aria-describedby="brand-color-help">
               <legend className="text-sm font-bold text-slate-700">{t('brandColor')}</legend>
-              <div className="mt-3 flex flex-wrap gap-3">
-                {!selectedBrandColorOption ? (
-                  <span
-                    className="relative flex h-10 w-10 items-center justify-center rounded-full ring-2 ring-slate-950 ring-offset-2"
-                    style={{ backgroundColor: selectedBrandColor }}
-                    role="img"
-                    aria-label={t('currentBrandColor')}
-                    title={t('currentBrandColor')}
-                  >
-                    <Check className="h-4 w-4 text-white drop-shadow-sm" aria-hidden="true" />
-                  </span>
-                ) : null}
-                {SUPPORTED_BRAND_COLORS.map((option) => {
-                  const selected = option.value === selectedBrandColor
-                  const colorName = t(option.labelKey)
-
-                  return (
-                    <button
-                      key={option.value}
-                      type="button"
-                      onClick={() => updateCompany('primaryColor', option.value)}
-                      className={`relative flex h-10 w-10 items-center justify-center rounded-full transition hover:scale-105 focus-visible:outline-none focus-visible:ring-4 focus-visible:ring-blue-100 ${selected ? 'ring-2 ring-slate-950 ring-offset-2' : 'ring-1 ring-slate-200 ring-offset-2'}`}
-                      style={{ backgroundColor: option.value }}
-                      aria-label={t('selectBrandColor', { color: colorName })}
-                      aria-pressed={selected}
-                      title={colorName}
-                    >
-                      {selected ? <Check className="h-4 w-4 text-white drop-shadow-sm" aria-hidden="true" /> : null}
-                    </button>
-                  )
-                })}
+              <p id="brand-color-help" className="mt-2 text-xs leading-5 text-slate-500">{t('brandingHelp')}</p>
+              <div className="mt-3 grid grid-cols-[64px_minmax(0,1fr)] items-end gap-3">
+                <label htmlFor="company-accent-color-picker" className="block text-xs font-bold text-slate-600">
+                  {t('pickColor')}
+                  <input
+                    id="company-accent-color-picker"
+                    type="color"
+                    value={selectedBrandColor}
+                    onChange={(event) => handleBrandColorPickerChange(event.target.value)}
+                    aria-describedby="brand-color-help"
+                    className="mt-2 h-12 w-16 cursor-pointer rounded-xl border border-slate-200 bg-white p-1 focus-visible:outline-none focus-visible:ring-4 focus-visible:ring-blue-100"
+                  />
+                </label>
+                <label htmlFor="company-accent-color-hex" className="min-w-0 text-xs font-bold text-slate-600">
+                  {t('hexColor')}
+                  <input
+                    id="company-accent-color-hex"
+                    type="text"
+                    inputMode="text"
+                    autoCapitalize="characters"
+                    autoComplete="off"
+                    spellCheck="false"
+                    value={brandColorInput}
+                    onChange={(event) => handleBrandColorTextChange(event.target.value)}
+                    onBlur={validateBrandColorInput}
+                    aria-invalid={Boolean(brandColorError)}
+                    aria-describedby={brandColorError ? 'brand-color-help brand-color-error' : 'brand-color-help'}
+                    placeholder="#2563EB"
+                    className={`mt-2 h-12 w-full min-w-0 rounded-xl border bg-slate-50 px-3 font-mono text-sm font-semibold uppercase outline-none focus:ring-4 ${brandColorError ? 'border-rose-400 text-rose-900 focus:border-rose-500 focus:ring-rose-100' : 'border-slate-200 text-slate-800 focus:border-blue-500 focus:ring-blue-100'}`}
+                  />
+                </label>
               </div>
+              {brandColorError ? <p id="brand-color-error" role="alert" className="mt-2 text-xs font-semibold text-rose-600">{brandColorError}</p> : null}
             </fieldset>
 
             <div className="mt-5 border-t border-slate-200 pt-5">
@@ -649,8 +698,8 @@ export function SettingsPage({ settings, onSaveSettings, onOpenCompanySetup, onC
                 <p className="mt-1 text-xs leading-5 text-slate-500">{t('settingsSaveHelp')}</p>
               </div>
             </div>
-            <button type="button" onClick={saveSettings} className="mt-4 inline-flex min-h-12 w-full items-center justify-center gap-2 rounded-2xl bg-blue-600 px-5 text-sm font-bold text-white transition hover:bg-blue-700 focus-visible:outline-none focus-visible:ring-4 focus-visible:ring-blue-100">
-              <Save className="h-4 w-4" aria-hidden="true" /> {t('saveSettings')}
+            <button type="button" onClick={saveSettings} disabled={isSaving} aria-busy={isSaving} className="mt-4 inline-flex min-h-12 w-full items-center justify-center gap-2 rounded-2xl bg-blue-600 px-5 text-sm font-bold text-white transition hover:bg-blue-700 focus-visible:outline-none focus-visible:ring-4 focus-visible:ring-blue-100 disabled:cursor-not-allowed disabled:opacity-60">
+              <Save className="h-4 w-4" aria-hidden="true" /> {isSaving ? t('saving') : t('saveSettings')}
             </button>
           </section>
         </aside>

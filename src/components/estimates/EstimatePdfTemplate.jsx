@@ -8,6 +8,7 @@ import {
 } from '../../utils/estimateDocument'
 import { getAcceptedPaymentMethodLabels } from '../../utils/acceptedPaymentMethods'
 import { getPaymentTermLabel } from '../../utils/paymentTerms'
+import { normalizeBrandColor } from '../../data/brandColors'
 import '../documents/documentDensity.css'
 import './estimateDocument.css'
 
@@ -23,11 +24,7 @@ const colors = {
 }
 
 function resolveCompanyAccentColor(company = {}) {
-  const configuredColor = String(company?.primaryColor || company?.primary_color || '').trim()
-
-  return /^#(?:[0-9a-f]{3,4}|[0-9a-f]{6}|[0-9a-f]{8})$/i.test(configuredColor)
-    ? configuredColor
-    : '#2563eb'
+  return normalizeBrandColor(company?.primaryColor || company?.primary_color)
 }
 
 function formatDisplayDate(value, language = 'en') {
