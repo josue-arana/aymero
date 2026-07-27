@@ -3,12 +3,23 @@ import { jsPDF } from 'jspdf'
 import { currency } from './formatters'
 import {
   ensureNormalizedEstimateDocument,
+  ESTIMATE_ITEM_PRICING_QUANTITY_RATE,
   ESTIMATE_LABOR_ONLY,
   ESTIMATE_OWNER_SUPPLIED_MATERIALS,
+  getEstimateTextSizePoints,
+  normalizeEstimateRichText,
 } from './estimateDocument'
 import { getAcceptedPaymentMethodLabels } from './acceptedPaymentMethods'
-import { calculateDocumentPageBreakOffsets } from './documentPagination'
+import {
+  ESTIMATE_PAPER_MARGIN,
+  ESTIMATE_PAPER_WIDTH,
+  ESTIMATE_RICH_CONTENT_HORIZONTAL_PADDING,
+  getEstimatePaginationModel,
+  waitForEstimateDocumentAssets,
+} from './estimatePagination'
 import { getPaymentTermLabel } from './paymentTerms'
+
+export { calculateEstimatePageBreakOffsets } from './estimatePagination'
 
 const safeColors = {
   white: '#ffffff',
@@ -28,128 +39,6 @@ const pdfPage = {
   width: 612,
   height: 792,
   margin: 22,
-}
-
-export function calculateEstimatePageBreakOffsets({
-  contentHeight,
-  sourcePageHeight,
-  protectedRanges = [],
-}) {
-  return calculateDocumentPageBreakOffsets({
-    contentHeight,
-    sourcePageHeight,
-    protectedRanges,
-  })
-}
-
-function getEstimatePageBreakOffsets(element, sourcePageHeight) {
-  const rootRect = element.getBoundingClientRect()
-  const renderedScale = rootRect.width > 0 && element.offsetWidth > 0
-    ? rootRect.width / element.offsetWidth
-    : 1
-
-  function toSourceRange(rect, inset = 0) {
-    if (!rect || rect.height <= 0) return null
-
-    return {
-      start: Math.max((rect.top - rootRect.top - inset) / renderedScale, 0),
-      end: Math.max((rect.bottom - rootRect.top + inset) / renderedScale, 0),
-    }
-  }
-
-  function getElementRange(node) {
-    return node ? toSourceRange(node.getBoundingClientRect()) : null
-  }
-
-  function combineElementRanges(firstNode, lastNode) {
-    const firstRange = getElementRange(firstNode)
-    const lastRange = getElementRange(lastNode)
-    if (!firstRange || !lastRange) return null
-
-    return {
-      start: Math.min(firstRange.start, lastRange.start),
-      end: Math.max(firstRange.end, lastRange.end),
-    }
-  }
-
-  function getTextLineRanges(flowNode) {
-    const ownerDocument = element.ownerDocument
-    const ownerWindow = ownerDocument?.defaultView
-    const showText = ownerWindow?.NodeFilter?.SHOW_TEXT ?? 4
-    const ranges = []
-
-    const walker = ownerDocument.createTreeWalker(flowNode, showText)
-    let textNode = walker.nextNode()
-
-    while (textNode) {
-      if (String(textNode.textContent || '').trim()) {
-        const textRange = ownerDocument.createRange()
-        textRange.selectNodeContents(textNode)
-
-        Array.from(textRange.getClientRects()).forEach((rect) => {
-          const sourceRange = toSourceRange(rect, 1)
-          if (sourceRange) ranges.push(sourceRange)
-        })
-
-        textRange.detach?.()
-      }
-
-      textNode = walker.nextNode()
-    }
-
-    return ranges
-  }
-
-  const protectedRanges = []
-  const closingSection = element.querySelector('[data-estimate-footer-section="true"]')
-  const documentFooter = element.querySelector('[data-estimate-footer="true"]')
-  const closingGroupRange = combineElementRanges(closingSection, documentFooter)
-
-  if (closingGroupRange && closingGroupRange.end - closingGroupRange.start <= sourcePageHeight * 0.92) {
-    protectedRanges.push(closingGroupRange)
-  }
-
-  const workHeading = element.querySelector('[data-estimate-work-heading="true"]')
-  const firstWorkItem = element.querySelector('[data-line-item-card="true"]')
-  const firstWorkGroupRange = combineElementRanges(workHeading, firstWorkItem)
-
-  if (firstWorkGroupRange && firstWorkGroupRange.end - firstWorkGroupRange.start <= sourcePageHeight * 0.45) {
-    protectedRanges.push(firstWorkGroupRange)
-  }
-
-  element.querySelectorAll(
-    '[data-estimate-keep-together="true"], [data-estimate-work-heading="true"], [data-estimate-footer="true"]'
-  ).forEach((node) => {
-    const range = getElementRange(node)
-    if (range) protectedRanges.push(range)
-  })
-
-  element.querySelectorAll('[data-estimate-section-heading="true"]').forEach((heading) => {
-    const section = heading.closest('[data-estimate-section="true"]')
-    const firstFlowNode = section?.querySelector('[data-estimate-flow-text="true"]')
-    const headingRange = getElementRange(heading)
-    const firstLineRange = firstFlowNode ? getTextLineRanges(firstFlowNode)[0] : null
-    const headingGroupRange = headingRange && firstLineRange
-      ? {
-          start: Math.min(headingRange.start, firstLineRange.start),
-          end: Math.max(headingRange.end, firstLineRange.end),
-        }
-      : null
-
-    if (headingGroupRange && headingGroupRange.end - headingGroupRange.start <= sourcePageHeight * 0.35) {
-      protectedRanges.push(headingGroupRange)
-    }
-  })
-
-  element.querySelectorAll('[data-estimate-flow-text="true"]').forEach((flowNode) => {
-    protectedRanges.push(...getTextLineRanges(flowNode))
-  })
-
-  return calculateEstimatePageBreakOffsets({
-    contentHeight: Math.max(element.scrollHeight, element.offsetHeight),
-    sourcePageHeight,
-    protectedRanges,
-  })
 }
 
 function createEstimateCanvasSlice(sourceCanvas, startY, height) {
@@ -223,55 +112,6 @@ function buildCompanyInitials(companyName = '') {
     .slice(0, 3)
     .map((part) => part[0]?.toUpperCase() || '')
     .join('')
-}
-
-function wrapLine(text, maxChars) {
-  const words = toAsciiText(text).split(/\s+/).filter(Boolean)
-
-  if (words.length === 0) return ['']
-
-  const lines = []
-  let current = ''
-
-  words.forEach((word) => {
-    const candidate = current ? `${current} ${word}` : word
-
-    if (candidate.length <= maxChars) {
-      current = candidate
-      return
-    }
-
-    if (current) lines.push(current)
-
-    if (word.length <= maxChars) {
-      current = word
-      return
-    }
-
-    const chunks = word.match(new RegExp(`.{1,${maxChars}}`, 'g')) || [word]
-    lines.push(...chunks.slice(0, -1))
-    current = chunks[chunks.length - 1]
-  })
-
-  if (current) lines.push(current)
-  return lines
-}
-
-function wrapMultilineText(text, maxChars) {
-  return String(text || '')
-    .split('\n')
-    .flatMap((line) => (line.trim() ? wrapLine(line, maxChars) : ['']))
-}
-
-function estimateLineItemHeight(item) {
-  const nameLines = wrapMultilineText(getNormalizedItemDisplayText(item), 52)
-  const detailHeight = Math.max(nameLines.length, 1) * 14
-  const detailsHeight = 22
-  return detailHeight + detailsHeight + 14
-}
-
-function getNormalizedItemDisplayText(item = {}) {
-  return [item?.title, item?.description].filter(Boolean).join('\n')
 }
 
 function getEstimateMaterialsLabel(item = {}, t = (key) => key) {
@@ -367,6 +207,7 @@ function buildFallbackPdf({
   const lineItems = normalizedDocument.sections.workBreakdown.visible
     ? normalizedDocument.workItems
     : []
+  const showQuantityRateColumns = Boolean(normalizedDocument.sections.workBreakdown.showQuantityRateColumns)
   const materialsIncluded = normalizedDocument.defaults.materialsIncluded
   const total = normalizedDocument.totals.total
   const subtotal = normalizedDocument.totals.subtotal
@@ -406,39 +247,162 @@ function buildFallbackPdf({
     pdf.text(text, x, y, options.align ? { align: options.align } : undefined)
   }
 
-  function drawWrappedLines(lines, x, width, options = {}) {
-    const lineHeight = options.lineHeight || 18
-    ensureSpace((lines.length * lineHeight) + 12)
-    pdf.setFont(options.bold ? 'helvetica' : 'helvetica', options.bold ? 'bold' : 'normal')
-    pdf.setFontSize(options.size || 12)
-    pdf.setTextColor(options.color || safeColors.slate700)
+  function setFormattedRunFont(run, size = 11) {
+    pdf.setFont('helvetica', run?.bold ? 'bold' : 'normal')
+    pdf.setFontSize(size)
+  }
 
-    lines.forEach((line) => {
-      pdf.text(line, x, cursorY, { maxWidth: width })
-      cursorY += lineHeight
+  function wrapFormattedSegments(segments = [], maxWidth, options = {}) {
+    const size = options.size || 11
+    const lines = []
+    let currentLine = []
+    let currentWidth = 0
+
+    function flushLine(force = false) {
+      if (currentLine.length || force) lines.push(currentLine)
+      currentLine = []
+      currentWidth = 0
+    }
+
+    segments.forEach((segment) => {
+      const tokens = toAsciiText(segment?.text).split(/(\n|[ \t]+)/)
+
+      tokens.forEach((token) => {
+        if (!token) return
+        if (token === '\n') {
+          flushLine(true)
+          return
+        }
+
+        const isWhitespace = /^[ \t]+$/.test(token)
+        if (isWhitespace && currentLine.length === 0) return
+
+        setFormattedRunFont(segment, size)
+        const tokenWidth = pdf.getTextWidth(token)
+
+        if (!isWhitespace && tokenWidth > maxWidth) {
+          const chunks = pdf.splitTextToSize(token, maxWidth)
+          chunks.forEach((chunk, chunkIndex) => {
+            if (currentLine.length) flushLine()
+            setFormattedRunFont(segment, size)
+            currentLine.push({ ...segment, text: chunk })
+            currentWidth = pdf.getTextWidth(chunk)
+            if (chunkIndex < chunks.length - 1) flushLine()
+          })
+          return
+        }
+
+        if (currentLine.length && currentWidth + tokenWidth > maxWidth) {
+          flushLine()
+          if (isWhitespace) return
+        }
+
+        currentLine.push({ ...segment, text: token })
+        currentWidth += tokenWidth
+      })
+    })
+
+    flushLine()
+    return lines.length ? lines : [[]]
+  }
+
+  function buildFormattedLines(blocks = [], maxWidth, options = {}) {
+    const lines = []
+
+    blocks.forEach((block) => {
+      if (block?.type === 'lineBreak') {
+        lines.push([])
+        return
+      }
+
+      if (block?.type === 'bulletList') {
+        ;(block.items || []).forEach((item) => {
+          const size = getEstimateTextSizePoints(item?.size)
+          const bulletIndent = 9
+          const itemLines = wrapFormattedSegments(
+            item?.segments || [],
+            Math.max(maxWidth - bulletIndent, 1),
+            { ...options, size }
+          )
+
+          itemLines.forEach((line, lineIndex) => {
+            const contentRuns = line.map((run) => ({
+              ...run,
+              fontSize: size,
+              lineIndent: lineIndex === 0 ? 0 : bulletIndent,
+            }))
+
+            lines.push(lineIndex === 0
+              ? [
+                  { text: '• ', bold: false, underline: false, fontSize: size, lineIndent: 0 },
+                  ...contentRuns,
+                ]
+              : contentRuns)
+          })
+        })
+        return
+      }
+
+      if (block?.type === 'paragraph') {
+        const size = getEstimateTextSizePoints(block?.size)
+        lines.push(...wrapFormattedSegments(block?.segments || [], maxWidth, { ...options, size })
+          .map((line) => line.map((run) => ({ ...run, fontSize: size }))))
+      }
+    })
+
+    return lines.length ? lines : [[]]
+  }
+
+  function drawFormattedLine(runs, x, y, options = {}) {
+    const size = options.size || runs?.[0]?.fontSize || getEstimateTextSizePoints()
+    let cursorX = x + Number(runs?.[0]?.lineIndent || 0)
+
+    ;(runs || []).forEach((run) => {
+      setFormattedRunFont(run, run?.fontSize || size)
+      pdf.setTextColor(options.color || safeColors.slate700)
+      pdf.text(run.text, cursorX, y)
+      const runWidth = pdf.getTextWidth(run.text)
+
+      if (run.underline && run.text.trim()) {
+        pdf.setDrawColor(options.color || safeColors.slate700)
+        pdf.setLineWidth(0.55)
+        pdf.line(cursorX, y + 1.5, cursorX + runWidth, y + 1.5)
+      }
+
+      cursorX += runWidth
     })
   }
 
   function drawSectionBlock(title, content, options = {}) {
-    const maxCharsPerLine = options.maxCharsPerLine || 74
-    const lines = wrapMultilineText(content, maxCharsPerLine)
-    const lineHeight = options.lineHeight || 16
     const topOffset = options.topOffset || 34
     const bottomPadding = options.bottomPadding || 12
     const minHeight = options.minHeight || 84
-    const blockHeight = Math.max(minHeight, topOffset + (lines.length * lineHeight) + bottomPadding)
+    const blockWidth = cardWidth - 48
+    const contentWidth = blockWidth - (ESTIMATE_RICH_CONTENT_HORIZONTAL_PADDING * 2)
+    const blocks = options.contentBlocks || normalizeEstimateRichText(content).blocks
+    const lines = buildFormattedLines(blocks, contentWidth)
+    const lineHeights = lines.map((line) => (
+      line.length
+        ? Math.max(options.lineHeight || 0, (line[0]?.fontSize || getEstimateTextSizePoints()) * 1.48)
+        : 7
+    ))
+    const blockHeight = Math.max(
+      minHeight,
+      topOffset + lineHeights.reduce((sum, height) => sum + height, 0) + bottomPadding
+    )
 
     ensureSpace(blockHeight + 12)
     pdf.setFillColor(safeColors.slate50)
-    pdf.roundedRect(innerX, cursorY, cardWidth - 48, blockHeight, 18, 18, 'F')
-    drawText(title.toUpperCase(), innerX + 18, cursorY + 18, { bold: true, size: 10, color: safeColors.slate400 })
+    pdf.roundedRect(innerX, cursorY, blockWidth, blockHeight, 18, 18, 'F')
+    drawText(title.toUpperCase(), innerX + ESTIMATE_RICH_CONTENT_HORIZONTAL_PADDING, cursorY + 18, { bold: true, size: 10, color: safeColors.slate400 })
 
     const contentStartY = cursorY + topOffset
-    pdf.setFont('helvetica', 'normal')
-    pdf.setFontSize(11)
-    pdf.setTextColor(safeColors.slate700)
+    let contentCursorY = contentStartY
     lines.forEach((line, index) => {
-      pdf.text(line || ' ', innerX + 18, contentStartY + (index * lineHeight), { maxWidth: cardWidth - 84 })
+      drawFormattedLine(line, innerX + ESTIMATE_RICH_CONTENT_HORIZONTAL_PADDING, contentCursorY, {
+        color: safeColors.slate700,
+      })
+      contentCursorY += lineHeights[index]
     })
 
     cursorY += blockHeight
@@ -502,8 +466,9 @@ function buildFallbackPdf({
   drawText(currency.format(Number(total || 0)), innerX + (cardWidth - 54), cursorY + 40, { bold: true, size: 16, align: 'right' })
   cursorY += 62
 
-  if (String(scope || '').trim()) {
+  if (normalizedDocument.sections.scope.visible) {
     drawSectionBlock(t('scopeOfWork'), scope, {
+      contentBlocks: normalizedDocument.scope.contentBlocks,
       lineHeight: 14,
       topOffset: 30,
       bottomPadding: 10,
@@ -512,28 +477,79 @@ function buildFallbackPdf({
   }
 
   if (lineItems.length > 0) {
-    const estimatedItemsHeight = lineItems.reduce((sum, item) => sum + estimateLineItemHeight(item), 0)
+    const itemDescriptionWidth = showQuantityRateColumns ? cardWidth - 282 : cardWidth - 134
+    const totalColumnX = cardX + cardWidth - 36
+    const rateColumnX = totalColumnX - 88
+    const quantityColumnX = rateColumnX - 66
+    const formattedLineItems = lineItems.map((item) => {
+      const titleSegments = (item?.titleSegments || []).map((segment) => ({ ...segment, bold: true }))
+      const titleLines = wrapFormattedSegments(
+        titleSegments.length ? titleSegments : [{ text: t('item'), bold: true, underline: false }],
+        itemDescriptionWidth,
+        { size: getEstimateTextSizePoints(item?.titleSize) }
+      ).map((line) => line.map((run) => ({
+        ...run,
+        fontSize: getEstimateTextSizePoints(item?.titleSize),
+      })))
+      const descriptionLines = buildFormattedLines(
+        item?.descriptionBlocks || [],
+        itemDescriptionWidth
+      )
+      const formattedLines = [
+        ...titleLines,
+        ...(item?.descriptionBlocks?.length ? descriptionLines : []),
+      ]
+      const contentHeight = formattedLines.reduce((height, line) => (
+        height + Math.max(14, (line?.[0]?.fontSize || getEstimateTextSizePoints()) * 1.48)
+      ), 0)
+
+      return {
+        titleLines,
+        descriptionLines: item?.descriptionBlocks?.length ? descriptionLines : [],
+        height: contentHeight + 50,
+      }
+    })
+    const estimatedItemsHeight = formattedLineItems.reduce((sum, item) => sum + item.height, 0)
     ensureSpace(estimatedItemsHeight + 60)
     pdf.setDrawColor(safeColors.slate200)
     pdf.roundedRect(innerX, cursorY, cardWidth - 40, estimatedItemsHeight + 34, 18, 18, 'S')
     pdf.setFillColor(safeColors.slate50)
     pdf.roundedRect(innerX, cursorY, cardWidth - 40, 26, 18, 18, 'F')
     drawText(t('item').toUpperCase(), innerX + 16, cursorY + 17, { bold: true, size: 10, color: safeColors.slate500 })
-    drawText(t('amount').toUpperCase(), cardX + cardWidth - 36, cursorY + 17, { bold: true, size: 10, color: safeColors.slate500, align: 'right' })
+    if (showQuantityRateColumns) {
+      drawText(t('qty').toUpperCase(), quantityColumnX, cursorY + 17, { bold: true, size: 9, color: safeColors.slate500, align: 'right' })
+      drawText(t('rate').toUpperCase(), rateColumnX, cursorY + 17, { bold: true, size: 9, color: safeColors.slate500, align: 'right' })
+      drawText(t('total').toUpperCase(), totalColumnX, cursorY + 17, { bold: true, size: 9, color: safeColors.slate500, align: 'right' })
+    } else {
+      drawText(t('amount').toUpperCase(), totalColumnX, cursorY + 17, { bold: true, size: 10, color: safeColors.slate500, align: 'right' })
+    }
     cursorY += 42
 
     lineItems.forEach((item, index) => {
       const itemMaterialsIncluded = Boolean(item?.materialsIncluded)
+      const hasQuantityRate = item?.pricingDisplayMode === ESTIMATE_ITEM_PRICING_QUANTITY_RATE
 
       if (index > 0) {
         pdf.setDrawColor(safeColors.slate100)
         pdf.line(innerX + 14, cursorY - 10, cardX + cardWidth - 34, cursorY - 10)
       }
 
-      const itemLines = wrapMultilineText(getNormalizedItemDisplayText(item) || t('item'), 52)
+      const formattedItem = formattedLineItems[index]
       const startingY = cursorY
-      drawWrappedLines(itemLines.length ? itemLines : [t('item')], innerX + 16, cardWidth - 180, { size: 11, color: safeColors.slate700, lineHeight: 14 })
-      drawText(currency.format(Number(item?.total || 0)), cardX + cardWidth - 36, startingY, { bold: true, size: 11, align: 'right' })
+      ;[...formattedItem.titleLines, ...formattedItem.descriptionLines].forEach((line) => {
+        const lineHeight = Math.max(
+          14,
+          (line?.[0]?.fontSize || getEstimateTextSizePoints()) * 1.48
+        )
+        ensureSpace(lineHeight + 12)
+        drawFormattedLine(line, innerX + 16, cursorY, { color: safeColors.slate700 })
+        cursorY += lineHeight
+      })
+      if (showQuantityRateColumns && hasQuantityRate) {
+        drawText(Number(item?.quantity || 0).toLocaleString(undefined, { maximumFractionDigits: 2 }), quantityColumnX, startingY, { size: 10, align: 'right' })
+        drawText(currency.format(Number(item?.rate || 0)), rateColumnX, startingY, { size: 10, align: 'right' })
+      }
+      drawText(currency.format(Number(item?.total || 0)), totalColumnX, startingY, { bold: true, size: 11, align: 'right' })
       pdf.setFillColor(itemMaterialsIncluded ? safeColors.blue50 : safeColors.slate100)
       pdf.roundedRect(innerX + 16, cursorY + 2, 122, 18, 9, 9, 'F')
       drawText(getEstimateMaterialsLabel(item, t), innerX + 77, cursorY + 14, { bold: true, size: 8.5, color: itemMaterialsIncluded ? safeColors.blue700 : safeColors.slate700, align: 'center' })
@@ -542,8 +558,10 @@ function buildFallbackPdf({
   }
 
   drawSectionBlock(t('paymentTerms'), getPaymentTermLabel(paymentTerms, t))
-  if (contractorMessage.trim()) {
-    drawSectionBlock(t('messageFromContractor'), contractorMessage)
+  if (normalizedDocument.sections.messageFromContractor.visible) {
+    drawSectionBlock(t('messageFromContractor'), contractorMessage, {
+      contentBlocks: normalizedDocument.messageFromContractor.contentBlocks,
+    })
   }
   if (acceptedPaymentMethods.length) {
     drawSectionBlock(t('acceptedPaymentMethods'), acceptedPaymentMethods.map((method) => `• ${method}`).join('\n'))
@@ -623,14 +641,16 @@ export async function downloadEstimatePdf({
   }
 
   try {
-    const pageWidth = 612
-    const pageHeight = 792
-    const margin = 36
+    await waitForEstimateDocumentAssets(element)
+
+    const pageWidth = ESTIMATE_PAPER_WIDTH
+    const margin = ESTIMATE_PAPER_MARGIN
     const renderWidth = pageWidth - (margin * 2)
-    const printableHeight = pageHeight - (margin * 2)
-    const elementWidth = Math.max(element.scrollWidth, element.offsetWidth)
-    const sourcePageHeight = printableHeight / (renderWidth / elementWidth)
-    const pageBreakOffsets = getEstimatePageBreakOffsets(element, sourcePageHeight)
+    const pagination = getEstimatePaginationModel(element)
+    if (!pagination?.pageCount) {
+      throw new Error('Estimate PDF pagination could not be calculated.')
+    }
+    const { elementWidth, pages } = pagination
     const canvas = await html2canvas(element, {
       backgroundColor: '#ffffff',
       scale: 2,
@@ -663,11 +683,10 @@ export async function downloadEstimatePdf({
     })
     const canvasScale = canvas.width / elementWidth
 
-    pageBreakOffsets.slice(0, -1).forEach((pageStart, index) => {
-      const pageEnd = pageBreakOffsets[index + 1]
-      const canvasStart = pageStart * canvasScale
+    pages.forEach((page, index) => {
+      const canvasStart = page.start * canvasScale
       const canvasHeight = Math.min(
-        (pageEnd - pageStart) * canvasScale,
+        page.height * canvasScale,
         canvas.height - canvasStart
       )
 

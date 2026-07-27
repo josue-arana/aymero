@@ -8,6 +8,35 @@
   widows: 3;
 }
 
+.document-estimate [data-estimate-scope-rich-content="true"],
+.document-estimate [data-estimate-scope-rich-content="true"] > * {
+  width: 100%;
+  max-width: none;
+  min-width: 0;
+  box-sizing: border-box;
+  margin-inline: 0;
+  padding-inline-end: 0;
+}
+
+.document-estimate [data-estimate-scope-rich-content="true"] [data-estimate-rich-list="true"] {
+  margin-inline: 0;
+  padding-inline: 0;
+}
+
+.document-estimate [data-estimate-scope-rich-content="true"] [data-estimate-rich-list="true"] li {
+  margin-inline: 0;
+  padding-inline-end: 0;
+}
+
+.document-estimate [data-estimate-scope-rich-content="true"] [data-estimate-flow-text="true"] {
+  width: 100%;
+  max-width: none;
+  min-width: 0;
+  box-sizing: border-box;
+  margin-inline: 0;
+  padding-inline-end: 0;
+}
+
 .document-estimate [data-estimate-section-heading="true"],
 .document-estimate [data-estimate-work-heading="true"],
 .document-estimate [data-estimate-keep-together="true"],

@@ -1,9 +1,30 @@
-const bulletLinePattern = /^\s*([-*•])\s*(.*)$/
+const bulletLinePattern = /^\s*((?:[-•])|(?:\*(?!\*)))[ \t]*(.*)$/
+const unsupportedHtmlBlockPattern = /<(script|style|iframe|object|embed|svg|math|video|audio)\b[^>]*>[\s\S]*?<\/\1\s*>/gi
+const htmlTagPattern = /<\/?[a-z][^>]*>/gi
+const unsafeUrlPattern = /\b(?:javascript|vbscript|data\s*:\s*text\/html)\s*:[^\s<>"']*/gi
+const estimateTextSizeMarkerPattern = /^\[\[aymero-size:(small|large)\]\]/
+const anyEstimateTextSizeMarkerPattern = /\[\[aymero-size:[^\]\r\n]*\]\]/gi
 export const ESTIMATE_MATERIALS_INCLUDED = 'materials_included'
 export const ESTIMATE_LABOR_ONLY = 'labor_only'
 export const ESTIMATE_OWNER_SUPPLIED_MATERIALS = 'owner_supplied_materials'
 export const ESTIMATE_PRICING_SIMPLE = 'simple'
 export const ESTIMATE_PRICING_DETAILED = 'detailed'
+export const ESTIMATE_ITEM_PRICING_AMOUNT_ONLY = 'amountOnly'
+export const ESTIMATE_ITEM_PRICING_QUANTITY_RATE = 'quantityRate'
+export const ESTIMATE_TEXT_SIZE_SMALL = 'small'
+export const ESTIMATE_TEXT_SIZE_STANDARD = 'standard'
+export const ESTIMATE_TEXT_SIZE_LARGE = 'large'
+export const ESTIMATE_TEXT_SIZE_STEPS = [
+  ESTIMATE_TEXT_SIZE_SMALL,
+  ESTIMATE_TEXT_SIZE_STANDARD,
+  ESTIMATE_TEXT_SIZE_LARGE,
+]
+
+const estimateTextSizePoints = {
+  [ESTIMATE_TEXT_SIZE_SMALL]: 9.25,
+  [ESTIMATE_TEXT_SIZE_STANDARD]: 10.25,
+  [ESTIMATE_TEXT_SIZE_LARGE]: 11.75,
+}
 
 function toFiniteNumber(value, fallback = 0) {
   const number = Number(value)
@@ -14,12 +35,222 @@ function normalizeText(value) {
   return typeof value === 'string' ? value : String(value || '')
 }
 
+export function normalizeEstimateTextSize(value) {
+  return ESTIMATE_TEXT_SIZE_STEPS.includes(value)
+    ? value
+    : ESTIMATE_TEXT_SIZE_STANDARD
+}
+
+export function getEstimateTextSizePoints(value) {
+  return estimateTextSizePoints[normalizeEstimateTextSize(value)]
+}
+
+export function getEstimateTextSizeCss(value) {
+  return `${getEstimateTextSizePoints(value)}pt`
+}
+
+function sanitizeEstimateTextSizeMarkers(value) {
+  return normalizeText(value)
+    .split('\n')
+    .map((line) => {
+      const allowedMarker = line.match(estimateTextSizeMarkerPattern)?.[0] || ''
+      const text = line.replace(anyEstimateTextSizeMarkerPattern, '')
+
+      return allowedMarker ? `${allowedMarker}${text}` : text
+    })
+    .join('\n')
+}
+
+/**
+ * Estimate rich text intentionally uses a constrained, text-only format:
+ * **bold**, ++underline++, "- " bullets, paragraphs, line breaks, and the
+ * bounded block sizes Small / Standard / Large. Small and Large use an
+ * internal line prefix; Standard is canonical and stores no redundant marker.
+ * HTML is never part of the storage contract.
+ */
+export function sanitizeEstimateFormattedText(value) {
+  const sanitizedText = normalizeText(value)
+    .replace(/\r\n?/g, '\n')
+    .replace(/<!--[\s\S]*?-->/g, '')
+    .replace(unsupportedHtmlBlockPattern, '')
+    .replace(htmlTagPattern, '')
+    .replace(unsafeUrlPattern, '')
+    .replace(/\u0000/g, '')
+    .replace(/[\u0001-\u0008\u000B\u000C\u000E-\u001F\u007F]/g, '')
+
+  return sanitizeEstimateTextSizeMarkers(sanitizedText)
+}
+
+export function parseEstimateSizedText(value) {
+  const text = sanitizeEstimateFormattedText(value)
+  const lines = text.split('\n').map((line) => {
+    const markerMatch = line.match(estimateTextSizeMarkerPattern)
+    const size = normalizeEstimateTextSize(markerMatch?.[1])
+
+    return {
+      text: markerMatch ? line.slice(markerMatch[0].length) : line,
+      size,
+    }
+  })
+
+  return {
+    text: lines.map((line) => line.text).join('\n'),
+    lines,
+  }
+}
+
+export function serializeEstimateSizedText(value, sizes = []) {
+  return normalizeText(value)
+    .replace(/\r\n?/g, '\n')
+    .split('\n')
+    .map((line, index) => {
+      const text = line.replace(anyEstimateTextSizeMarkerPattern, '')
+      const size = normalizeEstimateTextSize(sizes[index])
+
+      if (size === ESTIMATE_TEXT_SIZE_STANDARD) return text
+      return `[[aymero-size:${size}]]${text}`
+    })
+    .join('\n')
+}
+
+function appendInlineSegment(segments, text, bold, underline) {
+  if (!text) return
+
+  const previous = segments[segments.length - 1]
+  if (previous && previous.bold === bold && previous.underline === underline) {
+    previous.text += text
+    return
+  }
+
+  segments.push({ text, bold, underline })
+}
+
+export function parseEstimateInlineFormatting(value) {
+  const text = parseEstimateSizedText(value).text
+  const segments = []
+  let bold = false
+  let underline = false
+  let index = 0
+
+  while (index < text.length) {
+    const marker = text.slice(index, index + 2)
+    const isBoldMarker = marker === '**'
+    const isUnderlineMarker = marker === '++'
+
+    const closesActiveFormatting = (isBoldMarker && bold) || (isUnderlineMarker && underline)
+    const opensPairedFormatting = (isBoldMarker || isUnderlineMarker) && text.indexOf(marker, index + 2) !== -1
+
+    if (closesActiveFormatting || opensPairedFormatting) {
+      if (isBoldMarker) bold = !bold
+      if (isUnderlineMarker) underline = !underline
+      index += 2
+      continue
+    }
+
+    appendInlineSegment(segments, text[index], bold, underline)
+    index += 1
+  }
+
+  return segments
+}
+
+export function getEstimateFormattedPlainText(value) {
+  return parseEstimateInlineFormatting(value).map((segment) => segment.text).join('')
+}
+
+export function hasMeaningfulEstimateFormattedText(value) {
+  const plainText = getEstimateFormattedPlainText(value)
+    .replace(/^\s*[-*•]\s*/gm, '')
+    .replace(/\s/g, '')
+
+  return Boolean(plainText)
+}
+
+function hasFiniteStoredNumber(value) {
+  return value !== ''
+    && value !== null
+    && value !== undefined
+    && Number.isFinite(Number(value))
+}
+
+function nearlyEqual(left, right) {
+  const leftNumber = Number(left)
+  const rightNumber = Number(right)
+  if (!Number.isFinite(leftNumber) || !Number.isFinite(rightNumber)) return false
+
+  return Math.abs(leftNumber - rightNumber) <= Math.max(0.005, Math.abs(rightNumber) * 0.000001)
+}
+
+function normalizeItemPricingDisplayMode(value) {
+  const normalizedValue = normalizeText(value).trim().toLowerCase().replace(/[\s_-]+/g, '')
+
+  if (normalizedValue === 'amountonly') return ESTIMATE_ITEM_PRICING_AMOUNT_ONLY
+  if (normalizedValue === 'quantityrate') return ESTIMATE_ITEM_PRICING_QUANTITY_RATE
+  return ''
+}
+
+/**
+ * The current builder stores one amount and does not collect quantity/rate.
+ * Quantity/rate columns are therefore reserved for records with both explicit
+ * values and a meaningful multiplication. The ambiguous legacy shape
+ * quantity=1, rate=total remains amount-only unless an explicit display marker
+ * says those values were intentional.
+ */
+export function resolveEstimateItemPricingDisplayMode(item = {}, normalizedValues = {}) {
+  const configuredMode = normalizeItemPricingDisplayMode(
+    item?.pricingDisplayMode
+      ?? item?.pricing_display_mode
+      ?? item?.priceDisplayMode
+      ?? item?.price_display_mode
+  )
+
+  if (configuredMode === ESTIMATE_ITEM_PRICING_AMOUNT_ONLY) {
+    return ESTIMATE_ITEM_PRICING_AMOUNT_ONLY
+  }
+
+  const hasStoredQuantity = hasFiniteStoredNumber(item?.quantity)
+  const hasStoredRate = hasFiniteStoredNumber(item?.rate)
+  if (!hasStoredQuantity || !hasStoredRate) {
+    return ESTIMATE_ITEM_PRICING_AMOUNT_ONLY
+  }
+
+  const quantity = toFiniteNumber(normalizedValues.quantity ?? item.quantity)
+  const rate = toFiniteNumber(normalizedValues.rate ?? item.rate)
+  const total = toFiniteNumber(
+    normalizedValues.total
+      ?? item?.total
+      ?? item?.amount,
+    quantity * rate
+  )
+  const hasMeaningfulCalculation = quantity > 0 && nearlyEqual(quantity * rate, total)
+
+  if (!hasMeaningfulCalculation) {
+    return ESTIMATE_ITEM_PRICING_AMOUNT_ONLY
+  }
+
+  if (configuredMode === ESTIMATE_ITEM_PRICING_QUANTITY_RATE) {
+    return ESTIMATE_ITEM_PRICING_QUANTITY_RATE
+  }
+
+  const isAmbiguousSyntheticDefault = nearlyEqual(quantity, 1) && nearlyEqual(rate, total)
+
+  return isAmbiguousSyntheticDefault
+    ? ESTIMATE_ITEM_PRICING_AMOUNT_ONLY
+    : ESTIMATE_ITEM_PRICING_QUANTITY_RATE
+}
+
+export function getEstimateWorkBreakdownPricingDisplayMode(workItems = []) {
+  return workItems.some((item) => item?.pricingDisplayMode === ESTIMATE_ITEM_PRICING_QUANTITY_RATE)
+    ? ESTIMATE_ITEM_PRICING_QUANTITY_RATE
+    : ESTIMATE_ITEM_PRICING_AMOUNT_ONLY
+}
+
 export function isValidExplicitEstimateItem(item = {}) {
   const itemText = [
     item?.name,
     item?.title,
     item?.description,
-  ].map(normalizeText).join('').trim()
+  ].map(sanitizeEstimateFormattedText).join('\n')
   const hasStoredAmount = [item?.amount, item?.total, item?.rate].some((value) => (
     value !== ''
     && value !== null
@@ -28,7 +259,7 @@ export function isValidExplicitEstimateItem(item = {}) {
     && Number(value) !== 0
   ))
 
-  return Boolean(itemText || hasStoredAmount)
+  return Boolean(hasMeaningfulEstimateFormattedText(itemText) || hasStoredAmount)
 }
 
 function isLegacySyntheticScopeItem(item = {}) {
@@ -64,7 +295,7 @@ export function resolveEstimatePricingMode(pricingMode, lineItems = []) {
 }
 
 export function normalizeEstimateRichText(value) {
-  const rawText = normalizeText(value)
+  const rawText = sanitizeEstimateFormattedText(value)
   if (!rawText) {
     return {
       rawText,
@@ -72,9 +303,10 @@ export function normalizeEstimateRichText(value) {
     }
   }
 
-  const lines = rawText.replace(/\r\n?/g, '\n').split('\n')
+  const lines = parseEstimateSizedText(rawText).lines
   const blocks = []
   let paragraphLines = []
+  let paragraphSize = ESTIMATE_TEXT_SIZE_STANDARD
   let bulletItems = []
 
   function flushParagraph() {
@@ -82,10 +314,13 @@ export function normalizeEstimateRichText(value) {
 
     blocks.push({
       type: 'paragraph',
-      text: paragraphLines.join('\n'),
-      lines: paragraphLines,
+      size: paragraphSize,
+      text: paragraphLines.map((line) => line.text).join('\n'),
+      lines: paragraphLines.map((line) => line.text),
+      segments: parseEstimateInlineFormatting(paragraphLines.map((line) => line.text).join('\n')),
     })
     paragraphLines = []
+    paragraphSize = ESTIMATE_TEXT_SIZE_STANDARD
   }
 
   function flushBullets() {
@@ -99,25 +334,31 @@ export function normalizeEstimateRichText(value) {
   }
 
   lines.forEach((line) => {
-    const bulletMatch = line.match(bulletLinePattern)
+    const bulletMatch = line.text.match(bulletLinePattern)
 
     if (bulletMatch) {
       flushParagraph()
       bulletItems.push({
+        size: line.size,
         text: bulletMatch[2],
         marker: bulletMatch[1],
+        segments: parseEstimateInlineFormatting(bulletMatch[2]),
       })
       return
     }
 
     flushBullets()
 
-    if (!line.trim()) {
+    if (!line.text.trim()) {
       flushParagraph()
       blocks.push({ type: 'lineBreak' })
       return
     }
 
+    if (paragraphLines.length && paragraphSize !== line.size) {
+      flushParagraph()
+    }
+    if (!paragraphLines.length) paragraphSize = line.size
     paragraphLines.push(line)
   })
 
@@ -131,7 +372,7 @@ export function normalizeEstimateRichText(value) {
 }
 
 function splitLegacyEstimateItemText(value) {
-  const sourceText = normalizeText(value).trim()
+  const sourceText = sanitizeEstimateFormattedText(value).trim()
 
   if (!sourceText) {
     return {
@@ -142,15 +383,17 @@ function splitLegacyEstimateItemText(value) {
   }
 
   const [firstLine, ...remainingLines] = sourceText.split('\n')
+  const parsedTitle = parseEstimateSizedText(firstLine).lines[0]
 
   return {
-    title: firstLine.trim(),
+    title: parsedTitle.text.trim(),
+    titleSize: parsedTitle.size,
     description: remainingLines.join('\n'),
     // The current document presents every non-empty line after the title as a
     // bullet. Keeping this derived view preserves today's output while the
     // richer contentBlocks remain available to the next document design.
     detailLines: remainingLines
-      .map((line) => line.trim())
+      .map((line) => parseEstimateSizedText(line).text.trim())
       .filter(Boolean)
       .map((line) => line.replace(/^[-*•]\s*/, '').trim() || line),
   }
@@ -209,8 +452,8 @@ function normalizeEstimateWorkItem(item = {}, {
   fallbackTotal = 0,
   idPrefix = 'estimate-item',
 } = {}) {
-  const sourceText = normalizeText(item?.name).trim()
-    || [normalizeText(item?.title).trim(), normalizeText(item?.description).trim()]
+  const sourceText = sanitizeEstimateFormattedText(item?.name).trim()
+    || [sanitizeEstimateFormattedText(item?.title).trim(), sanitizeEstimateFormattedText(item?.description).trim()]
       .filter(Boolean)
       .join('\n')
   const textParts = splitLegacyEstimateItemText(sourceText)
@@ -225,17 +468,25 @@ function normalizeEstimateWorkItem(item = {}, {
     storedRate,
     quantity ? total / quantity : total
   )
+  const pricingDisplayMode = resolveEstimateItemPricingDisplayMode(item, {
+    quantity,
+    rate,
+    total,
+  })
   const materialsStatus = normalizeEstimateMaterialsStatus(item, fallbackMaterialsIncluded)
 
   return {
     id: item?.id || `${idPrefix}-${displayOrder + 1}`,
     title: textParts.title,
+    titleSize: textParts.titleSize,
+    titleSegments: parseEstimateInlineFormatting(textParts.title),
     description: textParts.description,
     contentBlocks: normalizeEstimateRichText(sourceText).blocks,
     descriptionBlocks: normalizeEstimateRichText(textParts.description).blocks,
     detailLines: textParts.detailLines,
-    quantity,
-    rate,
+    pricingDisplayMode,
+    quantity: pricingDisplayMode === ESTIMATE_ITEM_PRICING_QUANTITY_RATE ? quantity : null,
+    rate: pricingDisplayMode === ESTIMATE_ITEM_PRICING_QUANTITY_RATE ? rate : null,
     total,
     materialsIncluded: materialsStatus === ESTIMATE_MATERIALS_INCLUDED,
     materialsStatus,
@@ -255,8 +506,8 @@ export function normalizeEstimateDocument({
   messageFromContractor = '',
   validUntil = '',
 } = {}) {
-  const scopeText = normalizeText(scope)
-  const contractorMessageText = normalizeText(messageFromContractor)
+  const scopeText = sanitizeEstimateFormattedText(scope)
+  const contractorMessageText = sanitizeEstimateFormattedText(messageFromContractor)
   const sourceItems = Array.isArray(lineItems) ? lineItems : []
   const normalizedPricingMode = resolveEstimatePricingMode(pricingMode, sourceItems)
   const explicitItems = getValidExplicitEstimateItems(sourceItems)
@@ -271,6 +522,7 @@ export function normalizeEstimateDocument({
   const calculatedSubtotal = hasDetailedItems
     ? workItems.reduce((sum, item) => sum + item.total, 0)
     : normalizedTotal
+  const workBreakdownPricingDisplayMode = getEstimateWorkBreakdownPricingDisplayMode(workItems)
   const scopeOfWork = {
     text: scopeText,
     contentBlocks: normalizeEstimateRichText(scopeText).blocks,
@@ -299,13 +551,15 @@ export function normalizeEstimateDocument({
     },
     sections: {
       scope: {
-        visible: Boolean(scopeText.trim()),
+        visible: hasMeaningfulEstimateFormattedText(scopeText),
       },
       workBreakdown: {
         visible: normalizedPricingMode === ESTIMATE_PRICING_DETAILED && workItems.length > 0,
+        pricingDisplayMode: workBreakdownPricingDisplayMode,
+        showQuantityRateColumns: workBreakdownPricingDisplayMode === ESTIMATE_ITEM_PRICING_QUANTITY_RATE,
       },
       messageFromContractor: {
-        visible: Boolean(contractorMessageText.trim()),
+        visible: hasMeaningfulEstimateFormattedText(contractorMessageText),
       },
     },
   }
@@ -323,15 +577,69 @@ export function ensureNormalizedEstimateDocument(documentModel, legacyInput = {}
     const normalizedWorkItems = normalizedPricingMode === ESTIMATE_PRICING_DETAILED
       ? legacyWorkItems
       : []
-    const legacyMessageText = typeof documentModel.messageFromContractor === 'string'
-      ? documentModel.messageFromContractor
-      : normalizeText(documentModel?.messageFromContractor?.text)
+    const legacyMessageText = sanitizeEstimateFormattedText(
+      typeof documentModel.messageFromContractor === 'string'
+        ? documentModel.messageFromContractor
+        : documentModel?.messageFromContractor?.text
+    )
     const legacySubtotal = documentModel.totals.subtotal === undefined
       ? normalizedPricingMode === ESTIMATE_PRICING_DETAILED
         ? normalizedWorkItems.reduce((sum, item) => sum + toFiniteNumber(item?.total), 0)
         : toFiniteNumber(documentModel?.simpleTotal ?? documentModel?.totals?.total)
       : toFiniteNumber(documentModel.totals.subtotal)
-    const scopeOfWork = documentModel.scopeOfWork || documentModel.scope
+    const legacyScopeText = sanitizeEstimateFormattedText(
+      typeof documentModel.scopeOfWork === 'string'
+        ? documentModel.scopeOfWork
+        : typeof documentModel.scope === 'string'
+          ? documentModel.scope
+          : documentModel?.scopeOfWork?.text
+            ?? documentModel?.scope?.text
+    )
+    const scopeOfWork = {
+      text: legacyScopeText,
+      contentBlocks: normalizeEstimateRichText(legacyScopeText).blocks,
+    }
+    const normalizedDocumentWorkItems = normalizedWorkItems.map((item, index) => {
+      const parsedTitle = parseEstimateSizedText(item?.title).lines[0]
+      const titleSize = item?.titleSize
+        ? normalizeEstimateTextSize(item.titleSize)
+        : parsedTitle.size
+      const materialsStatus = normalizeEstimateMaterialsStatus(
+        item,
+        documentModel?.defaults?.materialsIncluded
+      )
+      const quantity = toFiniteNumber(item?.quantity, 1)
+      const total = toFiniteNumber(item?.total)
+      const rate = toFiniteNumber(item?.rate, quantity ? total / quantity : total)
+      const pricingDisplayMode = resolveEstimateItemPricingDisplayMode(item, {
+        quantity,
+        rate,
+        total,
+      })
+
+      return {
+        ...item,
+        title: parsedTitle.text,
+        titleSize,
+        description: sanitizeEstimateFormattedText(item?.description),
+        titleSegments: parseEstimateInlineFormatting(parsedTitle.text),
+        contentBlocks: normalizeEstimateRichText([
+          serializeEstimateSizedText(parsedTitle.text, [titleSize]),
+          item?.description,
+        ].filter(Boolean).join('\n')).blocks,
+        descriptionBlocks: normalizeEstimateRichText(item?.description).blocks,
+        detailLines: Array.isArray(item?.detailLines) ? item.detailLines : [],
+        pricingDisplayMode,
+        quantity: pricingDisplayMode === ESTIMATE_ITEM_PRICING_QUANTITY_RATE ? quantity : null,
+        rate: pricingDisplayMode === ESTIMATE_ITEM_PRICING_QUANTITY_RATE ? rate : null,
+        materialsIncluded: materialsStatus === ESTIMATE_MATERIALS_INCLUDED,
+        materialsStatus,
+        displayOrder: Number.isFinite(Number(item?.displayOrder))
+          ? Number(item.displayOrder)
+          : index,
+      }
+    })
+    const workBreakdownPricingDisplayMode = getEstimateWorkBreakdownPricingDisplayMode(normalizedDocumentWorkItems)
 
     return {
       ...documentModel,
@@ -354,37 +662,22 @@ export function ensureNormalizedEstimateDocument(documentModel, legacyInput = {}
         taxAmount: toFiniteNumber(documentModel?.totals?.taxAmount),
         total: toFiniteNumber(documentModel?.totals?.total),
       },
-      workItems: normalizedWorkItems.map((item, index) => {
-        const materialsStatus = normalizeEstimateMaterialsStatus(
-          item,
-          documentModel?.defaults?.materialsIncluded
-        )
-
-        return {
-          ...item,
-          contentBlocks: Array.isArray(item?.contentBlocks)
-            ? item.contentBlocks
-            : normalizeEstimateRichText([item?.title, item?.description].filter(Boolean).join('\n')).blocks,
-          descriptionBlocks: Array.isArray(item?.descriptionBlocks)
-            ? item.descriptionBlocks
-            : normalizeEstimateRichText(item?.description).blocks,
-          detailLines: Array.isArray(item?.detailLines) ? item.detailLines : [],
-          materialsIncluded: materialsStatus === ESTIMATE_MATERIALS_INCLUDED,
-          materialsStatus,
-          displayOrder: Number.isFinite(Number(item?.displayOrder))
-            ? Number(item.displayOrder)
-            : index,
-        }
-      }),
+      workItems: normalizedDocumentWorkItems,
       sections: {
         ...documentModel.sections,
         workBreakdown: {
           ...documentModel?.sections?.workBreakdown,
           visible: normalizedPricingMode === ESTIMATE_PRICING_DETAILED && normalizedWorkItems.length > 0,
+          pricingDisplayMode: workBreakdownPricingDisplayMode,
+          showQuantityRateColumns: workBreakdownPricingDisplayMode === ESTIMATE_ITEM_PRICING_QUANTITY_RATE,
         },
         messageFromContractor: {
           ...documentModel?.sections?.messageFromContractor,
-          visible: Boolean(legacyMessageText.trim()),
+          visible: hasMeaningfulEstimateFormattedText(legacyMessageText),
+        },
+        scope: {
+          ...documentModel?.sections?.scope,
+          visible: hasMeaningfulEstimateFormattedText(legacyScopeText),
         },
       },
     }

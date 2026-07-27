@@ -5,6 +5,7 @@ import { DetailRow } from '../ui/DetailRow'
 import { InfoCard } from '../ui/InfoCard'
 import { ModalShell } from '../common/ModalShell'
 import { EstimatePdfTemplate } from '../estimates/EstimatePdfTemplate'
+import { PaginatedEstimatePreview } from '../estimates/PaginatedEstimatePreview'
 import { ContractPdfTemplate } from '../contracts/ContractPdfTemplate'
 import { ScaledDocumentPreview, defaultDocumentPreviewWidth } from '../common/ScaledDocumentPreview'
 import { useToast } from '../common/ToastProvider'
@@ -19,6 +20,11 @@ import { createTranslator } from '../../translations'
 import { tStatus } from '../../translations'
 import { getPaymentTermLabel } from '../../utils/paymentTerms'
 import { resolveEstimatePricingMode } from '../../utils/estimateDocument'
+import {
+  ESTIMATE_DOCUMENT_SOURCE_PADDING,
+  ESTIMATE_DOCUMENT_SOURCE_WIDTH,
+  ESTIMATE_PAPER_MARGIN,
+} from '../../utils/estimatePagination'
 
 function EmptyState({ message }) {
   return (
@@ -394,6 +400,8 @@ export function PortalSummary({
     try {
       await printDocumentElement(estimatePreviewRef.current, {
         documentTitle: `${estimateNumber} ${previewLead.client || ''}`.trim(),
+        pageMarginInches: ESTIMATE_PAPER_MARGIN / 72,
+        safeInsetInches: 0,
       })
     } catch (error) {
       showToast(error?.message || t('estimatePdfGenerateFailed'), 'error')
@@ -618,7 +626,7 @@ export function PortalSummary({
           <div
             ref={estimatePreviewRef}
             data-estimate-pdf-root="true"
-            style={{ width: `${portalDocumentPreviewPageWidth}px`, backgroundColor: '#ffffff', color: '#0f172a', padding: '18px', boxSizing: 'border-box' }}
+            style={{ width: `${ESTIMATE_DOCUMENT_SOURCE_WIDTH}px`, backgroundColor: '#ffffff', color: '#0f172a', padding: `${ESTIMATE_DOCUMENT_SOURCE_PADDING}px`, boxSizing: 'border-box' }}
           >
             <EstimatePdfTemplate {...estimatePreviewProps} />
           </div>
@@ -647,9 +655,9 @@ export function PortalSummary({
           onDownload={handleDownloadEstimate}
           t={t}
         >
-          <ScaledDocumentPreview pageWidth={portalDocumentPreviewPageWidth} pagePadding={18}>
+          <PaginatedEstimatePreview t={t}>
             <EstimatePdfTemplate {...estimatePreviewProps} />
-          </ScaledDocumentPreview>
+          </PaginatedEstimatePreview>
         </DocumentPreviewModal>
       ) : null}
 
