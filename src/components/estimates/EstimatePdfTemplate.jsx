@@ -3,7 +3,6 @@ import { getLanguageLocale } from '../../utils/language'
 import { getDocumentDensityVariables } from '../../utils/documentDensity'
 import {
   ensureNormalizedEstimateDocument,
-  ESTIMATE_ITEM_PRICING_QUANTITY_RATE,
   ESTIMATE_LABOR_ONLY,
   ESTIMATE_OWNER_SUPPLIED_MATERIALS,
   getEstimateTextSizeCss,
@@ -286,25 +285,11 @@ function RichWorkItemContent({ blocks = [], accentColor }) {
   })
 }
 
-function formatEstimateQuantity(value, language) {
-  const quantity = Number(value)
-  if (!Number.isFinite(quantity)) return '0'
-
-  return quantity.toLocaleString(getLanguageLocale(language), {
-    maximumFractionDigits: 2,
-  })
-}
-
-const amountOnlyWorkBreakdownGridColumns = '24px minmax(0,1fr) 88px'
-const quantityRateWorkBreakdownGridColumns = '24px minmax(0,1fr) 42px 70px 80px'
+const workBreakdownGridColumns = '24px minmax(0,1fr) 88px'
 const workBreakdownColumnGap = '8px'
 
-function WorkBreakdownItem({ item, index, accentColor, language, showQuantityRateColumns, t }) {
+function WorkBreakdownItem({ item, index, accentColor, t }) {
   const descriptionBlocks = Array.isArray(item?.descriptionBlocks) ? item.descriptionBlocks : []
-  const hasQuantityRate = item?.pricingDisplayMode === ESTIMATE_ITEM_PRICING_QUANTITY_RATE
-  const gridTemplateColumns = showQuantityRateColumns
-    ? quantityRateWorkBreakdownGridColumns
-    : amountOnlyWorkBreakdownGridColumns
 
   return (
     <div
@@ -312,7 +297,7 @@ function WorkBreakdownItem({ item, index, accentColor, language, showQuantityRat
       data-estimate-keep-together="true"
       style={{
         display: 'grid',
-        gridTemplateColumns,
+        gridTemplateColumns: workBreakdownGridColumns,
         gap: workBreakdownColumnGap,
         alignItems: 'start',
         padding: '13px 0',
@@ -366,18 +351,8 @@ function WorkBreakdownItem({ item, index, accentColor, language, showQuantityRat
           <MaterialTag materialsStatus={item?.materialsStatus} accentColor={accentColor} t={t} />
         </div>
       </div>
-      {showQuantityRateColumns ? (
-        <>
-          <div style={{ paddingTop: '3px', textAlign: 'right', whiteSpace: 'nowrap', fontSize: '11px', lineHeight: 1.4, color: colors.ink }}>
-            {hasQuantityRate ? formatEstimateQuantity(item?.quantity, language) : ''}
-          </div>
-          <div style={{ paddingTop: '3px', textAlign: 'right', whiteSpace: 'nowrap', fontSize: '11px', lineHeight: 1.4, color: colors.ink }}>
-            {hasQuantityRate ? currency.format(Number(item?.rate || 0)) : ''}
-          </div>
-        </>
-      ) : null}
       <div style={{ paddingTop: '3px', textAlign: 'right', whiteSpace: 'nowrap', fontSize: '11.5px', lineHeight: 1.4, fontWeight: 700, color: colors.ink }}>
-        {currency.format(Number(item?.total || 0))}
+        {currency.format(Number(item?.amount || 0))}
       </div>
     </div>
   )
@@ -471,10 +446,6 @@ export function EstimatePdfTemplate({
   const documentTax = normalizedDocument.totals.taxAmount
   const hasScope = normalizedDocument.sections.scope.visible
   const hasLineItems = normalizedDocument.sections.workBreakdown.visible
-  const showQuantityRateColumns = Boolean(normalizedDocument.sections.workBreakdown.showQuantityRateColumns)
-  const workBreakdownGridColumns = showQuantityRateColumns
-    ? quantityRateWorkBreakdownGridColumns
-    : amountOnlyWorkBreakdownGridColumns
   const hasContractorMessage = normalizedDocument.sections.messageFromContractor.visible
   const accentColor = resolveCompanyAccentColor(company)
   const acceptedPaymentMethods = getAcceptedPaymentMethodLabels(company?.acceptedPaymentMethods, t)
@@ -545,7 +516,6 @@ export function EstimatePdfTemplate({
       >
         <div style={{ display: 'grid', gridTemplateColumns: 'minmax(0,1.05fr) minmax(0,1.35fr) minmax(112px,0.8fr) minmax(144px,1fr)', alignItems: 'stretch' }}>
           <div
-            data-estimate-scope-box="true"
             style={{
               minWidth: 0,
               padding: 'var(--document-summary-padding-y) var(--document-summary-padding-x)',
@@ -613,6 +583,7 @@ export function EstimatePdfTemplate({
             {t('scopeOfWork')}
           </p>
           <div
+            data-estimate-scope-box="true"
             style={{
               marginTop: 'var(--document-scope-gap)',
               borderRadius: '14px',
@@ -683,15 +654,7 @@ export function EstimatePdfTemplate({
               }}
             >
               <span style={{ gridColumn: '1 / 3' }} aria-hidden="true" />
-              {showQuantityRateColumns ? (
-                <>
-                  <span style={{ textAlign: 'right', whiteSpace: 'nowrap' }}>{t('qty')}</span>
-                  <span style={{ textAlign: 'right', whiteSpace: 'nowrap' }}>{t('rate')}</span>
-                  <span style={{ textAlign: 'right', whiteSpace: 'nowrap' }}>{t('total')}</span>
-                </>
-              ) : (
-                <span style={{ textAlign: 'right', whiteSpace: 'nowrap' }}>{t('amount')}</span>
-              )}
+              <span style={{ textAlign: 'right', whiteSpace: 'nowrap' }}>{t('amount')}</span>
             </div>
           </div>
           <div>
@@ -701,8 +664,6 @@ export function EstimatePdfTemplate({
                 item={item}
                 index={index}
                 accentColor={accentColor}
-                language={language}
-                showQuantityRateColumns={showQuantityRateColumns}
                 t={t}
               />
             ))}

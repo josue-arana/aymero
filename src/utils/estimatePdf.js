@@ -3,7 +3,6 @@ import { jsPDF } from 'jspdf'
 import { currency } from './formatters'
 import {
   ensureNormalizedEstimateDocument,
-  ESTIMATE_ITEM_PRICING_QUANTITY_RATE,
   ESTIMATE_LABOR_ONLY,
   ESTIMATE_OWNER_SUPPLIED_MATERIALS,
   getEstimateTextSizePoints,
@@ -207,7 +206,6 @@ function buildFallbackPdf({
   const lineItems = normalizedDocument.sections.workBreakdown.visible
     ? normalizedDocument.workItems
     : []
-  const showQuantityRateColumns = Boolean(normalizedDocument.sections.workBreakdown.showQuantityRateColumns)
   const materialsIncluded = normalizedDocument.defaults.materialsIncluded
   const total = normalizedDocument.totals.total
   const subtotal = normalizedDocument.totals.subtotal
@@ -477,10 +475,8 @@ function buildFallbackPdf({
   }
 
   if (lineItems.length > 0) {
-    const itemDescriptionWidth = showQuantityRateColumns ? cardWidth - 282 : cardWidth - 134
+    const itemDescriptionWidth = cardWidth - 134
     const totalColumnX = cardX + cardWidth - 36
-    const rateColumnX = totalColumnX - 88
-    const quantityColumnX = rateColumnX - 66
     const formattedLineItems = lineItems.map((item) => {
       const titleSegments = (item?.titleSegments || []).map((segment) => ({ ...segment, bold: true }))
       const titleLines = wrapFormattedSegments(
@@ -516,18 +512,11 @@ function buildFallbackPdf({
     pdf.setFillColor(safeColors.slate50)
     pdf.roundedRect(innerX, cursorY, cardWidth - 40, 26, 18, 18, 'F')
     drawText(t('item').toUpperCase(), innerX + 16, cursorY + 17, { bold: true, size: 10, color: safeColors.slate500 })
-    if (showQuantityRateColumns) {
-      drawText(t('qty').toUpperCase(), quantityColumnX, cursorY + 17, { bold: true, size: 9, color: safeColors.slate500, align: 'right' })
-      drawText(t('rate').toUpperCase(), rateColumnX, cursorY + 17, { bold: true, size: 9, color: safeColors.slate500, align: 'right' })
-      drawText(t('total').toUpperCase(), totalColumnX, cursorY + 17, { bold: true, size: 9, color: safeColors.slate500, align: 'right' })
-    } else {
-      drawText(t('amount').toUpperCase(), totalColumnX, cursorY + 17, { bold: true, size: 10, color: safeColors.slate500, align: 'right' })
-    }
+    drawText(t('amount').toUpperCase(), totalColumnX, cursorY + 17, { bold: true, size: 10, color: safeColors.slate500, align: 'right' })
     cursorY += 42
 
     lineItems.forEach((item, index) => {
       const itemMaterialsIncluded = Boolean(item?.materialsIncluded)
-      const hasQuantityRate = item?.pricingDisplayMode === ESTIMATE_ITEM_PRICING_QUANTITY_RATE
 
       if (index > 0) {
         pdf.setDrawColor(safeColors.slate100)
@@ -545,11 +534,7 @@ function buildFallbackPdf({
         drawFormattedLine(line, innerX + 16, cursorY, { color: safeColors.slate700 })
         cursorY += lineHeight
       })
-      if (showQuantityRateColumns && hasQuantityRate) {
-        drawText(Number(item?.quantity || 0).toLocaleString(undefined, { maximumFractionDigits: 2 }), quantityColumnX, startingY, { size: 10, align: 'right' })
-        drawText(currency.format(Number(item?.rate || 0)), rateColumnX, startingY, { size: 10, align: 'right' })
-      }
-      drawText(currency.format(Number(item?.total || 0)), totalColumnX, startingY, { bold: true, size: 11, align: 'right' })
+      drawText(currency.format(Number(item?.amount || 0)), totalColumnX, startingY, { bold: true, size: 11, align: 'right' })
       pdf.setFillColor(itemMaterialsIncluded ? safeColors.blue50 : safeColors.slate100)
       pdf.roundedRect(innerX + 16, cursorY + 2, 122, 18, 9, 9, 'F')
       drawText(getEstimateMaterialsLabel(item, t), innerX + 77, cursorY + 14, { bold: true, size: 8.5, color: itemMaterialsIncluded ? safeColors.blue700 : safeColors.slate700, align: 'center' })

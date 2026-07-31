@@ -3,15 +3,29 @@
 // responses so the App's in-memory state remains the source-of-truth.
 
 import { createLocalRecordId } from '../../utils/projectIdentity'
+import {
+  normalizeEstimateFormattedTextForStorage,
+  normalizeEstimateLineItemsForStorage,
+} from '../../utils/estimateDocument'
 
 function normalizeEstimate(estimate = {}, opts = {}) {
   const now = new Date().toISOString()
   const clientId = estimate.clientId || estimate.client_id || null
   const leadId = estimate.leadId || estimate.lead_id || null
   const projectId = estimate.projectId || estimate.project_id || null
+  const hasLineItemsInput = Array.isArray(estimate.lineItems) || Array.isArray(estimate.line_items)
+  const lineItemsInput = Array.isArray(estimate.lineItems)
+    ? estimate.lineItems
+    : estimate.line_items
+  const estimateWithoutLegacyLineItems = { ...estimate }
+  delete estimateWithoutLegacyLineItems.line_items
+  const scopeInput = estimate.summary ?? estimate.scopeOfWork ?? estimate.scope_of_work
+  const normalizedScope = typeof scopeInput === 'string'
+    ? normalizeEstimateFormattedTextForStorage(scopeInput)
+    : undefined
 
   return {
-    ...estimate,
+    ...estimateWithoutLegacyLineItems,
     id: estimate.id || createLocalRecordId('estimate'),
     contractorId: estimate.contractorId || estimate.contractor_id || opts.contractorId || undefined,
     clientId,
@@ -20,6 +34,20 @@ function normalizeEstimate(estimate = {}, opts = {}) {
     lead_id: leadId,
     projectId,
     project_id: projectId,
+    ...(normalizedScope !== undefined
+      ? {
+          summary: normalizedScope,
+          scopeOfWork: normalizedScope,
+          scope_of_work: normalizedScope,
+        }
+      : {}),
+    ...(hasLineItemsInput
+      ? {
+          lineItems: normalizeEstimateLineItemsForStorage(lineItemsInput, {
+            fallbackMaterialsIncluded: Boolean(estimate.materialsIncluded ?? estimate.materials_included),
+          }),
+        }
+      : {}),
     updatedAt: estimate.updatedAt || estimate.updated_at || now,
     createdAt: estimate.createdAt || estimate.created_at || now,
     archivedAt: estimate.archivedAt || estimate.archived_at || null,
