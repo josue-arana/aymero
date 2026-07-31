@@ -1,3 +1,8 @@
+import {
+  normalizeEstimateFormattedTextForStorage,
+  normalizeEstimateLineItemsForStorage,
+} from '../../utils/estimateDocument'
+
 const ESTIMATE_DRAFTS_STORAGE_KEY = 'contractorflow.estimateDrafts'
 
 function canUseStorage() {
@@ -41,9 +46,29 @@ export function writeEstimateDraft(recordId, estimate) {
   if (!recordId || !estimate || typeof estimate !== 'object') return
 
   const draftMap = readDraftMap()
+  const lineItemsInput = Array.isArray(estimate.lineItems)
+    ? estimate.lineItems
+    : Array.isArray(estimate.line_items)
+      ? estimate.line_items
+      : null
+  const normalizedEstimate = { ...estimate }
+  delete normalizedEstimate.line_items
+
+  for (const field of ['summary', 'scopeOfWork', 'scope_of_work']) {
+    if (typeof normalizedEstimate[field] === 'string') {
+      normalizedEstimate[field] = normalizeEstimateFormattedTextForStorage(normalizedEstimate[field])
+    }
+  }
+
+  if (lineItemsInput) {
+    normalizedEstimate.lineItems = normalizeEstimateLineItemsForStorage(lineItemsInput, {
+      fallbackMaterialsIncluded: Boolean(estimate.materialsIncluded ?? estimate.materials_included),
+    })
+  }
+
   writeDraftMap({
     ...draftMap,
-    [recordId]: estimate,
+    [recordId]: normalizedEstimate,
   })
 }
 

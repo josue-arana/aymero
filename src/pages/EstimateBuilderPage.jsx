@@ -32,8 +32,9 @@ import {
   getValidExplicitEstimateItems,
   hasMeaningfulEstimateFormattedText,
   normalizeEstimateDocument,
+  normalizeEstimateFormattedTextForStorage,
+  normalizeEstimateLineItemsForStorage,
   resolveEstimatePricingMode,
-  sanitizeEstimateFormattedText,
 } from '../utils/estimateDocument'
 import { normalizeDocumentLanguageOverride, resolveClientFacingLanguage } from '../utils/language'
 import { getPaymentTermLabel, getPaymentTermOptions, isKnownPaymentTermValue } from '../utils/paymentTerms'
@@ -93,23 +94,9 @@ function createEmptyLineItem(materialsIncluded = false) {
 }
 
 function normalizeLineItems(items = [], fallbackMaterialsIncluded = false) {
-  if (!Array.isArray(items)) {
-    return []
-  }
-
-  return items.map((item) => ({
-    ...(item && typeof item === 'object' ? item : {}),
-    name: typeof item?.name === 'string' && item.name.trim()
-      ? item.name
-      : [item?.title, item?.description].filter(Boolean).join('\n'),
-    amount: Number(
-      item?.amount
-      ?? item?.total
-      ?? (Number(item?.quantity || 0) * Number(item?.rate || 0))
-      ?? 0
-    ),
-    materialsIncluded: item?.materialsIncluded ?? fallbackMaterialsIncluded,
-  }))
+  return normalizeEstimateLineItemsForStorage(items, {
+    fallbackMaterialsIncluded,
+  })
 }
 
 function formatAmountInputValue(value) {
@@ -359,15 +346,13 @@ export function EstimateBuilderPage({ lead, clientRecord = null, t, appLanguage 
   }), [companySettings?.company, estimateDocumentModel, estimateOutputLanguage, estimateT, lead, paymentTerms, previewEstimateDate, previewEstimateNumber])
 
   function getEstimatePayload() {
-    const sanitizedScope = sanitizeEstimateFormattedText(scope)
-    const sanitizedLineItems = lineItems.map((item) => {
-      const sanitizedName = sanitizeEstimateFormattedText(item?.name)
-
-      return {
-        ...item,
-        name: hasMeaningfulEstimateFormattedText(sanitizedName) ? sanitizedName : '',
-      }
-    })
+    const sanitizedScope = normalizeEstimateFormattedTextForStorage(scope)
+    const sanitizedLineItems = normalizeEstimateLineItemsForStorage(lineItems, {
+      fallbackMaterialsIncluded: materialsIncluded,
+    }).map((item) => ({
+      ...item,
+      name: hasMeaningfulEstimateFormattedText(item.name) ? item.name : '',
+    }))
 
     return {
       id: savedEstimate.id || undefined,
@@ -494,18 +479,8 @@ export function EstimateBuilderPage({ lead, clientRecord = null, t, appLanguage 
     })
   }
 
-  function autosizeLineItemTextarea(element) {
-    if (!element) {
-      return
-    }
-
-    element.style.height = '0px'
-    element.style.height = `${element.scrollHeight}px`
-  }
-
-  function handleLineItemTextareaInput(index, value, element) {
+  function handleLineItemTextareaInput(index, value) {
     updateLineItem(index, 'name', value)
-    autosizeLineItemTextarea(element)
   }
 
   function handleLineItemAmountInput(index, rawValue) {
@@ -638,9 +613,11 @@ export function EstimateBuilderPage({ lead, clientRecord = null, t, appLanguage 
                 value={scope}
                 onChange={(nextValue) => { markDraftDirty(); setScope(nextValue) }}
                 rows={8}
+                minHeight={192}
+                maxHeight={560}
                 ariaLabel={t('scopeOfWork')}
                 t={t}
-                className="min-h-[192px] resize-y p-4 text-sm leading-6"
+                className="p-4 text-sm leading-6"
               />
             ) : hasMeaningfulEstimateFormattedText(scope) ? (
               <EstimateFormattedText value={scope} className="rounded-2xl bg-slate-50 p-4 text-sm leading-6 text-slate-700" />
@@ -672,19 +649,15 @@ export function EstimateBuilderPage({ lead, clientRecord = null, t, appLanguage 
                                 {t('lineItemDetails')}
                               </label>
                               <LightweightFormattedTextarea
-                                ref={(element) => {
-                                  if (element) {
-                                    autosizeLineItemTextarea(element)
-                                  }
-                                }}
                                 value={item.name}
-                                onChange={(nextValue, element) => handleLineItemTextareaInput(index, nextValue, element)}
-                                onInput={autosizeLineItemTextarea}
+                                onChange={(nextValue) => handleLineItemTextareaInput(index, nextValue)}
                                 placeholder={t('enterScopeDetails')}
                                 rows={3}
+                                minHeight={104}
+                                maxHeight={400}
                                 ariaLabel={t('lineItemDetails')}
                                 t={t}
-                                className="min-h-[104px] resize-none px-3 py-3 text-sm leading-6"
+                                className="px-3 py-3 text-sm leading-6"
                               />
                             </div>
                             <div className="min-w-0 flex flex-col gap-2 sm:pt-6">

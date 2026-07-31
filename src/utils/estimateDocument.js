@@ -1,4 +1,5 @@
 const bulletLinePattern = /^\s*((?:[-•])|(?:\*(?!\*)))[ \t]*(.*)$/
+const pastedBulletLinePattern = /^\s*(?:[-*•·●▪◦])[ \t]+(.*)$/
 const unsupportedHtmlBlockPattern = /<(script|style|iframe|object|embed|svg|math|video|audio)\b[^>]*>[\s\S]*?<\/\1\s*>/gi
 const htmlTagPattern = /<\/?[a-z][^>]*>/gi
 const unsafeUrlPattern = /\b(?:javascript|vbscript|data\s*:\s*text\/html)\s*:[^\s<>"']*/gi
@@ -9,8 +10,6 @@ export const ESTIMATE_LABOR_ONLY = 'labor_only'
 export const ESTIMATE_OWNER_SUPPLIED_MATERIALS = 'owner_supplied_materials'
 export const ESTIMATE_PRICING_SIMPLE = 'simple'
 export const ESTIMATE_PRICING_DETAILED = 'detailed'
-export const ESTIMATE_ITEM_PRICING_AMOUNT_ONLY = 'amountOnly'
-export const ESTIMATE_ITEM_PRICING_QUANTITY_RATE = 'quantityRate'
 export const ESTIMATE_TEXT_SIZE_SMALL = 'small'
 export const ESTIMATE_TEXT_SIZE_STANDARD = 'standard'
 export const ESTIMATE_TEXT_SIZE_LARGE = 'large'
@@ -113,6 +112,159 @@ export function serializeEstimateSizedText(value, sizes = []) {
     .join('\n')
 }
 
+function isMeaningfulInlineText(value) {
+  return Boolean(
+    getEstimateFormattedPlainText(value)
+      .replace(/\s/g, '')
+  )
+}
+
+/**
+ * Canonical persisted rich text removes editor-only empty markup while keeping
+ * intentional paragraph breaks and the three supported block-size markers.
+ * The live editor deliberately does not call this while the user is typing so
+ * an empty bullet can still be used to exit a list naturally.
+ */
+export function normalizeEstimateFormattedTextForStorage(value) {
+  const lines = parseEstimateSizedText(value).lines.map((line) => {
+    const bulletMatch = line.text.match(bulletLinePattern)
+
+    if (bulletMatch) {
+      const content = bulletMatch[2].trimEnd()
+      const hasContent = isMeaningfulInlineText(content)
+      return {
+        text: hasContent ? `- ${content}` : '',
+        size: line.size,
+        remove: !hasContent,
+      }
+    }
+
+    return {
+      text: isMeaningfulInlineText(line.text) ? line.text.trimEnd() : '',
+      size: line.size,
+    }
+  }).filter((line) => !line.remove)
+
+  while (lines.length && !lines[0].text) lines.shift()
+  while (lines.length && !lines[lines.length - 1].text) lines.pop()
+
+  if (!lines.length) return ''
+
+  return serializeEstimateSizedText(
+    lines.map((line) => line.text).join('\n'),
+    lines.map((line) => line.size)
+  )
+}
+
+function normalizePastedPlainText(value) {
+  return sanitizeEstimateFormattedText(value)
+    .split('\n')
+    .map((line) => {
+      const bulletMatch = line.match(pastedBulletLinePattern)
+      return bulletMatch ? `- ${bulletMatch[1].trimEnd()}` : line.trimEnd()
+    })
+    .join('\n')
+    .replace(/\n{3,}/g, '\n\n')
+}
+
+function isHiddenPastedElement(element) {
+  if (!element?.getAttribute) return false
+
+  const style = String(element.getAttribute('style') || '').replace(/\s/g, '').toLowerCase()
+  return element.hasAttribute('hidden')
+    || element.getAttribute('aria-hidden') === 'true'
+    || style.includes('display:none')
+    || style.includes('visibility:hidden')
+}
+
+function convertPastedHtmlNode(node) {
+  if (!node) return ''
+  if (node.nodeType === 3) return node.nodeValue || ''
+  if (node.nodeType !== 1 || isHiddenPastedElement(node)) return ''
+
+  const tagName = node.tagName.toLowerCase()
+  if ([
+    'script', 'style', 'noscript', 'template', 'iframe', 'object', 'embed',
+    'svg', 'math', 'video', 'audio', 'img', 'table',
+  ].includes(tagName)) {
+    return ''
+  }
+  if (tagName === 'br') return '\n'
+
+  if (tagName === 'ul') {
+    return Array.from(node.children)
+      .filter((child) => child.tagName?.toLowerCase() === 'li')
+      .map((child) => {
+        const content = Array.from(child.childNodes)
+          .filter((item) => !['ul', 'ol'].includes(item.tagName?.toLowerCase()))
+          .map(convertPastedHtmlNode)
+          .join('')
+          .trim()
+        const nestedLists = Array.from(child.children)
+          .filter((item) => item.tagName?.toLowerCase() === 'ul')
+          .map(convertPastedHtmlNode)
+          .join('\n')
+
+        return [
+          content ? `- ${content}` : '',
+          nestedLists,
+        ].filter(Boolean).join('\n')
+      })
+      .filter(Boolean)
+      .join('\n')
+  }
+
+  if (tagName === 'ol') {
+    return Array.from(node.children)
+      .filter((child) => child.tagName?.toLowerCase() === 'li')
+      .map((child) => Array.from(child.childNodes)
+        .filter((item) => !['ul', 'ol'].includes(item.tagName?.toLowerCase()))
+        .map(convertPastedHtmlNode)
+        .join('')
+        .trim())
+      .filter(Boolean)
+      .join('\n')
+  }
+
+  const content = Array.from(node.childNodes).map(convertPastedHtmlNode).join('')
+  if (!content) return ''
+
+  if (tagName === 'strong' || tagName === 'b') return `**${content}**`
+  if (tagName === 'u') return `++${content}++`
+
+  if ([
+    'p', 'div', 'section', 'article', 'header', 'footer', 'aside',
+    'blockquote', 'h1', 'h2', 'h3', 'h4', 'h5', 'h6',
+  ].includes(tagName)) {
+    return `\n${content.trim()}\n`
+  }
+
+  return content
+}
+
+/**
+ * Converts rich clipboard HTML into Aymero's intentionally small text format.
+ * Unsupported structure and styles never enter storage. When DOMParser is not
+ * available (SSR/tests), the clipboard's plain-text representation is used.
+ */
+export function sanitizeEstimatePastedContent({ html = '', text = '' } = {}) {
+  if (html && typeof globalThis.DOMParser === 'function') {
+    const parsedDocument = new globalThis.DOMParser().parseFromString(html, 'text/html')
+    const convertedHtml = Array.from(parsedDocument.body.childNodes)
+      .map(convertPastedHtmlNode)
+      .join('')
+      .replace(/\u00a0/g, ' ')
+      .replace(/[ \t]+\n/g, '\n')
+      .replace(/\n[ \t]+/g, '\n')
+      .replace(/\n{3,}/g, '\n\n')
+      .trim()
+
+    if (convertedHtml) return normalizePastedPlainText(convertedHtml)
+  }
+
+  return normalizePastedPlainText(text)
+}
+
 function appendInlineSegment(segments, text, bold, underline) {
   if (!text) return
 
@@ -173,76 +325,25 @@ function hasFiniteStoredNumber(value) {
     && Number.isFinite(Number(value))
 }
 
-function nearlyEqual(left, right) {
-  const leftNumber = Number(left)
-  const rightNumber = Number(right)
-  if (!Number.isFinite(leftNumber) || !Number.isFinite(rightNumber)) return false
-
-  return Math.abs(leftNumber - rightNumber) <= Math.max(0.005, Math.abs(rightNumber) * 0.000001)
-}
-
-function normalizeItemPricingDisplayMode(value) {
-  const normalizedValue = normalizeText(value).trim().toLowerCase().replace(/[\s_-]+/g, '')
-
-  if (normalizedValue === 'amountonly') return ESTIMATE_ITEM_PRICING_AMOUNT_ONLY
-  if (normalizedValue === 'quantityrate') return ESTIMATE_ITEM_PRICING_QUANTITY_RATE
-  return ''
-}
-
 /**
- * The current builder stores one amount and does not collect quantity/rate.
- * Quantity/rate columns are therefore reserved for records with both explicit
- * values and a meaningful multiplication. The ambiguous legacy shape
- * quantity=1, rate=total remains amount-only unless an explicit display marker
- * says those values were intentional.
+ * Amount is the only active estimate-item price. `total` remains an accepted
+ * legacy amount alias because normalized document models previously used it.
+ * The quantity/rate calculation is deliberately read-only and narrow: it
+ * protects older JSON records that have no explicit amount without carrying
+ * either legacy field into the active model or future persistence payloads.
  */
-export function resolveEstimateItemPricingDisplayMode(item = {}, normalizedValues = {}) {
-  const configuredMode = normalizeItemPricingDisplayMode(
-    item?.pricingDisplayMode
-      ?? item?.pricing_display_mode
-      ?? item?.priceDisplayMode
-      ?? item?.price_display_mode
-  )
-
-  if (configuredMode === ESTIMATE_ITEM_PRICING_AMOUNT_ONLY) {
-    return ESTIMATE_ITEM_PRICING_AMOUNT_ONLY
+export function resolveEstimateLineItemAmount(item = {}, fallback = 0) {
+  for (const explicitAmount of [item?.amount, item?.total]) {
+    if (hasFiniteStoredNumber(explicitAmount)) {
+      return Number(explicitAmount)
+    }
   }
 
-  const hasStoredQuantity = hasFiniteStoredNumber(item?.quantity)
-  const hasStoredRate = hasFiniteStoredNumber(item?.rate)
-  if (!hasStoredQuantity || !hasStoredRate) {
-    return ESTIMATE_ITEM_PRICING_AMOUNT_ONLY
+  if (hasFiniteStoredNumber(item?.quantity) && hasFiniteStoredNumber(item?.rate)) {
+    return Number(item.quantity) * Number(item.rate)
   }
 
-  const quantity = toFiniteNumber(normalizedValues.quantity ?? item.quantity)
-  const rate = toFiniteNumber(normalizedValues.rate ?? item.rate)
-  const total = toFiniteNumber(
-    normalizedValues.total
-      ?? item?.total
-      ?? item?.amount,
-    quantity * rate
-  )
-  const hasMeaningfulCalculation = quantity > 0 && nearlyEqual(quantity * rate, total)
-
-  if (!hasMeaningfulCalculation) {
-    return ESTIMATE_ITEM_PRICING_AMOUNT_ONLY
-  }
-
-  if (configuredMode === ESTIMATE_ITEM_PRICING_QUANTITY_RATE) {
-    return ESTIMATE_ITEM_PRICING_QUANTITY_RATE
-  }
-
-  const isAmbiguousSyntheticDefault = nearlyEqual(quantity, 1) && nearlyEqual(rate, total)
-
-  return isAmbiguousSyntheticDefault
-    ? ESTIMATE_ITEM_PRICING_AMOUNT_ONLY
-    : ESTIMATE_ITEM_PRICING_QUANTITY_RATE
-}
-
-export function getEstimateWorkBreakdownPricingDisplayMode(workItems = []) {
-  return workItems.some((item) => item?.pricingDisplayMode === ESTIMATE_ITEM_PRICING_QUANTITY_RATE)
-    ? ESTIMATE_ITEM_PRICING_QUANTITY_RATE
-    : ESTIMATE_ITEM_PRICING_AMOUNT_ONLY
+  return toFiniteNumber(fallback)
 }
 
 export function isValidExplicitEstimateItem(item = {}) {
@@ -251,13 +352,7 @@ export function isValidExplicitEstimateItem(item = {}) {
     item?.title,
     item?.description,
   ].map(sanitizeEstimateFormattedText).join('\n')
-  const hasStoredAmount = [item?.amount, item?.total, item?.rate].some((value) => (
-    value !== ''
-    && value !== null
-    && value !== undefined
-    && Number.isFinite(Number(value))
-    && Number(value) !== 0
-  ))
+  const hasStoredAmount = resolveEstimateLineItemAmount(item) !== 0
 
   return Boolean(hasMeaningfulEstimateFormattedText(itemText) || hasStoredAmount)
 }
@@ -295,7 +390,7 @@ export function resolveEstimatePricingMode(pricingMode, lineItems = []) {
 }
 
 export function normalizeEstimateRichText(value) {
-  const rawText = sanitizeEstimateFormattedText(value)
+  const rawText = normalizeEstimateFormattedTextForStorage(value)
   if (!rawText) {
     return {
       rawText,
@@ -446,33 +541,45 @@ function normalizeEstimateMaterialsStatus(item = {}, fallbackMaterialsIncluded =
   return included ? ESTIMATE_MATERIALS_INCLUDED : ESTIMATE_LABOR_ONLY
 }
 
+export function normalizeEstimateLineItemsForStorage(lineItems = [], {
+  fallbackMaterialsIncluded = false,
+} = {}) {
+  if (!Array.isArray(lineItems)) return []
+
+  return lineItems.map((item, index) => {
+    const source = item && typeof item === 'object' ? item : {}
+    const name = normalizeEstimateFormattedTextForStorage(
+      typeof source.name === 'string' && source.name.trim()
+        ? source.name
+        : [source.title, source.description].filter(Boolean).join('\n')
+    )
+    const materialsStatus = normalizeEstimateMaterialsStatus(source, fallbackMaterialsIncluded)
+    const displayOrder = Number.isFinite(Number(source.displayOrder ?? source.display_order))
+      ? Number(source.displayOrder ?? source.display_order)
+      : index
+
+    return {
+      ...(source.id ? { id: source.id } : {}),
+      name,
+      amount: resolveEstimateLineItemAmount(source),
+      materialsIncluded: materialsStatus === ESTIMATE_MATERIALS_INCLUDED,
+      materialsStatus,
+      displayOrder,
+    }
+  })
+}
+
 function normalizeEstimateWorkItem(item = {}, {
   displayOrder,
   fallbackMaterialsIncluded,
-  fallbackTotal = 0,
   idPrefix = 'estimate-item',
 } = {}) {
-  const sourceText = sanitizeEstimateFormattedText(item?.name).trim()
-    || [sanitizeEstimateFormattedText(item?.title).trim(), sanitizeEstimateFormattedText(item?.description).trim()]
+  const sourceText = normalizeEstimateFormattedTextForStorage(item?.name).trim()
+    || [normalizeEstimateFormattedTextForStorage(item?.title).trim(), normalizeEstimateFormattedTextForStorage(item?.description).trim()]
       .filter(Boolean)
       .join('\n')
   const textParts = splitLegacyEstimateItemText(sourceText)
-  const quantity = toFiniteNumber(item?.quantity, 1)
-  const storedTotal = item?.total ?? item?.amount
-  const storedRate = item?.rate
-  const total = toFiniteNumber(
-    storedTotal,
-    storedRate === undefined ? fallbackTotal : quantity * toFiniteNumber(storedRate)
-  )
-  const rate = toFiniteNumber(
-    storedRate,
-    quantity ? total / quantity : total
-  )
-  const pricingDisplayMode = resolveEstimateItemPricingDisplayMode(item, {
-    quantity,
-    rate,
-    total,
-  })
+  const amount = resolveEstimateLineItemAmount(item)
   const materialsStatus = normalizeEstimateMaterialsStatus(item, fallbackMaterialsIncluded)
 
   return {
@@ -484,10 +591,7 @@ function normalizeEstimateWorkItem(item = {}, {
     contentBlocks: normalizeEstimateRichText(sourceText).blocks,
     descriptionBlocks: normalizeEstimateRichText(textParts.description).blocks,
     detailLines: textParts.detailLines,
-    pricingDisplayMode,
-    quantity: pricingDisplayMode === ESTIMATE_ITEM_PRICING_QUANTITY_RATE ? quantity : null,
-    rate: pricingDisplayMode === ESTIMATE_ITEM_PRICING_QUANTITY_RATE ? rate : null,
-    total,
+    amount,
     materialsIncluded: materialsStatus === ESTIMATE_MATERIALS_INCLUDED,
     materialsStatus,
     displayOrder,
@@ -498,7 +602,7 @@ export function normalizeEstimateDocument({
   pricingMode,
   scope = '',
   lineItems = [],
-  total = 0,
+  total,
   subtotal,
   discountAmount = 0,
   taxAmount = 0,
@@ -506,13 +610,12 @@ export function normalizeEstimateDocument({
   messageFromContractor = '',
   validUntil = '',
 } = {}) {
-  const scopeText = sanitizeEstimateFormattedText(scope)
-  const contractorMessageText = sanitizeEstimateFormattedText(messageFromContractor)
+  const scopeText = normalizeEstimateFormattedTextForStorage(scope)
+  const contractorMessageText = normalizeEstimateFormattedTextForStorage(messageFromContractor)
   const sourceItems = Array.isArray(lineItems) ? lineItems : []
   const normalizedPricingMode = resolveEstimatePricingMode(pricingMode, sourceItems)
   const explicitItems = getValidExplicitEstimateItems(sourceItems)
   const hasDetailedItems = normalizedPricingMode === ESTIMATE_PRICING_DETAILED && explicitItems.length > 0
-  const normalizedTotal = toFiniteNumber(total)
   const workItems = hasDetailedItems
     ? explicitItems.map((item, index) => normalizeEstimateWorkItem(item, {
         displayOrder: index,
@@ -520,9 +623,14 @@ export function normalizeEstimateDocument({
       }))
     : []
   const calculatedSubtotal = hasDetailedItems
-    ? workItems.reduce((sum, item) => sum + item.total, 0)
-    : normalizedTotal
-  const workBreakdownPricingDisplayMode = getEstimateWorkBreakdownPricingDisplayMode(workItems)
+    ? workItems.reduce((sum, item) => sum + item.amount, 0)
+    : toFiniteNumber(total)
+  const normalizedSubtotal = subtotal === undefined ? calculatedSubtotal : toFiniteNumber(subtotal)
+  const normalizedDiscountAmount = toFiniteNumber(discountAmount)
+  const normalizedTaxAmount = toFiniteNumber(taxAmount)
+  const normalizedTotal = hasFiniteStoredNumber(total)
+    ? Number(total)
+    : normalizedSubtotal - normalizedDiscountAmount + normalizedTaxAmount
   const scopeOfWork = {
     text: scopeText,
     contentBlocks: normalizeEstimateRichText(scopeText).blocks,
@@ -541,9 +649,9 @@ export function normalizeEstimateDocument({
     validUntil: normalizeText(validUntil),
     workItems,
     totals: {
-      subtotal: subtotal === undefined ? calculatedSubtotal : toFiniteNumber(subtotal),
-      discountAmount: toFiniteNumber(discountAmount),
-      taxAmount: toFiniteNumber(taxAmount),
+      subtotal: normalizedSubtotal,
+      discountAmount: normalizedDiscountAmount,
+      taxAmount: normalizedTaxAmount,
       total: normalizedTotal,
     },
     defaults: {
@@ -555,8 +663,6 @@ export function normalizeEstimateDocument({
       },
       workBreakdown: {
         visible: normalizedPricingMode === ESTIMATE_PRICING_DETAILED && workItems.length > 0,
-        pricingDisplayMode: workBreakdownPricingDisplayMode,
-        showQuantityRateColumns: workBreakdownPricingDisplayMode === ESTIMATE_ITEM_PRICING_QUANTITY_RATE,
       },
       messageFromContractor: {
         visible: hasMeaningfulEstimateFormattedText(contractorMessageText),
@@ -577,17 +683,17 @@ export function ensureNormalizedEstimateDocument(documentModel, legacyInput = {}
     const normalizedWorkItems = normalizedPricingMode === ESTIMATE_PRICING_DETAILED
       ? legacyWorkItems
       : []
-    const legacyMessageText = sanitizeEstimateFormattedText(
+    const legacyMessageText = normalizeEstimateFormattedTextForStorage(
       typeof documentModel.messageFromContractor === 'string'
         ? documentModel.messageFromContractor
         : documentModel?.messageFromContractor?.text
     )
     const legacySubtotal = documentModel.totals.subtotal === undefined
       ? normalizedPricingMode === ESTIMATE_PRICING_DETAILED
-        ? normalizedWorkItems.reduce((sum, item) => sum + toFiniteNumber(item?.total), 0)
+        ? normalizedWorkItems.reduce((sum, item) => sum + resolveEstimateLineItemAmount(item), 0)
         : toFiniteNumber(documentModel?.simpleTotal ?? documentModel?.totals?.total)
       : toFiniteNumber(documentModel.totals.subtotal)
-    const legacyScopeText = sanitizeEstimateFormattedText(
+    const legacyScopeText = normalizeEstimateFormattedTextForStorage(
       typeof documentModel.scopeOfWork === 'string'
         ? documentModel.scopeOfWork
         : typeof documentModel.scope === 'string'
@@ -608,20 +714,12 @@ export function ensureNormalizedEstimateDocument(documentModel, legacyInput = {}
         item,
         documentModel?.defaults?.materialsIncluded
       )
-      const quantity = toFiniteNumber(item?.quantity, 1)
-      const total = toFiniteNumber(item?.total)
-      const rate = toFiniteNumber(item?.rate, quantity ? total / quantity : total)
-      const pricingDisplayMode = resolveEstimateItemPricingDisplayMode(item, {
-        quantity,
-        rate,
-        total,
-      })
 
       return {
-        ...item,
+        id: item?.id || `estimate-item-${index + 1}`,
         title: parsedTitle.text,
         titleSize,
-        description: sanitizeEstimateFormattedText(item?.description),
+        description: normalizeEstimateFormattedTextForStorage(item?.description),
         titleSegments: parseEstimateInlineFormatting(parsedTitle.text),
         contentBlocks: normalizeEstimateRichText([
           serializeEstimateSizedText(parsedTitle.text, [titleSize]),
@@ -629,9 +727,7 @@ export function ensureNormalizedEstimateDocument(documentModel, legacyInput = {}
         ].filter(Boolean).join('\n')).blocks,
         descriptionBlocks: normalizeEstimateRichText(item?.description).blocks,
         detailLines: Array.isArray(item?.detailLines) ? item.detailLines : [],
-        pricingDisplayMode,
-        quantity: pricingDisplayMode === ESTIMATE_ITEM_PRICING_QUANTITY_RATE ? quantity : null,
-        rate: pricingDisplayMode === ESTIMATE_ITEM_PRICING_QUANTITY_RATE ? rate : null,
+        amount: resolveEstimateLineItemAmount(item),
         materialsIncluded: materialsStatus === ESTIMATE_MATERIALS_INCLUDED,
         materialsStatus,
         displayOrder: Number.isFinite(Number(item?.displayOrder))
@@ -639,7 +735,6 @@ export function ensureNormalizedEstimateDocument(documentModel, legacyInput = {}
           : index,
       }
     })
-    const workBreakdownPricingDisplayMode = getEstimateWorkBreakdownPricingDisplayMode(normalizedDocumentWorkItems)
 
     return {
       ...documentModel,
@@ -666,10 +761,7 @@ export function ensureNormalizedEstimateDocument(documentModel, legacyInput = {}
       sections: {
         ...documentModel.sections,
         workBreakdown: {
-          ...documentModel?.sections?.workBreakdown,
           visible: normalizedPricingMode === ESTIMATE_PRICING_DETAILED && normalizedWorkItems.length > 0,
-          pricingDisplayMode: workBreakdownPricingDisplayMode,
-          showQuantityRateColumns: workBreakdownPricingDisplayMode === ESTIMATE_ITEM_PRICING_QUANTITY_RATE,
         },
         messageFromContractor: {
           ...documentModel?.sections?.messageFromContractor,
