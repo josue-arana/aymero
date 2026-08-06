@@ -1,6 +1,6 @@
 import { useMemo, useState } from 'react'
 import { useParams } from 'react-router-dom'
-import { Archive, ArrowLeft, BarChart3, BriefcaseBusiness, CalendarDays, CarFront, ChevronRight, Clock3, CreditCard, Edit3, FileSignature, Images, Languages, Mail, MapPin, MessageSquare, MoreVertical, Phone, Plus, Sparkles, Trash2, Undo2, UserRound, WalletCards } from 'lucide-react'
+import { Archive, ArrowLeft, BarChart3, BriefcaseBusiness, CalendarDays, CarFront, ChevronRight, Clock3, CreditCard, Edit3, FileSignature, Images, Languages, Mail, MapPin, MessageSquare, MoreVertical, Phone, Plus, Sparkles, Trash2, Undo2, WalletCards } from 'lucide-react'
 import { DetailRow } from '../components/ui/DetailRow'
 import { InfoCard } from '../components/ui/InfoCard'
 import { StatusBadge } from '../components/ui/StatusBadge'
@@ -23,6 +23,13 @@ import { hasContractData } from '../utils/contractLinks'
 import { calculateProjectPaymentSummary, dedupePayments } from '../utils/projectPayments'
 import { getContractForProject, getEstimateForProject, getProjectsForClient, resolveLinkedProjectId } from '../utils/projectIdentity'
 import { ActionMenu } from '../components/common/ActionMenu'
+
+const unavailableClientContactValues = new Set(['(410) 555-0100', 'Address not added'])
+
+function getAvailableClientContactValue(value) {
+  const normalizedValue = String(value ?? '').trim()
+  return normalizedValue && !unavailableClientContactValues.has(normalizedValue) ? normalizedValue : ''
+}
 
 function isClientArchived(client, archivedClientIds = []) {
   return Boolean(
@@ -127,12 +134,6 @@ function getContextualProjectStatus(project = {}, estimate = null, contract = nu
   return baseStatus
 }
 
-function derivePreferredContact(client = {}, t = (key) => key) {
-  if (client?.phone) return t('call')
-  if (client?.email) return t('email')
-  return ''
-}
-
 function formatRelativeTimestamp(value, t = (key) => key) {
   const timestamp = getTimestamp(value)
   if (!timestamp) return ''
@@ -164,10 +165,15 @@ export function ClientProfilePage({ leads, customClients = [], archivedClientIds
   const clients = useMemo(() => buildClientProfiles(leads, customClients), [leads, customClients])
   const client = clients.find((item) => item.id === clientId)
   const isArchived = isClientArchived(client, archivedClientIds)
-  const phoneHref = normalizePhoneLink(client?.phone)
+  const clientPhone = getAvailableClientContactValue(client?.phone)
+  const clientEmail = getAvailableClientContactValue(client?.email)
+  const clientAddress = getAvailableClientContactValue(client?.address)
+  const phoneHref = normalizePhoneLink(clientPhone)
   const smsHref = phoneHref ? `sms:${phoneHref}` : ''
-  const mapsHref = buildMapsHref(client?.address)
-  const emailHref = client?.email ? `mailto:${client.email}` : ''
+  const mapsHref = buildMapsHref(clientAddress)
+  const emailHref = clientEmail ? `mailto:${clientEmail}` : ''
+  const clientStatus = isArchived ? 'Archived' : 'Active'
+  const hasClientContactInformation = Boolean(clientPhone || clientEmail || clientAddress)
   const clientProjects = useMemo(
     () => getProjectsForClient(client || {}, client?.projects || []),
     [client]
@@ -248,7 +254,6 @@ export function ClientProfilePage({ leads, customClients = [], archivedClientIds
       }
     })
   ), [clientProjects, t])
-  const preferredContact = useMemo(() => derivePreferredContact(client || {}, t), [client, t])
   const customerSinceValue = useMemo(() => {
     const timestamps = [
       client?.createdAt,
@@ -483,15 +488,20 @@ export function ClientProfilePage({ leads, customClients = [], archivedClientIds
     { id: 'text', href: smsHref, label: t('text'), icon: MessageSquare, visible: Boolean(smsHref) },
     { id: 'email', href: emailHref, label: t('email'), icon: Mail, visible: Boolean(emailHref) },
   ].filter((action) => action.visible)
+  const desktopHeroActions = [
+    { id: 'drive', href: mapsHref, label: t('drive'), icon: CarFront, external: true },
+    { id: 'call', href: phoneHref ? `tel:${phoneHref}` : '', label: t('call'), icon: Phone },
+    { id: 'text', href: smsHref, label: t('text'), icon: MessageSquare },
+    { id: 'email', href: emailHref, label: t('email'), icon: Mail },
+  ]
+  const primaryClientActionId = phoneHref ? 'call' : emailHref ? 'email' : mapsHref ? 'drive' : ''
 
   function renderMobileHeroAction({ id, href = '', label, icon: Icon, external = false }) {
-    const sharedClassName = 'inline-flex min-h-[72px] w-full flex-col items-center justify-center gap-2 rounded-[1.15rem] border border-slate-200 bg-white px-2 py-3 text-center shadow-sm transition hover:bg-slate-50'
+    const sharedClassName = 'inline-flex min-h-12 w-full items-center justify-center gap-2 rounded-2xl border border-white/15 bg-white/10 px-3 py-3 text-sm font-semibold text-white transition hover:bg-white/15 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-blue-200 focus-visible:ring-offset-2 focus-visible:ring-offset-slate-950'
     const content = (
       <>
-        <span className="inline-flex h-10 w-10 items-center justify-center rounded-2xl bg-teal-50 text-teal-600">
-          <Icon className="h-5 w-5" />
-        </span>
-        <span className="text-xs font-semibold leading-4 text-slate-900">{label}</span>
+        <Icon className="h-4 w-4" aria-hidden="true" />
+        <span>{label}</span>
       </>
     )
 
@@ -509,54 +519,20 @@ export function ClientProfilePage({ leads, customClients = [], archivedClientIds
     return null
   }
 
-  function renderMobileContactCard() {
-    return (
-      <InfoCard
-        title={
-            <span className="flex w-full items-center justify-between gap-3">
-              <span className="inline-flex min-w-0 items-center gap-3">
-              <span className="inline-flex h-9 w-9 items-center justify-center rounded-2xl bg-teal-50 text-teal-700"><UserRound className="h-[18px] w-[18px]" /></span>
-              <span className="truncate">{t('contactInformation')}</span>
-            </span>
-            <button onClick={() => setIsEditOpen(true)} className="shrink-0 text-xs font-semibold text-teal-700 transition hover:text-teal-800">
-              {t('edit')}
-            </button>
-          </span>
-        }
-        bodyClassName="space-y-0"
-      >
-        <div className="flex items-center justify-between gap-3 border-b border-slate-100 py-3 first:pt-0">
-          <div className="flex min-w-0 items-center gap-3">
-            <Phone className="h-[18px] w-[18px] shrink-0 text-slate-400" />
-            <div className="min-w-0">
-              <p className="break-words text-sm font-semibold text-slate-950">{client.phone || t('notAdded')}</p>
-            </div>
-          </div>
-          {phoneHref ? <a href={`tel:${phoneHref}`} className="inline-flex h-9 w-9 shrink-0 items-center justify-center rounded-2xl bg-teal-50 text-teal-700"><Phone className="h-4 w-4" /></a> : null}
-        </div>
-        <div className="flex items-center justify-between gap-3 border-b border-slate-100 py-3">
-          <div className="flex min-w-0 items-center gap-3">
-            <Mail className="h-[18px] w-[18px] shrink-0 text-slate-400" />
-            <div className="min-w-0">
-              <p className="break-all text-sm font-semibold text-slate-950">{client.email || t('notAdded')}</p>
-            </div>
-          </div>
-          {emailHref ? <a href={emailHref} className="inline-flex h-9 w-9 shrink-0 items-center justify-center rounded-2xl bg-teal-50 text-teal-700"><Mail className="h-4 w-4" /></a> : null}
-        </div>
-        <div className="flex items-center justify-between gap-3 py-3">
-          <div className="flex min-w-0 items-start gap-3">
-            <MapPin className="mt-0.5 h-[18px] w-[18px] shrink-0 text-slate-400" />
-            <div className="min-w-0">
-              <p className="break-words text-sm font-semibold leading-5 text-slate-950">{client.address || t('notAdded')}</p>
-            </div>
-          </div>
-          {mapsHref ? <a href={mapsHref} target="_blank" rel="noreferrer" className="inline-flex h-9 w-9 shrink-0 items-center justify-center rounded-2xl bg-teal-50 text-teal-700"><MapPin className="h-4 w-4" /></a> : null}
-        </div>
-        <div className="mt-1 flex items-center gap-2 border-t border-slate-100 pt-3">
-          <span className="text-xs font-medium uppercase tracking-[0.16em] text-slate-500">{t('preferredContact')}</span>
-          <span className="rounded-full bg-teal-50 px-2.5 py-1 text-xs font-semibold text-teal-700">{preferredContact || t('notAdded')}</span>
-        </div>
-      </InfoCard>
+  function renderDesktopHeroAction({ id, href = '', label, icon: Icon, external = false }) {
+    const isPrimary = id === primaryClientActionId
+    const enabledClassName = isPrimary
+      ? 'border-blue-500 bg-blue-500 text-white shadow-lg shadow-blue-950/25 hover:bg-blue-400'
+      : 'border-white/15 bg-white/10 text-white hover:bg-white/15'
+    const className = `inline-flex min-h-12 items-center justify-center gap-2 rounded-2xl border px-4 py-3 text-sm font-bold transition focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-blue-200 focus-visible:ring-offset-2 focus-visible:ring-offset-slate-950 ${href ? enabledClassName : 'cursor-not-allowed border-white/10 bg-white/5 text-slate-500'}`
+    const content = <><Icon className="h-4 w-4" aria-hidden="true" /> {label}</>
+
+    if (!href) return <button key={id} type="button" disabled className={className}>{content}</button>
+
+    return external ? (
+      <a key={id} href={href} target="_blank" rel="noreferrer" className={className}>{content}</a>
+    ) : (
+      <a key={id} href={href} className={className}>{content}</a>
     )
   }
 
@@ -579,20 +555,6 @@ function renderMobileAccountSummary() {
         <DetailRow label={t('outstandingBalance')} value={<span className="text-red-600">{currency.format(totalOutstandingBalance)}</span>} />
         <DetailRow label={t('lastPayment')} value={lastPayment ? `${currency.format(Number(lastPayment.amount) || 0)} · ${formatDisplayDate(lastPayment.paymentDate || lastPayment.createdAt, lastPayment.paymentDate || lastPayment.createdAt)}` : t('notAdded')} />
       </InfoCard>
-    )
-  }
-
-  function renderDesktopContactField({ label, value, actionIcon = null }) {
-    return (
-      <div className="rounded-2xl border border-slate-200 bg-slate-50/70 px-4 py-3">
-        <p className="text-[0.7rem] font-bold uppercase tracking-[0.16em] text-slate-400">{label}</p>
-        <div className="mt-2 flex items-start justify-between gap-3">
-          <div className="min-w-0 flex-1 text-sm font-semibold text-slate-900">
-            {value}
-          </div>
-          {actionIcon}
-        </div>
-      </div>
     )
   }
 
@@ -655,65 +617,70 @@ function renderMobileAccountSummary() {
     <div className="space-y-6">
       <div className="space-y-4 overflow-x-hidden bg-[#f5f7fb] pb-[calc(7.5rem+env(safe-area-inset-bottom))] lg:hidden">
         <section className="px-4 pt-4">
-          <div className="overflow-hidden rounded-[2rem] border border-slate-200 bg-white shadow-sm">
-            <div className="relative overflow-hidden bg-slate-950 text-white">
-              <img src={clientMobileHeroBackground} alt="" aria-hidden="true" className="absolute inset-0 h-full w-full scale-[1.01] object-cover object-[56%_10%] saturate-[1.02] brightness-[1.02]" />
-              <div className="absolute inset-0 bg-[linear-gradient(90deg,rgba(2,6,23,0.74)_0%,rgba(15,23,42,0.48)_30%,rgba(15,23,42,0.18)_56%,rgba(15,23,42,0.04)_100%)]" />
-              <div className="absolute inset-0 bg-[linear-gradient(180deg,rgba(2,6,23,0.14)_0%,rgba(15,23,42,0.08)_60%,rgba(255,255,255,0.08)_100%)]" />
-              <div className="relative px-5 pb-7 pt-[max(env(safe-area-inset-top),1rem)]">
-                <div className="flex items-center justify-between">
-                  <button onClick={onBack} className="inline-flex h-11 w-11 items-center justify-center rounded-full bg-white/10 text-white backdrop-blur-sm">
-                    <ArrowLeft className="h-5 w-5" />
-                  </button>
-                  <ActionMenu
-                    label={<MoreVertical className="h-4.5 w-4.5" />}
-                    ariaLabel={t('more')}
-                    showChevron={false}
-                    buttonClassName="inline-flex h-11 w-11 items-center justify-center rounded-full bg-white/10 text-white backdrop-blur-sm"
-                    items={moreMenuItems}
-                  />
-                </div>
-                <div className="mt-4 max-w-[68%]">
-                  <p className="text-[0.72rem] font-semibold uppercase tracking-[0.26em] text-teal-200/95">{t('clientWorkspace')}</p>
-                  <div className="mt-2 flex items-start gap-2.5">
-                    <h1 className="text-[1.9rem] font-bold leading-[1.02] tracking-tight text-white">{client.name}</h1>
-                  </div>
+          <div className="relative rounded-3xl border border-slate-800 bg-slate-950 text-white shadow-xl shadow-slate-950/15">
+            <div className="pointer-events-none absolute inset-0 overflow-hidden rounded-3xl" aria-hidden="true">
+              <img src={clientMobileHeroBackground} alt="" className="h-full w-full scale-[1.01] object-cover object-[56%_10%] saturate-[1.02] brightness-[1.02]" />
+              <div className="absolute inset-0 bg-[linear-gradient(110deg,rgba(2,6,23,0.92)_0%,rgba(15,23,42,0.78)_56%,rgba(15,23,42,0.42)_100%)]" />
+            </div>
+            <div className="relative px-5 pb-6 pt-[max(env(safe-area-inset-top),1rem)] sm:p-7">
+              <button onClick={onBack} aria-label={t('backToClients')} className="inline-flex h-11 w-11 items-center justify-center rounded-full border border-white/10 bg-white/10 text-white backdrop-blur-sm transition hover:bg-white/15 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-blue-200">
+                <ArrowLeft className="h-5 w-5" aria-hidden="true" />
+              </button>
+
+              <div className="mt-5 min-w-0">
+                <p className="text-xs font-bold uppercase tracking-[0.24em] text-blue-200">{t('client')}</p>
+                <h1 className="mt-2 break-words text-[2rem] font-bold leading-tight tracking-tight text-white sm:text-4xl">{client.name}</h1>
+                <div className="mt-3 flex flex-wrap items-center gap-2">
+                  <StatusBadge status={clientStatus} t={t} />
                   {showAnalyticsSections && (client.repeatClient || client.projectCount > 1) ? (
-                    <div className="mt-2.5">
-                      <span className="inline-flex items-center gap-2 rounded-full bg-white/12 px-3 py-1.5 text-xs font-semibold text-white ring-1 ring-white/15">
-                        <Sparkles className="h-3.5 w-3.5 text-teal-200" />
-                        {t('returningClient')}
-                      </span>
-                    </div>
-                  ) : null}
-                  {client.address ? (
-                    <div className="mt-3.5 flex items-start gap-2.5 text-sm text-slate-100">
-                      <MapPin className="mt-0.5 h-4 w-4 shrink-0 text-blue-200" />
-                      <span className="font-medium leading-5">{client.address}</span>
-                    </div>
-                  ) : null}
-                  {showAnalyticsSections && lastActivity ? (
-                    <div className="mt-2 flex items-center gap-2.5 text-sm text-slate-100">
-                      <CalendarDays className="h-4 w-4 shrink-0 text-blue-200" />
-                      <span className="leading-5"><span className="font-medium text-white">{t('lastActivity')}:</span> {lastActivityLabel || formatDisplayDate(new Date(lastActivity.timestamp))}</span>
-                    </div>
+                    <span className="inline-flex items-center gap-2 rounded-full border border-white/15 bg-white/10 px-3 py-1.5 text-xs font-semibold text-white backdrop-blur-sm">
+                      <Sparkles className="h-3.5 w-3.5 text-teal-200" aria-hidden="true" />
+                      {t('returningClient')}
+                    </span>
                   ) : null}
                 </div>
-                {mobileHeroActions.length ? (
-                  <div
-                    className="mt-5 grid gap-2.5"
-                    style={{ gridTemplateColumns: `repeat(${mobileHeroActions.length}, minmax(0, 1fr))` }}
-                  >
-                    {mobileHeroActions.map((action) => renderMobileHeroAction(action))}
-                  </div>
-                ) : null}
+              </div>
+
+              {hasClientContactInformation ? (
+                <dl className="mt-6 grid min-w-0 gap-4 border-t border-white/10 pt-5 sm:grid-cols-2">
+                  {clientPhone ? (
+                    <div className="min-w-0">
+                      <dt className="text-[0.68rem] font-bold uppercase tracking-[0.16em] text-slate-400">{t('phone')}</dt>
+                      <dd className="mt-1.5 min-w-0"><a href={`tel:${phoneHref}`} aria-label={`${t('callClient')}: ${clientPhone}`} className="break-words text-sm font-semibold text-white hover:text-blue-200 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-blue-200">{clientPhone}</a></dd>
+                    </div>
+                  ) : null}
+                  {clientEmail ? (
+                    <div className="min-w-0">
+                      <dt className="text-[0.68rem] font-bold uppercase tracking-[0.16em] text-slate-400">{t('email')}</dt>
+                      <dd className="mt-1.5 min-w-0"><a href={emailHref} aria-label={`${t('email')}: ${clientEmail}`} className="break-all text-sm font-semibold text-white hover:text-blue-200 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-blue-200">{clientEmail}</a></dd>
+                    </div>
+                  ) : null}
+                  {clientAddress ? (
+                    <div className="min-w-0 sm:col-span-2">
+                      <dt className="text-[0.68rem] font-bold uppercase tracking-[0.16em] text-slate-400">{t('address')}</dt>
+                      <dd className="mt-1.5 min-w-0"><a href={mapsHref} target="_blank" rel="noreferrer" aria-label={`${t('drive')}: ${clientAddress}`} className="break-words text-sm font-semibold leading-5 text-white hover:text-blue-200 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-blue-200">{clientAddress}</a></dd>
+                    </div>
+                  ) : null}
+                </dl>
+              ) : null}
+
+              <div className="mt-6 grid grid-cols-2 gap-2.5 border-t border-white/10 pt-5 sm:grid-cols-3">
+                {mobileHeroActions.map((action) => renderMobileHeroAction(action))}
+                <ActionMenu
+                  label={<><MoreVertical className="h-4 w-4" aria-hidden="true" /> {t('more')}</>}
+                  ariaLabel={t('more')}
+                  showChevron={false}
+                  containerClassName="w-full"
+                  buttonClassName="inline-flex min-h-12 w-full items-center justify-center gap-2 rounded-2xl border border-white/15 bg-white/10 px-3 py-3 text-sm font-semibold text-white transition hover:bg-white/15 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-blue-200 focus-visible:ring-offset-2 focus-visible:ring-offset-slate-950"
+                  menuClassName="max-w-[calc(100vw-3rem)]"
+                  items={moreMenuItems}
+                />
               </div>
             </div>
           </div>
         </section>
 
         <section className="space-y-3.5 px-4 pt-0.5">
-          {renderMobileContactCard()}
           {renderMobileAccountSummary()}
           <InfoCard
             title={
@@ -822,105 +789,75 @@ function renderMobileAccountSummary() {
       </div>
 
       <div className="hidden space-y-6 lg:block">
-        <section className="overflow-hidden rounded-[2rem] border border-slate-200 bg-white shadow-sm">
-          <div className="p-7 xl:p-8">
-            <div
-              className="relative overflow-hidden rounded-[1.7rem] bg-slate-950 text-white"
-              style={{
-                backgroundImage: `linear-gradient(135deg, rgba(2, 6, 23, 0.78), rgba(15, 23, 42, 0.35)), url(${clientWorkspaceHeroBackground})`,
-                backgroundSize: 'cover',
-                backgroundPosition: 'center',
-              }}
-            >
-              <div className="absolute inset-0 bg-gradient-to-r from-slate-950/45 via-slate-950/18 to-transparent" />
-              <div className="relative p-7 xl:p-8">
-                <button onClick={onBack} className="inline-flex items-center gap-2 text-sm font-semibold text-slate-200 transition hover:text-white">
-                  <ArrowLeft className="h-4 w-4" /> {t('backToClients')}
-                </button>
-                <div className="mt-7 flex flex-col gap-8 xl:flex-row xl:items-end xl:justify-between">
-                  <div className="max-w-3xl">
-                    <div className="flex flex-wrap items-center gap-3">
-                      <span className="text-[0.9rem] font-semibold uppercase tracking-[0.24em] text-blue-200">{t('clientWorkspace')}</span>
-                    </div>
-                    <div className="mt-3 flex flex-wrap items-center gap-3">
-                      <h1 className="text-5xl font-bold tracking-tight text-white">{client.name}</h1>
-                      {showAnalyticsSections && (client.repeatClient || client.projectCount > 1) ? (
-                        <span className="inline-flex items-center gap-2 rounded-full border border-white/15 bg-white/10 px-4 py-2 text-sm font-semibold text-white backdrop-blur-sm">
-                          <Sparkles className="h-3.5 w-3.5 text-teal-200" />
-                          {t('returningClient')}
-                        </span>
-                      ) : null}
-                    </div>
-                    {client.address ? (
-                      <div className="mt-4 inline-flex items-start gap-3 text-lg text-slate-200">
-                        <MapPin className="mt-0.5 h-5 w-5 shrink-0 text-blue-200" />
-                        <span className="font-medium">{client.address}</span>
-                      </div>
-                    ) : null}
-                    {showAnalyticsSections && lastActivity ? (
-                      <div className="mt-4 inline-flex items-center gap-3 text-lg text-slate-200">
-                        <CalendarDays className="h-5 w-5 shrink-0 text-blue-200" />
-                        <span><span className="font-medium text-white">{t('lastActivity')}:</span> {lastActivityLabel || formatDisplayDate(new Date(lastActivity.timestamp))}</span>
-                      </div>
-                    ) : null}
-                  </div>
+        <nav aria-label={t('clients')} className="flex min-w-0 items-center gap-2 text-sm font-semibold">
+          <button onClick={onBack} className="inline-flex shrink-0 items-center gap-2 text-slate-600 transition hover:text-slate-950 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-blue-500 focus-visible:ring-offset-2">
+            <ArrowLeft className="h-4 w-4" aria-hidden="true" /> {t('backToClients')}
+          </button>
+          <ChevronRight className="h-4 w-4 shrink-0 text-slate-300" aria-hidden="true" />
+          <span className="min-w-0 truncate text-slate-950" aria-current="page">{client.name}</span>
+        </nav>
 
-                  <div className="flex justify-start xl:justify-end">
-                    <ActionMenu
-                      label={t('more')}
-                      ariaLabel={t('more')}
-                      buttonClassName="inline-flex min-h-[52px] min-w-[124px] items-center justify-center rounded-2xl border border-white/15 bg-white/10 px-5 py-3 text-base font-semibold text-white shadow-sm backdrop-blur-sm transition hover:bg-white/12"
-                      items={moreMenuItems}
-                    />
-                  </div>
-                </div>
+        <section className="relative rounded-3xl border border-slate-800 bg-slate-950 p-7 text-white shadow-xl shadow-slate-950/15 xl:p-8">
+          <div className="pointer-events-none absolute inset-0 overflow-hidden rounded-3xl" aria-hidden="true">
+            <img src={clientWorkspaceHeroBackground} alt="" className="h-full w-full object-cover object-center" />
+            <div className="absolute inset-0 bg-[linear-gradient(110deg,rgba(2,6,23,0.96)_0%,rgba(15,23,42,0.86)_55%,rgba(15,23,42,0.62)_100%)]" />
+          </div>
+
+          <div className="relative grid min-w-0 gap-8 xl:grid-cols-[minmax(0,1.15fr)_minmax(360px,0.85fr)] xl:items-end xl:gap-10">
+            <div className="min-w-0">
+              <p className="text-sm font-bold uppercase tracking-[0.24em] text-blue-200">{t('client')}</p>
+              <h1 className="mt-3 break-words text-4xl font-bold tracking-tight text-white xl:text-5xl">{client.name}</h1>
+              <div className="mt-4 flex flex-wrap items-center gap-2">
+                <StatusBadge status={clientStatus} t={t} />
+                {showAnalyticsSections && (client.repeatClient || client.projectCount > 1) ? (
+                  <span className="inline-flex items-center gap-2 rounded-full border border-white/15 bg-white/10 px-3 py-1.5 text-sm font-semibold text-white backdrop-blur-sm">
+                    <Sparkles className="h-3.5 w-3.5 text-teal-200" aria-hidden="true" />
+                    {t('returningClient')}
+                  </span>
+                ) : null}
               </div>
+              {showAnalyticsSections && lastActivity ? (
+                <p className="mt-4 flex items-center gap-2 text-sm text-slate-300">
+                  <CalendarDays className="h-4 w-4 shrink-0 text-blue-200" aria-hidden="true" />
+                  <span><span className="font-semibold text-white">{t('lastActivity')}:</span> {lastActivityLabel || formatDisplayDate(new Date(lastActivity.timestamp))}</span>
+                </p>
+              ) : null}
+            </div>
+
+            <div className="flex flex-wrap gap-2 xl:justify-end">
+              {desktopHeroActions.map((action) => renderDesktopHeroAction(action))}
+              <ActionMenu
+                label={t('more')}
+                ariaLabel={t('more')}
+                buttonClassName="inline-flex min-h-12 items-center justify-center gap-2 rounded-2xl border border-white/15 bg-white/10 px-4 py-3 text-sm font-bold text-white transition hover:bg-white/15 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-blue-200 focus-visible:ring-offset-2 focus-visible:ring-offset-slate-950"
+                menuClassName="max-w-[calc(100vw-3rem)]"
+                items={moreMenuItems}
+              />
             </div>
           </div>
 
-          <div className="border-t border-slate-100 bg-white px-6 py-4 xl:px-8">
-          <div className="flex flex-wrap items-center gap-3">
-            {mapsHref ? (
-              <a href={mapsHref} target="_blank" rel="noreferrer" className="inline-flex min-h-[56px] min-w-[168px] items-center justify-center gap-3 rounded-2xl border border-slate-200 bg-white px-5 py-3 text-base font-semibold text-teal-700 shadow-sm transition hover:bg-slate-50">
-                <CarFront className="h-4 w-4" /> {t('drive')}
-              </a>
-            ) : (
-              <button type="button" disabled className="inline-flex min-h-[56px] min-w-[168px] items-center justify-center gap-3 rounded-2xl border border-slate-200 bg-white px-5 py-3 text-base font-semibold text-slate-400 opacity-70">
-                <CarFront className="h-4 w-4" /> {t('drive')}
-              </button>
-            )}
-            {phoneHref ? (
-              <a href={`tel:${phoneHref}`} className="inline-flex min-h-[56px] min-w-[168px] items-center justify-center gap-3 rounded-2xl border border-slate-200 bg-white px-5 py-3 text-base font-semibold text-teal-700 shadow-sm transition hover:bg-slate-50">
-                <Phone className="h-4 w-4" /> {t('call')}
-              </a>
-            ) : (
-              <button type="button" disabled className="inline-flex min-h-[56px] min-w-[168px] items-center justify-center gap-3 rounded-2xl border border-slate-200 bg-white px-5 py-3 text-base font-semibold text-slate-400 opacity-70">
-                <Phone className="h-4 w-4" /> {t('call')}
-              </button>
-            )}
-            {smsHref ? (
-              <a href={smsHref} className="inline-flex min-h-[56px] min-w-[168px] items-center justify-center gap-3 rounded-2xl border border-slate-200 bg-white px-5 py-3 text-base font-semibold text-teal-700 shadow-sm transition hover:bg-slate-50">
-                <MessageSquare className="h-4 w-4" /> {t('text')}
-              </a>
-            ) : (
-              <button type="button" disabled className="inline-flex min-h-[56px] min-w-[168px] items-center justify-center gap-3 rounded-2xl border border-slate-200 bg-white px-5 py-3 text-base font-semibold text-slate-400 opacity-70">
-                <MessageSquare className="h-4 w-4" /> {t('text')}
-              </button>
-            )}
-            {emailHref ? (
-              <a href={emailHref} className="inline-flex min-h-[56px] min-w-[168px] items-center justify-center gap-3 rounded-2xl border border-slate-200 bg-white px-5 py-3 text-base font-semibold text-teal-700 shadow-sm transition hover:bg-slate-50">
-                <Mail className="h-4 w-4" /> {t('email')}
-              </a>
-            ) : (
-              <button type="button" disabled className="inline-flex min-h-[56px] min-w-[168px] items-center justify-center gap-3 rounded-2xl border border-slate-200 bg-white px-5 py-3 text-base font-semibold text-slate-400 opacity-70">
-                <Mail className="h-4 w-4" /> {t('email')}
-              </button>
-            )}
-            <button type="button" disabled className="inline-flex min-h-[56px] min-w-[220px] items-center justify-center gap-3 rounded-2xl border border-slate-200 bg-white px-5 py-3 text-base font-semibold text-teal-700 shadow-sm opacity-70">
-              <CreditCard className="h-4 w-4" /> {t('requestPayment')}
-            </button>
-          </div>
-          </div>
+          {hasClientContactInformation ? (
+            <dl className="relative mt-7 grid min-w-0 gap-5 border-t border-white/10 pt-5 md:grid-cols-3">
+              {clientPhone ? (
+                <div className="min-w-0">
+                  <dt className="text-xs font-bold uppercase tracking-[0.16em] text-slate-400">{t('phone')}</dt>
+                  <dd className="mt-2 min-w-0"><a href={`tel:${phoneHref}`} aria-label={`${t('callClient')}: ${clientPhone}`} className="break-words text-base font-semibold text-white hover:text-blue-200 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-blue-200">{clientPhone}</a></dd>
+                </div>
+              ) : null}
+              {clientEmail ? (
+                <div className="min-w-0">
+                  <dt className="text-xs font-bold uppercase tracking-[0.16em] text-slate-400">{t('email')}</dt>
+                  <dd className="mt-2 min-w-0"><a href={emailHref} aria-label={`${t('email')}: ${clientEmail}`} className="break-all text-base font-semibold text-white hover:text-blue-200 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-blue-200">{clientEmail}</a></dd>
+                </div>
+              ) : null}
+              {clientAddress ? (
+                <div className="min-w-0">
+                  <dt className="text-xs font-bold uppercase tracking-[0.16em] text-slate-400">{t('address')}</dt>
+                  <dd className="mt-2 min-w-0"><a href={mapsHref} target="_blank" rel="noreferrer" aria-label={`${t('drive')}: ${clientAddress}`} className="break-words text-base font-semibold leading-6 text-white hover:text-blue-200 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-blue-200">{clientAddress}</a></dd>
+                </div>
+              ) : null}
+            </dl>
+          ) : null}
         </section>
 
         <section className={`grid gap-5 ${showAnalyticsSections ? 'xl:grid-cols-[1fr_1fr]' : 'xl:grid-cols-1'}`}>
@@ -971,56 +908,7 @@ function renderMobileAccountSummary() {
           ) : null}
         </section>
 
-        <section className="grid gap-5 xl:grid-cols-[0.92fr_1.28fr]">
-          <InfoCard
-            title={
-              <span className="inline-flex items-center gap-3">
-                <span className="inline-flex h-10 w-10 items-center justify-center rounded-2xl bg-teal-50 text-teal-700"><UserRound className="h-5 w-5" /></span>
-                {t('contactInformation')}
-              </span>
-            }
-            headerAction={
-              <button onClick={() => setIsEditOpen(true)} className="rounded-xl border border-slate-200 px-3 py-2 text-sm font-semibold text-slate-700 transition hover:bg-slate-50">
-                {t('editClient')}
-              </button>
-            }
-            bodyClassName="space-y-3"
-          >
-            {renderDesktopContactField({
-              label: t('phone'),
-              value: phoneHref ? (
-                <a href={`tel:${phoneHref}`} className="inline-flex max-w-full items-start gap-2 break-words text-left text-sm font-bold text-slate-900 hover:text-slate-700">
-                  <span>{client.phone}</span>
-                </a>
-              ) : (
-                client.phone || t('notAdded')
-              ),
-              actionIcon: phoneHref ? <a href={`tel:${phoneHref}`} className="inline-flex h-9 w-9 shrink-0 items-center justify-center rounded-2xl bg-white text-teal-700 shadow-sm transition hover:bg-slate-100"><Phone className="h-4 w-4" /></a> : null,
-            })}
-            {renderDesktopContactField({
-              label: t('email'),
-              value: emailHref ? (
-                <a href={emailHref} className="inline-flex max-w-full items-start gap-2 break-all text-left text-sm font-bold text-slate-900 hover:text-slate-700">
-                  <span>{client.email}</span>
-                </a>
-              ) : (
-                client.email || t('notAdded')
-              ),
-              actionIcon: emailHref ? <a href={emailHref} className="inline-flex h-9 w-9 shrink-0 items-center justify-center rounded-2xl bg-white text-teal-700 shadow-sm transition hover:bg-slate-100"><Mail className="h-4 w-4" /></a> : null,
-            })}
-            {renderDesktopContactField({
-              label: t('address'),
-              value: mapsHref ? (
-                <a href={mapsHref} target="_blank" rel="noreferrer" className="inline-flex max-w-full items-start gap-2 break-words text-left text-sm font-bold text-slate-900 hover:text-slate-700">
-                  <span>{client.address}</span>
-                </a>
-              ) : (
-                client.address || t('notAdded')
-              ),
-              actionIcon: mapsHref ? <a href={mapsHref} target="_blank" rel="noreferrer" className="inline-flex h-9 w-9 shrink-0 items-center justify-center rounded-2xl bg-white text-teal-700 shadow-sm transition hover:bg-slate-100"><MapPin className="h-4 w-4" /></a> : null,
-            })}
-          </InfoCard>
-
+        <section>
           <InfoCard
             title={
               <span className="inline-flex items-center gap-3">

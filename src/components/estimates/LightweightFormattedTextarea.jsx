@@ -1,4 +1,12 @@
-import { forwardRef, useEffect, useId, useImperativeHandle, useRef, useState } from 'react'
+import {
+  forwardRef,
+  useEffect,
+  useId,
+  useImperativeHandle,
+  useLayoutEffect,
+  useRef,
+  useState,
+} from 'react'
 import { Bold, List, Underline } from 'lucide-react'
 import {
   ESTIMATE_TEXT_SIZE_LARGE,
@@ -7,6 +15,7 @@ import {
   ESTIMATE_TEXT_SIZE_STEPS,
   hasMeaningfulEstimateFormattedText,
   normalizeEstimateFormattedTextForStorage,
+  normalizeEstimateTextSize,
   parseEstimateSizedText,
   sanitizeEstimatePastedContent,
   serializeEstimateSizedText,
@@ -17,10 +26,20 @@ const inlineMarkers = {
   underline: '++',
 }
 
-function selectionHasMarker(textarea, marker) {
-  if (!textarea || textarea.selectionStart === textarea.selectionEnd) return false
+// These screen-oriented values share the document's Small / Standard / Large
+// semantics without changing the exact point sizes used by PDF output.
+const editorTextSizeClasses = {
+  [ESTIMATE_TEXT_SIZE_SMALL]: 'text-[0.9em] leading-[1.55]',
+  [ESTIMATE_TEXT_SIZE_STANDARD]: 'text-[1em] leading-[1.5]',
+  [ESTIMATE_TEXT_SIZE_LARGE]: 'text-[1.15em] leading-[1.45]',
+}
 
-  const { selectionStart, selectionEnd, value } = textarea
+const editorLineBaseClasses = 'min-h-[1.5em] min-w-0 whitespace-pre-wrap break-words [overflow-wrap:anywhere]'
+const editorBulletClasses = 'pl-[1.1em] indent-[-1.1em]'
+
+function selectionHasMarker(value, selectionStart, selectionEnd, marker) {
+  if (selectionStart === selectionEnd) return false
+
   return (
     value.slice(selectionStart, selectionStart + marker.length) === marker
     && value.slice(selectionEnd - marker.length, selectionEnd) === marker
@@ -81,10 +100,7 @@ function selectionUsesBullets(value, selectionStart, selectionEnd) {
 function reconcileLineSizes(previousValue, nextValue, previousSizes) {
   const previousLines = previousValue.split('\n')
   const nextLines = nextValue.split('\n')
-  const nextSizes = Array.from(
-    { length: nextLines.length },
-    () => ESTIMATE_TEXT_SIZE_STANDARD
-  )
+  const nextSizes = Array.from({ length: nextLines.length }, () => ESTIMATE_TEXT_SIZE_STANDARD)
   let prefixLength = 0
 
   while (
@@ -132,6 +148,185 @@ function stepTextSize(size, direction) {
   return ESTIMATE_TEXT_SIZE_STEPS[nextIndex]
 }
 
+function getEditorLines(editor) {
+  return editor
+    ? Array.from(editor.children).filter((child) => child.hasAttribute('data-estimate-editor-line'))
+    : []
+}
+
+function setEditorLinePresentation(lineElement, size, text) {
+  const normalizedSize = normalizeEstimateTextSize(size)
+  lineElement.dataset.textSize = normalizedSize
+  lineElement.className = [
+    editorLineBaseClasses,
+    editorTextSizeClasses[normalizedSize],
+    /^\s*[-*•]\s+/.test(text) ? editorBulletClasses : '',
+  ].filter(Boolean).join(' ')
+}
+
+function renderEditorValue(editor, value) {
+  if (!editor) return
+
+  const ownerDocument = editor.ownerDocument
+  const fragment = ownerDocument.createDocumentFragment()
+  const parsedValue = parseEstimateSizedText(value)
+
+  parsedValue.lines.forEach((line) => {
+    const lineElement = ownerDocument.createElement('div')
+    lineElement.setAttribute('data-estimate-editor-line', 'true')
+    setEditorLinePresentation(lineElement, line.size, line.text)
+
+    if (line.text) {
+      lineElement.textContent = line.text
+    } else {
+      lineElement.appendChild(ownerDocument.createElement('br'))
+    }
+    fragment.appendChild(lineElement)
+  })
+
+  if (!parsedValue.lines.length) {
+    const emptyLine = ownerDocument.createElement('div')
+    emptyLine.setAttribute('data-estimate-editor-line', 'true')
+    setEditorLinePresentation(emptyLine, ESTIMATE_TEXT_SIZE_STANDARD, '')
+    emptyLine.appendChild(ownerDocument.createElement('br'))
+    fragment.appendChild(emptyLine)
+  }
+
+  editor.replaceChildren(fragment)
+}
+
+function readEditorValue(editor) {
+  const lines = getEditorLines(editor)
+  if (!lines.length) return ''
+
+  const displayValue = lines.map((line) => line.textContent || '').join('\n')
+  const sizes = lines.map((line) => normalizeEstimateTextSize(line.dataset.textSize))
+  return serializeEstimateSizedText(displayValue, sizes)
+}
+
+function editorDomNeedsNormalization(editor) {
+  const lines = getEditorLines(editor)
+  if (!editor || lines.length !== editor.children.length || lines.length !== editor.childNodes.length) return true
+
+  return lines.some((line) => Array.from(line.childNodes).some((node) => (
+    node.nodeType !== 3
+    && !(node.nodeType === 1 && node.tagName === 'BR' && line.childNodes.length === 1)
+  )))
+}
+
+function getPointOffsetWithinLine(lineElement, container, offset) {
+  if (container === lineElement) {
+    return Array.from(lineElement.childNodes)
+      .slice(0, offset)
+      .reduce((length, node) => length + (node.textContent || '').length, 0)
+  }
+
+  try {
+    const range = lineElement.ownerDocument.createRange()
+    range.selectNodeContents(lineElement)
+    range.setEnd(container, offset)
+    return range.toString().length
+  } catch {
+    return 0
+  }
+}
+
+function getEditorPointOffset(editor, container, offset) {
+  const lines = getEditorLines(editor)
+  if (!lines.length) return 0
+
+  if (container === editor) {
+    if (offset >= editor.childNodes.length) {
+      return lines.reduce((length, line, index) => (
+        length + (line.textContent || '').length + (index < lines.length - 1 ? 1 : 0)
+      ), 0)
+    }
+
+    const targetChild = editor.childNodes[offset]
+    const targetLineIndex = lines.findIndex((line) => line === targetChild || line.contains(targetChild))
+    if (targetLineIndex === -1) return 0
+    return lines.slice(0, targetLineIndex).reduce((length, line) => length + (line.textContent || '').length + 1, 0)
+  }
+
+  const lineIndex = lines.findIndex((line) => line === container || line.contains(container))
+  if (lineIndex === -1) return 0
+
+  const precedingLength = lines.slice(0, lineIndex)
+    .reduce((length, line) => length + (line.textContent || '').length + 1, 0)
+  return precedingLength + getPointOffsetWithinLine(lines[lineIndex], container, offset)
+}
+
+function getEditorSelection(editor, fallback = { start: 0, end: 0 }) {
+  const selection = editor?.ownerDocument?.getSelection?.()
+  if (
+    !selection
+    || !selection.anchorNode
+    || !selection.focusNode
+    || !editor.contains(selection.anchorNode)
+    || !editor.contains(selection.focusNode)
+  ) {
+    return fallback
+  }
+
+  const anchorOffset = getEditorPointOffset(editor, selection.anchorNode, selection.anchorOffset)
+  const focusOffset = getEditorPointOffset(editor, selection.focusNode, selection.focusOffset)
+
+  return {
+    start: Math.min(anchorOffset, focusOffset),
+    end: Math.max(anchorOffset, focusOffset),
+  }
+}
+
+function getDomPointForOffset(editor, targetOffset) {
+  const lines = getEditorLines(editor)
+  let remainingOffset = Math.max(0, targetOffset)
+
+  for (let index = 0; index < lines.length; index += 1) {
+    const line = lines[index]
+    const lineLength = (line.textContent || '').length
+    if (remainingOffset <= lineLength) {
+      const walker = line.ownerDocument.createTreeWalker(line, globalThis.NodeFilter?.SHOW_TEXT || 4)
+      let textNode = walker.nextNode()
+      let textOffset = remainingOffset
+
+      while (textNode) {
+        const nodeLength = textNode.nodeValue?.length || 0
+        if (textOffset <= nodeLength) return { node: textNode, offset: textOffset }
+        textOffset -= nodeLength
+        textNode = walker.nextNode()
+      }
+
+      return { node: line, offset: 0 }
+    }
+
+    remainingOffset -= lineLength
+    if (index < lines.length - 1) remainingOffset = Math.max(0, remainingOffset - 1)
+  }
+
+  const finalLine = lines[lines.length - 1] || editor
+  return { node: finalLine, offset: finalLine.childNodes.length }
+}
+
+function setEditorSelection(editor, start, end = start) {
+  if (!editor?.ownerDocument) return
+
+  const selection = editor.ownerDocument.getSelection?.()
+  if (!selection) return
+
+  const startPoint = getDomPointForOffset(editor, start)
+  const endPoint = getDomPointForOffset(editor, end)
+  const range = editor.ownerDocument.createRange()
+
+  try {
+    range.setStart(startPoint.node, startPoint.offset)
+    range.setEnd(endPoint.node, endPoint.offset)
+    selection.removeAllRanges()
+    selection.addRange(range)
+  } catch {
+    // A browser composition update can briefly invalidate a DOM point.
+  }
+}
+
 export const LightweightFormattedTextarea = forwardRef(function LightweightFormattedTextarea({
   value = '',
   onChange,
@@ -145,49 +340,62 @@ export const LightweightFormattedTextarea = forwardRef(function LightweightForma
   minHeight,
   maxHeight = 480,
 }, forwardedRef) {
-  const textareaRef = useRef(null)
+  const editorRef = useRef(null)
+  const selectionRef = useRef({ start: 0, end: 0 })
   const editorId = useId()
   const textSizeDescriptionId = useId()
   const parsedValue = parseEstimateSizedText(value)
   const displayValue = parsedValue.text
-  const lineSizes = parsedValue.lines.map((line) => line.size)
+  const initialSize = parsedValue.lines[0]?.size || ESTIMATE_TEXT_SIZE_STANDARD
   const [activeFormats, setActiveFormats] = useState({ bold: false, underline: false, bullet: false })
   const [activeTextSize, setActiveTextSize] = useState({
-    value: lineSizes[0] || ESTIMATE_TEXT_SIZE_STANDARD,
+    value: initialSize,
     mixed: false,
-    canDecrease: (lineSizes[0] || ESTIMATE_TEXT_SIZE_STANDARD) !== ESTIMATE_TEXT_SIZE_SMALL,
-    canIncrease: (lineSizes[0] || ESTIMATE_TEXT_SIZE_STANDARD) !== ESTIMATE_TEXT_SIZE_LARGE,
+    canDecrease: initialSize !== ESTIMATE_TEXT_SIZE_SMALL,
+    canIncrease: initialSize !== ESTIMATE_TEXT_SIZE_LARGE,
   })
 
-  useImperativeHandle(forwardedRef, () => textareaRef.current)
+  useImperativeHandle(forwardedRef, () => editorRef.current)
 
-  function getSelectedSizes() {
-    const textarea = textareaRef.current
-    if (!textarea) return [lineSizes[0] || ESTIMATE_TEXT_SIZE_STANDARD]
+  function resizeEditor(editor = editorRef.current) {
+    if (!editor) return
 
-    const range = getSelectedLineRange(
-      displayValue,
-      textarea.selectionStart,
-      textarea.selectionEnd
-    )
+    const resolvedMinHeight = Number(minHeight) || Math.max(104, rows * 24 + 32)
+    editor.style.height = 'auto'
+    const nextHeight = Math.min(Math.max(editor.scrollHeight, resolvedMinHeight), maxHeight)
+    editor.style.height = `${nextHeight}px`
+    editor.style.overflowY = editor.scrollHeight > maxHeight ? 'auto' : 'hidden'
+  }
 
-    return lineSizes.slice(range.start, range.end + 1)
+  function getCurrentState() {
+    const editor = editorRef.current
+    const storedValue = editor ? readEditorValue(editor) : value
+    const parsed = parseEstimateSizedText(storedValue)
+    const selection = getEditorSelection(editor, selectionRef.current)
+    selectionRef.current = selection
+
+    return {
+      editor,
+      storedValue,
+      displayValue: parsed.text,
+      lineSizes: parsed.lines.map((line) => line.size),
+      selection,
+    }
   }
 
   function updateActiveFormats() {
-    const textarea = textareaRef.current
-    const selectedSizes = getSelectedSizes()
+    const { displayValue: currentValue, lineSizes, selection } = getCurrentState()
+    const range = getSelectedLineRange(currentValue, selection.start, selection.end)
+    const selectedSizes = lineSizes.slice(range.start, range.end + 1)
     const uniqueSizes = [...new Set(selectedSizes)]
     const firstSize = selectedSizes[0] || ESTIMATE_TEXT_SIZE_STANDARD
-    const selectionStart = textarea?.selectionStart ?? 0
-    const selectionEnd = textarea?.selectionEnd ?? selectionStart
 
     setActiveFormats({
-      bold: selectionHasMarker(textarea, inlineMarkers.bold)
-        || markerIsActiveAtPosition(displayValue, selectionStart, inlineMarkers.bold),
-      underline: selectionHasMarker(textarea, inlineMarkers.underline)
-        || markerIsActiveAtPosition(displayValue, selectionStart, inlineMarkers.underline),
-      bullet: selectionUsesBullets(displayValue, selectionStart, selectionEnd),
+      bold: selectionHasMarker(currentValue, selection.start, selection.end, inlineMarkers.bold)
+        || markerIsActiveAtPosition(currentValue, selection.start, inlineMarkers.bold),
+      underline: selectionHasMarker(currentValue, selection.start, selection.end, inlineMarkers.underline)
+        || markerIsActiveAtPosition(currentValue, selection.start, inlineMarkers.underline),
+      bullet: selectionUsesBullets(currentValue, selection.start, selection.end),
     })
     setActiveTextSize({
       value: firstSize,
@@ -197,58 +405,60 @@ export const LightweightFormattedTextarea = forwardRef(function LightweightForma
     })
   }
 
+  useLayoutEffect(() => {
+    const editor = editorRef.current
+    if (!editor) return
+
+    const currentValue = readEditorValue(editor)
+    const hasLines = getEditorLines(editor).length > 0
+    if (!hasLines || currentValue !== value) {
+      const selection = getEditorSelection(editor, selectionRef.current)
+      renderEditorValue(editor, value)
+      if (editor.ownerDocument.activeElement === editor) {
+        setEditorSelection(editor, selection.start, selection.end)
+      }
+    }
+    resizeEditor(editor)
+    // The controlled storage value is synchronized without React reconciling
+    // editable child nodes, which keeps native selection stable while typing.
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [value, maxHeight, minHeight, rows])
+
   useEffect(() => {
     updateActiveFormats()
-    // The controlled value is the authoritative source for persisted sizes.
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [value])
 
-  function resizeEditor(textarea = textareaRef.current) {
-    if (!textarea) return
-
-    const resolvedMinHeight = Number(minHeight) || Math.max(104, rows * 24 + 32)
-    textarea.style.height = 'auto'
-    const nextHeight = Math.min(Math.max(textarea.scrollHeight, resolvedMinHeight), maxHeight)
-    textarea.style.height = `${nextHeight}px`
-    textarea.style.overflowY = textarea.scrollHeight > maxHeight ? 'auto' : 'hidden'
-  }
-
-  useEffect(() => {
-    resizeEditor()
-    // Height follows the controlled content and shared sizing constraints.
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [displayValue, maxHeight, minHeight, rows])
-
-  function emitDisplayValue(nextDisplayValue, nextLineSizes, textarea = textareaRef.current) {
-    onChange(serializeEstimateSizedText(nextDisplayValue, nextLineSizes), textarea)
+  function emitDisplayValue(nextDisplayValue, nextLineSizes, editor = editorRef.current) {
+    const nextStoredValue = serializeEstimateSizedText(nextDisplayValue, nextLineSizes)
+    renderEditorValue(editor, nextStoredValue)
+    resizeEditor(editor)
+    onChange(nextStoredValue, editor)
   }
 
   function restoreSelection(start, end = start) {
+    selectionRef.current = { start, end }
     requestAnimationFrame(() => {
-      const textarea = textareaRef.current
-      if (!textarea) return
+      const editor = editorRef.current
+      if (!editor) return
 
-      textarea.focus()
-      textarea.setSelectionRange(start, end)
-      resizeEditor(textarea)
-      onInput?.(textarea)
+      editor.focus({ preventScroll: true })
+      setEditorSelection(editor, start, end)
+      resizeEditor(editor)
+      onInput?.(editor)
       updateActiveFormats()
     })
   }
 
   function applyInlineFormat(format) {
-    const textarea = textareaRef.current
+    const { editor, displayValue: currentValue, lineSizes, selection } = getCurrentState()
     const marker = inlineMarkers[format]
-    if (!textarea || !marker) return
-
-    const start = textarea.selectionStart ?? 0
-    const end = textarea.selectionEnd ?? start
-    if (start === end) {
-      textarea.focus()
+    if (!editor || !marker || selection.start === selection.end) {
+      editor?.focus({ preventScroll: true })
       return
     }
 
-    const currentValue = displayValue
+    const { start, end } = selection
     const selectedText = currentValue.slice(start, end)
 
     if (selectedText.includes('\n')) {
@@ -259,13 +469,12 @@ export const LightweightFormattedTextarea = forwardRef(function LightweightForma
         const prefix = bulletMatch?.[1] || ''
         const content = bulletMatch?.[2] ?? line
         const isWrapped = content.startsWith(marker) && content.endsWith(marker)
-
         return `${prefix}${isWrapped ? content.slice(marker.length, -marker.length) : `${marker}${content}${marker}`}`
       })
       const nextSelection = formattedLines.join('\n')
       const nextValue = `${currentValue.slice(0, start)}${nextSelection}${currentValue.slice(end)}`
 
-      emitDisplayValue(nextValue, lineSizes, textarea)
+      emitDisplayValue(nextValue, lineSizes, editor)
       restoreSelection(start, start + nextSelection.length)
       return
     }
@@ -276,31 +485,26 @@ export const LightweightFormattedTextarea = forwardRef(function LightweightForma
 
     if (selectionIncludesMarkers) {
       const unwrappedText = selectedText.slice(marker.length, -marker.length)
-      const nextValue = `${currentValue.slice(0, start)}${unwrappedText}${currentValue.slice(end)}`
-      emitDisplayValue(nextValue, lineSizes, textarea)
+      emitDisplayValue(`${currentValue.slice(0, start)}${unwrappedText}${currentValue.slice(end)}`, lineSizes, editor)
       restoreSelection(start, start + unwrappedText.length)
       return
     }
 
     if (selectionIsWrapped) {
-      const nextValue = `${currentValue.slice(0, start - marker.length)}${selectedText}${currentValue.slice(end + marker.length)}`
-      emitDisplayValue(nextValue, lineSizes, textarea)
+      emitDisplayValue(`${currentValue.slice(0, start - marker.length)}${selectedText}${currentValue.slice(end + marker.length)}`, lineSizes, editor)
       restoreSelection(start - marker.length, end - marker.length)
       return
     }
 
-    const nextValue = `${currentValue.slice(0, start)}${marker}${selectedText}${marker}${currentValue.slice(end)}`
-    emitDisplayValue(nextValue, lineSizes, textarea)
+    emitDisplayValue(`${currentValue.slice(0, start)}${marker}${selectedText}${marker}${currentValue.slice(end)}`, lineSizes, editor)
     restoreSelection(start + marker.length, end + marker.length)
   }
 
   function toggleBullet() {
-    const textarea = textareaRef.current
-    if (!textarea) return
+    const { editor, displayValue: currentValue, lineSizes, selection } = getCurrentState()
+    if (!editor) return
 
-    const currentValue = displayValue
-    const start = textarea.selectionStart ?? currentValue.length
-    const end = textarea.selectionEnd ?? start
+    const { start, end } = selection
     const range = getSelectedLineRange(currentValue, start, end)
     const lineStart = getLineOffsets(currentValue, range.start).start
     const lineEnd = getLineOffsets(currentValue, range.end).end
@@ -309,15 +513,13 @@ export const LightweightFormattedTextarea = forwardRef(function LightweightForma
     const nextLines = selectedLines.map((line) => {
       if (!line.trim()) return removeBullets || start !== end ? '' : '- '
       if (removeBullets) return line.replace(/^\s*[-*•]\s+/, '')
-      return /^\s*[-*•]\s+/.test(line)
-        ? line.replace(/^\s*[-*•]\s+/, '- ')
-        : `- ${line}`
+      return /^\s*[-*•]\s+/.test(line) ? line.replace(/^\s*[-*•]\s+/, '- ') : `- ${line}`
     })
     const replacement = nextLines.join('\n')
     const nextValue = `${currentValue.slice(0, lineStart)}${replacement}${currentValue.slice(lineEnd)}`
     const nextSizes = reconcileLineSizes(currentValue, nextValue, lineSizes)
 
-    emitDisplayValue(nextValue, nextSizes, textarea)
+    emitDisplayValue(nextValue, nextSizes, editor)
     const currentLineBulletPrefixLength = selectedLines[0]?.match(/^\s*[-*•]\s+/)?.[0]?.length || 0
     const collapsedCursor = start + (removeBullets ? -currentLineBulletPrefixLength : 2)
     restoreSelection(
@@ -327,25 +529,17 @@ export const LightweightFormattedTextarea = forwardRef(function LightweightForma
   }
 
   function changeTextSize(direction) {
-    const textarea = textareaRef.current
-    if (!textarea) return
+    const { editor, displayValue: currentValue, lineSizes, selection } = getCurrentState()
+    if (!editor) return
 
-    const range = getSelectedLineRange(
-      displayValue,
-      textarea.selectionStart,
-      textarea.selectionEnd
-    )
+    const range = getSelectedLineRange(currentValue, selection.start, selection.end)
     const nextSizes = [...lineSizes]
-
     for (let index = range.start; index <= range.end; index += 1) {
-      nextSizes[index] = stepTextSize(
-        nextSizes[index] || ESTIMATE_TEXT_SIZE_STANDARD,
-        direction
-      )
+      nextSizes[index] = stepTextSize(nextSizes[index] || ESTIMATE_TEXT_SIZE_STANDARD, direction)
     }
 
-    emitDisplayValue(displayValue, nextSizes, textarea)
-    restoreSelection(textarea.selectionStart, textarea.selectionEnd)
+    emitDisplayValue(currentValue, nextSizes, editor)
+    restoreSelection(selection.start, selection.end)
   }
 
   function handleKeyDown(event) {
@@ -360,28 +554,37 @@ export const LightweightFormattedTextarea = forwardRef(function LightweightForma
       return
     }
 
-    const textarea = textareaRef.current
-    if (!textarea) return
-    const start = textarea.selectionStart ?? 0
-    const end = textarea.selectionEnd ?? start
-    const range = getSelectedLineRange(displayValue, start, end)
-    const offsets = getLineOffsets(displayValue, range.start)
-    const currentLine = displayValue.slice(offsets.start, offsets.end)
+    const { editor, displayValue: currentValue, lineSizes, selection } = getCurrentState()
+    if (!editor) return
+
+    const { start, end } = selection
+    const range = getSelectedLineRange(currentValue, start, end)
+    const offsets = getLineOffsets(currentValue, range.start)
+    const currentLine = currentValue.slice(offsets.start, offsets.end)
     const bulletMatch = currentLine.match(/^(\s*[-*•]\s+)(.*)$/)
 
     if (event.key === 'Enter' && !event.shiftKey) {
       event.preventDefault()
 
       if (bulletMatch && !hasMeaningfulEstimateFormattedText(bulletMatch[2])) {
-        const nextValue = `${displayValue.slice(0, offsets.start)}${displayValue.slice(offsets.end)}`
-        emitDisplayValue(nextValue, reconcileLineSizes(displayValue, nextValue, lineSizes), textarea)
+        const nextValue = `${currentValue.slice(0, offsets.start)}${currentValue.slice(offsets.end)}`
+        emitDisplayValue(nextValue, reconcileLineSizes(currentValue, nextValue, lineSizes), editor)
         restoreSelection(offsets.start)
         return
       }
 
       const insertion = bulletMatch ? '\n- ' : '\n\n'
-      const nextValue = `${displayValue.slice(0, start)}${insertion}${displayValue.slice(end)}`
-      emitDisplayValue(nextValue, reconcileLineSizes(displayValue, nextValue, lineSizes), textarea)
+      const nextValue = `${currentValue.slice(0, start)}${insertion}${currentValue.slice(end)}`
+      emitDisplayValue(nextValue, reconcileLineSizes(currentValue, nextValue, lineSizes), editor)
+      restoreSelection(start + insertion.length)
+      return
+    }
+
+    if (event.key === 'Enter' && event.shiftKey) {
+      event.preventDefault()
+      const insertion = '\n'
+      const nextValue = `${currentValue.slice(0, start)}${insertion}${currentValue.slice(end)}`
+      emitDisplayValue(nextValue, reconcileLineSizes(currentValue, nextValue, lineSizes), editor)
       restoreSelection(start + insertion.length)
       return
     }
@@ -394,56 +597,61 @@ export const LightweightFormattedTextarea = forwardRef(function LightweightForma
       && start >= offsets.start + bulletMatch[1].length
     ) {
       event.preventDefault()
-      const nextValue = `${displayValue.slice(0, offsets.start)}${displayValue.slice(offsets.end)}`
-      emitDisplayValue(nextValue, reconcileLineSizes(displayValue, nextValue, lineSizes), textarea)
+      const nextValue = `${currentValue.slice(0, offsets.start)}${currentValue.slice(offsets.end)}`
+      emitDisplayValue(nextValue, reconcileLineSizes(currentValue, nextValue, lineSizes), editor)
       restoreSelection(offsets.start)
     }
   }
 
-  function handleChange(event) {
-    const nextDisplayValue = event.target.value
-    const nextSizes = reconcileLineSizes(displayValue, nextDisplayValue, lineSizes)
-
-    emitDisplayValue(nextDisplayValue, nextSizes, event.target)
+  function handleInput(event) {
+    const editor = event.currentTarget
+    const nextStoredValue = readEditorValue(editor)
+    selectionRef.current = getEditorSelection(editor, selectionRef.current)
+    if (editorDomNeedsNormalization(editor)) {
+      renderEditorValue(editor, nextStoredValue)
+      setEditorSelection(editor, selectionRef.current.start, selectionRef.current.end)
+    }
+    resizeEditor(editor)
+    onChange(nextStoredValue, editor)
+    onInput?.(editor)
+    updateActiveFormats()
   }
 
   function handlePaste(event) {
-    const textarea = textareaRef.current
+    const { editor, displayValue: currentValue, lineSizes, selection } = getCurrentState()
     const clipboardData = event.clipboardData
-    if (!textarea || !clipboardData) return
+    if (!editor || !clipboardData) return
 
     const pastedValue = sanitizeEstimatePastedContent({
       html: clipboardData.getData('text/html'),
       text: clipboardData.getData('text/plain'),
     })
-    if (!pastedValue) {
-      event.preventDefault()
-      return
-    }
-
     event.preventDefault()
-    const start = textarea.selectionStart ?? 0
-    const end = textarea.selectionEnd ?? start
-    const parsedPaste = parseEstimateSizedText(pastedValue)
-    const nextValue = `${displayValue.slice(0, start)}${parsedPaste.text}${displayValue.slice(end)}`
-    const nextSizes = reconcileLineSizes(displayValue, nextValue, lineSizes)
-    const pastedLineStart = getSelectedLineRange(displayValue, start, start).start
+    if (!pastedValue) return
 
+    const parsedPaste = parseEstimateSizedText(pastedValue)
+    const nextValue = `${currentValue.slice(0, selection.start)}${parsedPaste.text}${currentValue.slice(selection.end)}`
+    const nextSizes = reconcileLineSizes(currentValue, nextValue, lineSizes)
+    const pastedLineStart = getSelectedLineRange(currentValue, selection.start, selection.start).start
     const pastedStorageLines = pastedValue.split('\n')
+
     parsedPaste.lines.forEach((line, index) => {
       const hasExplicitSize = /^\[\[aymero-size:(?:small|large)\]\]/.test(pastedStorageLines[index] || '')
-      if (index > 0 || hasExplicitSize) {
-        nextSizes[pastedLineStart + index] = line.size
-      }
+      if (index > 0 || hasExplicitSize) nextSizes[pastedLineStart + index] = line.size
     })
 
-    emitDisplayValue(nextValue, nextSizes, textarea)
-    restoreSelection(start + parsedPaste.text.length)
+    emitDisplayValue(nextValue, nextSizes, editor)
+    restoreSelection(selection.start + parsedPaste.text.length)
   }
 
   function handleBlur(event) {
-    const normalizedValue = normalizeEstimateFormattedTextForStorage(value)
-    if (normalizedValue !== value) onChange(normalizedValue, event.currentTarget)
+    const currentStoredValue = readEditorValue(event.currentTarget)
+    const normalizedValue = normalizeEstimateFormattedTextForStorage(currentStoredValue)
+    if (normalizedValue !== currentStoredValue) {
+      renderEditorValue(event.currentTarget, normalizedValue)
+      resizeEditor(event.currentTarget)
+      onChange(normalizedValue, event.currentTarget)
+    }
     onBlur?.(event)
   }
 
@@ -460,119 +668,68 @@ export const LightweightFormattedTextarea = forwardRef(function LightweightForma
   const activeSizeLabel = activeTextSize.mixed
     ? t('mixedTextSize')
     : t(`${activeTextSize.value}TextSize`)
+  const isVisiblyEmpty = displayValue.length === 0
 
   return (
-    <div className="min-w-0 overflow-hidden rounded-2xl border border-slate-200 bg-slate-50 focus-within:border-blue-500 focus-within:ring-4 focus-within:ring-blue-100">
+    <div className="relative min-w-0 overflow-hidden rounded-2xl border border-slate-200 bg-slate-50 focus-within:border-blue-500 focus-within:ring-4 focus-within:ring-blue-100">
       <div
         role="toolbar"
         aria-label={t('textFormatting')}
         aria-controls={editorId}
-        className="flex min-w-0 flex-wrap items-center gap-1 border-b border-slate-200 bg-white/80 px-2 py-1.5"
+        className="relative z-10 flex min-w-0 flex-wrap items-center gap-1 border-b border-slate-200 bg-white/80 px-2 py-1.5"
       >
-        <button
-          type="button"
-          aria-label={t('bold')}
-          title={t('bold')}
-          aria-pressed={activeFormats.bold}
-          className={toolbarButtonClasses(activeFormats.bold)}
-          onMouseDown={(event) => event.preventDefault()}
-          onClick={() => applyInlineFormat('bold')}
-        >
+        <button type="button" aria-label={t('bold')} title={t('bold')} aria-pressed={activeFormats.bold} className={toolbarButtonClasses(activeFormats.bold)} onMouseDown={(event) => event.preventDefault()} onClick={() => applyInlineFormat('bold')}>
           <Bold aria-hidden="true" className="h-4 w-4" />
         </button>
-        <button
-          type="button"
-          aria-label={t('underline')}
-          title={t('underline')}
-          aria-pressed={activeFormats.underline}
-          className={toolbarButtonClasses(activeFormats.underline)}
-          onMouseDown={(event) => event.preventDefault()}
-          onClick={() => applyInlineFormat('underline')}
-        >
+        <button type="button" aria-label={t('underline')} title={t('underline')} aria-pressed={activeFormats.underline} className={toolbarButtonClasses(activeFormats.underline)} onMouseDown={(event) => event.preventDefault()} onClick={() => applyInlineFormat('underline')}>
           <Underline aria-hidden="true" className="h-4 w-4" />
         </button>
-        <button
-          type="button"
-          aria-label={t('toggleBulletList')}
-          title={t('toggleBulletList')}
-          aria-pressed={activeFormats.bullet}
-          className={toolbarButtonClasses(activeFormats.bullet)}
-          onMouseDown={(event) => event.preventDefault()}
-          onClick={toggleBullet}
-        >
+        <button type="button" aria-label={t('toggleBulletList')} title={t('toggleBulletList')} aria-pressed={activeFormats.bullet} className={toolbarButtonClasses(activeFormats.bullet)} onMouseDown={(event) => event.preventDefault()} onClick={toggleBullet}>
           <List aria-hidden="true" className="h-4 w-4" />
         </button>
         <span aria-hidden="true" className="mx-1 h-6 w-px bg-slate-200" />
-        <button
-          type="button"
-          aria-label={`${t('decreaseTextSize')}. ${t('currentTextSize')}: ${activeSizeLabel}`}
-          title={t('decreaseTextSize')}
-          aria-describedby={textSizeDescriptionId}
-          disabled={!activeTextSize.canDecrease}
-          className={toolbarButtonClasses(false, !activeTextSize.canDecrease)}
-          onMouseDown={(event) => event.preventDefault()}
-          onClick={() => changeTextSize(-1)}
-        >
+        <button type="button" aria-label={`${t('decreaseTextSize')}. ${t('currentTextSize')}: ${activeSizeLabel}`} title={t('decreaseTextSize')} aria-describedby={textSizeDescriptionId} disabled={!activeTextSize.canDecrease} className={toolbarButtonClasses(false, !activeTextSize.canDecrease)} onMouseDown={(event) => event.preventDefault()} onClick={() => changeTextSize(-1)}>
           <span aria-hidden="true" className="text-sm font-bold tracking-tight">A−</span>
         </button>
-        <span
-          id={textSizeDescriptionId}
-          className="inline-flex h-8 w-7 shrink-0 items-center justify-center text-xs font-semibold text-slate-500"
-          title={`${t('currentTextSize')}: ${activeSizeLabel}`}
-          aria-live="polite"
-        >
-          <span
-            aria-hidden="true"
-            className={activeTextSize.mixed
-              ? 'text-sm'
-              : activeTextSize.value === ESTIMATE_TEXT_SIZE_SMALL
-                ? 'text-xs'
-                : activeTextSize.value === ESTIMATE_TEXT_SIZE_LARGE
-                  ? 'text-lg'
-                  : 'text-sm'}
-          >
-            A
-          </span>
+        <span id={textSizeDescriptionId} className="inline-flex h-8 w-7 shrink-0 items-center justify-center text-xs font-semibold text-slate-500" title={`${t('currentTextSize')}: ${activeSizeLabel}`} aria-live="polite">
+          <span aria-hidden="true" className={activeTextSize.mixed ? 'text-sm' : activeTextSize.value === ESTIMATE_TEXT_SIZE_SMALL ? 'text-xs' : activeTextSize.value === ESTIMATE_TEXT_SIZE_LARGE ? 'text-lg' : 'text-sm'}>A</span>
           <span className="sr-only">{`${t('currentTextSize')}: ${activeSizeLabel}`}</span>
         </span>
-        <button
-          type="button"
-          aria-label={`${t('increaseTextSize')}. ${t('currentTextSize')}: ${activeSizeLabel}`}
-          title={t('increaseTextSize')}
-          aria-describedby={textSizeDescriptionId}
-          disabled={!activeTextSize.canIncrease}
-          className={toolbarButtonClasses(false, !activeTextSize.canIncrease)}
-          onMouseDown={(event) => event.preventDefault()}
-          onClick={() => changeTextSize(1)}
-        >
+        <button type="button" aria-label={`${t('increaseTextSize')}. ${t('currentTextSize')}: ${activeSizeLabel}`} title={t('increaseTextSize')} aria-describedby={textSizeDescriptionId} disabled={!activeTextSize.canIncrease} className={toolbarButtonClasses(false, !activeTextSize.canIncrease)} onMouseDown={(event) => event.preventDefault()} onClick={() => changeTextSize(1)}>
           <span aria-hidden="true" className="text-base font-bold tracking-tight">A+</span>
         </button>
       </div>
-      <textarea
-        ref={textareaRef}
-        id={editorId}
-        value={displayValue}
-        onChange={handleChange}
-        onBlur={handleBlur}
-        onInput={(event) => {
-          resizeEditor(event.currentTarget)
-          onInput?.(event.currentTarget)
-        }}
-        onKeyDown={handleKeyDown}
-        onPaste={handlePaste}
-        onSelect={updateActiveFormats}
-        onKeyUp={updateActiveFormats}
-        onClick={updateActiveFormats}
-        placeholder={placeholder}
-        rows={rows}
-        aria-label={ariaLabel}
-        spellCheck="true"
-        className={`block w-full resize-none overflow-x-hidden border-0 bg-transparent outline-none placeholder:text-slate-400 focus:ring-0 ${className}`.trim()}
-        style={{
-          minHeight: `${Number(minHeight) || Math.max(104, rows * 24 + 32)}px`,
-          maxHeight: `${maxHeight}px`,
-        }}
-      />
+      <div className="relative min-w-0">
+        {isVisiblyEmpty && placeholder ? (
+          <span aria-hidden="true" className={`pointer-events-none absolute inset-0 z-0 text-slate-400 ${className}`.trim()}>
+            {placeholder}
+          </span>
+        ) : null}
+        <div
+          ref={editorRef}
+          id={editorId}
+          role="textbox"
+          aria-multiline="true"
+          aria-label={ariaLabel}
+          aria-placeholder={placeholder}
+          contentEditable
+          suppressContentEditableWarning
+          spellCheck
+          onInput={handleInput}
+          onBlur={handleBlur}
+          onKeyDown={handleKeyDown}
+          onPaste={handlePaste}
+          onSelect={updateActiveFormats}
+          onKeyUp={updateActiveFormats}
+          onClick={updateActiveFormats}
+          onFocus={updateActiveFormats}
+          className={`relative z-[1] block w-full overflow-x-hidden border-0 bg-transparent outline-none focus:ring-0 ${className}`.trim()}
+          style={{
+            minHeight: `${Number(minHeight) || Math.max(104, rows * 24 + 32)}px`,
+            maxHeight: `${maxHeight}px`,
+          }}
+        />
+      </div>
     </div>
   )
 })

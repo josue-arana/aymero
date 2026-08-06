@@ -484,15 +484,7 @@ const defaultUserProfile = {
   authUserId: 'mock-user',
 }
 
-const initialNotifications = [
-  { id: 'notif-lead-created', titleKey: 'notificationLeadCreatedTitle', messageKey: 'notificationLeadCreatedMessage', timeKey: 'justNow', read: false },
-  { id: 'notif-client-created', titleKey: 'notificationClientCreatedTitle', messageKey: 'notificationClientCreatedMessage', timeKey: 'today', read: false },
-  { id: 'notif-estimate-saved', titleKey: 'notificationEstimateSavedTitle', messageKey: 'notificationEstimateSavedMessage', timeKey: 'today', read: true },
-  { id: 'notif-contract-signed', titleKey: 'notificationContractSignedTitle', messageKey: 'notificationContractSignedMessage', timeKey: 'yesterday', read: true },
-  { id: 'notif-payment-recorded', titleKey: 'notificationPaymentRecordedTitle', messageKey: 'notificationPaymentRecordedMessage', timeKey: 'yesterday', read: true },
-  { id: 'notif-event-scheduled', titleKey: 'notificationEventScheduledTitle', messageKey: 'notificationEventScheduledMessage', timeKey: 'thisWeek', read: true },
-  { id: 'notif-invoice-paid', titleKey: 'notificationInvoicePaidTitle', messageKey: 'notificationInvoicePaidMessage', timeKey: 'thisWeek', read: true },
-]
+const initialNotifications = []
 
 const uuidPattern = /^[0-9a-f]{8}-[0-9a-f]{4}-[1-5][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i
 
@@ -1747,7 +1739,6 @@ function ContractorFlowApp() {
       leadPipelineStage: lead.leadPipelineStage || getLeadPipelineStage(lead),
     })
     showToast(t('leadCreated'))
-    addNotification('notificationLeadCreatedTitle', 'notificationLeadCreatedMessage')
     return persistedLead?.id || ''
   }
 
@@ -2613,7 +2604,7 @@ function buildWorkspaceJobRecord(job, clientRecord = null) {
     return saveLeadRecord(duplicatedLead)
   }
 
-  function syncProjectPayments(leadId, nextPayments, { toastKey, notify = false } = {}) {
+  function syncProjectPayments(leadId, nextPayments, { toastKey } = {}) {
     setLeads((current) => current.map((lead) => {
       if (lead.id !== leadId) return lead
 
@@ -2650,10 +2641,6 @@ function buildWorkspaceJobRecord(job, clientRecord = null) {
     if (toastKey) {
       showToast(t(toastKey))
     }
-
-    if (notify) {
-      addNotification('notificationPaymentRecordedTitle', 'notificationPaymentRecordedMessage')
-    }
   }
 
   function recordProjectPayment(leadId, payment) {
@@ -2683,7 +2670,6 @@ function buildWorkspaceJobRecord(job, clientRecord = null) {
 
     syncProjectPayments(sourceLead.id, combinedPayments, {
       toastKey: 'paymentRecorded',
-      notify: true,
     })
   }
 
@@ -2968,7 +2954,6 @@ function buildWorkspaceJobRecord(job, clientRecord = null) {
       }))
 
       showToast(t('estimateSaved'))
-      addNotification('notificationEstimateSavedTitle', 'notificationEstimateSavedMessage')
       return persistedEstimate
     } catch (error) {
       showToast(error?.message || t('estimateSaveFailed'), 'error')
@@ -3555,7 +3540,6 @@ function buildWorkspaceJobRecord(job, clientRecord = null) {
       status: 'Signed',
     }, persistedEstimate)
     showToast(t('contractSigned'))
-    addNotification('notificationContractSignedTitle', 'notificationContractSignedMessage')
   }
 
   function markContractUnsigned(leadId, contract) {
@@ -3801,7 +3785,6 @@ function buildWorkspaceJobRecord(job, clientRecord = null) {
       })
     })
     showToast(t('invoiceSaved'))
-    addNotification('notificationInvoiceSavedTitle', 'notificationInvoiceSavedMessage')
   }
 
   function recordInvoicePayment(invoiceId, payment) {
@@ -3846,7 +3829,6 @@ function buildWorkspaceJobRecord(job, clientRecord = null) {
     }
 
     showToast(t('paymentRecorded'))
-    addNotification('notificationPaymentRecordedTitle', 'notificationPaymentRecordedMessage')
   }
 
   function markInvoicePaid(invoiceId, payment = null) {
@@ -3890,7 +3872,6 @@ function buildWorkspaceJobRecord(job, clientRecord = null) {
     }
 
     showToast(t('paymentRecorded'))
-    addNotification('notificationInvoicePaidTitle', 'notificationInvoicePaidMessage')
   }
 
   function markInvoiceSent(invoiceId) {
