@@ -1747,7 +1747,6 @@ function ContractorFlowApp() {
       leadPipelineStage: lead.leadPipelineStage || getLeadPipelineStage(lead),
     })
     showToast(t('leadCreated'))
-    addNotification('notificationLeadCreatedTitle', 'notificationLeadCreatedMessage')
     return persistedLead?.id || ''
   }
 
@@ -2968,7 +2967,6 @@ function buildWorkspaceJobRecord(job, clientRecord = null) {
       }))
 
       showToast(t('estimateSaved'))
-      addNotification('notificationEstimateSavedTitle', 'notificationEstimateSavedMessage')
       return persistedEstimate
     } catch (error) {
       showToast(error?.message || t('estimateSaveFailed'), 'error')
