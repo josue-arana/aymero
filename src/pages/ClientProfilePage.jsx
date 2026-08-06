@@ -916,9 +916,6 @@ function renderMobileAccountSummary() {
                 <Mail className="h-4 w-4" /> {t('email')}
               </button>
             )}
-            <button type="button" disabled className="inline-flex min-h-[56px] min-w-[220px] items-center justify-center gap-3 rounded-2xl border border-slate-200 bg-white px-5 py-3 text-base font-semibold text-teal-700 shadow-sm opacity-70">
-              <CreditCard className="h-4 w-4" /> {t('requestPayment')}
-            </button>
           </div>
           </div>
         </section>
