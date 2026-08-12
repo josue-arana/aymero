@@ -17,6 +17,7 @@ import {
   waitForEstimateDocumentAssets,
 } from './estimatePagination'
 import { getPaymentTermLabel } from './paymentTerms'
+import { getReadableBrandTextColor, normalizeBrandColor } from '../data/brandColors'
 
 export { calculateEstimatePageBreakOffsets } from './estimatePagination'
 
@@ -29,9 +30,6 @@ const safeColors = {
   slate500: '#64748b',
   slate700: '#334155',
   slate900: '#0f172a',
-  blue50: '#eff6ff',
-  blue500: '#3b82f6',
-  blue700: '#1d4ed8',
 }
 
 const pdfPage = {
@@ -214,6 +212,8 @@ function buildFallbackPdf({
   const contractorMessage = normalizedDocument.messageFromContractor.text
   const acceptedPaymentMethods = getAcceptedPaymentMethodLabels(company?.acceptedPaymentMethods, t)
   const validUntil = resolveValidUntil(normalizedDocument.validUntil, estimateDate)
+  const accentColor = normalizeBrandColor(company?.primaryColor || company?.primary_color)
+  const accentTextColor = getReadableBrandTextColor(accentColor)
   const pdf = new jsPDF({
     orientation: 'portrait',
     unit: 'pt',
@@ -332,7 +332,7 @@ function buildFallbackPdf({
 
             lines.push(lineIndex === 0
               ? [
-                  { text: '• ', bold: false, underline: false, fontSize: size, lineIndent: 0 },
+                  { text: '• ', bold: false, underline: false, fontSize: size, lineIndent: 0, isBullet: true },
                   ...contentRuns,
                 ]
               : contentRuns)
@@ -357,7 +357,10 @@ function buildFallbackPdf({
 
     ;(runs || []).forEach((run) => {
       setFormattedRunFont(run, run?.fontSize || size)
-      pdf.setTextColor(options.color || safeColors.slate700)
+      const runColor = run?.isBullet && options.bulletColor
+        ? options.bulletColor
+        : (options.color || safeColors.slate700)
+      pdf.setTextColor(runColor)
       pdf.text(run.text, cursorX, y)
       const runWidth = pdf.getTextWidth(run.text)
 
@@ -392,18 +395,51 @@ function buildFallbackPdf({
     ensureSpace(blockHeight + 12)
     pdf.setFillColor(safeColors.slate50)
     pdf.roundedRect(innerX, cursorY, blockWidth, blockHeight, 18, 18, 'F')
-    drawText(title.toUpperCase(), innerX + ESTIMATE_RICH_CONTENT_HORIZONTAL_PADDING, cursorY + 18, { bold: true, size: 10, color: safeColors.slate400 })
+    const headingX = innerX + ESTIMATE_RICH_CONTENT_HORIZONTAL_PADDING
+    if (options.titleIcon === 'calendar') {
+      drawCalendarIcon(headingX + 4, cursorY + 14)
+    }
+    drawText(title.toUpperCase(), headingX + (options.titleIcon ? 14 : 0), cursorY + 18, { bold: true, size: 10, color: options.titleColor || safeColors.slate900 })
 
     const contentStartY = cursorY + topOffset
     let contentCursorY = contentStartY
     lines.forEach((line, index) => {
       drawFormattedLine(line, innerX + ESTIMATE_RICH_CONTENT_HORIZONTAL_PADDING, contentCursorY, {
         color: safeColors.slate700,
+        bulletColor: options.bulletColor,
       })
       contentCursorY += lineHeights[index]
     })
 
     cursorY += blockHeight
+  }
+
+  function drawContactIcon(type, x, y) {
+    pdf.setDrawColor(accentColor)
+    pdf.setLineWidth(1)
+    if (type === 'email') {
+      pdf.rect(x, y - 6, 9, 7, 'S')
+      pdf.line(x, y - 6, x + 4.5, y - 2)
+      pdf.line(x + 9, y - 6, x + 4.5, y - 2)
+      return
+    }
+    if (type === 'website') {
+      pdf.circle(x + 4.5, y - 2.5, 4.5, 'S')
+      pdf.line(x, y - 2.5, x + 9, y - 2.5)
+      pdf.line(x + 4.5, y - 7, x + 4.5, y + 2)
+      return
+    }
+    pdf.circle(x + 4.5, y - 2.5, 4.5, 'S')
+    pdf.line(x + 2.5, y - 4.5, x + 6.5, y - 0.5)
+  }
+
+  function drawCalendarIcon(x, y) {
+    pdf.setDrawColor(accentColor)
+    pdf.setLineWidth(1)
+    pdf.roundedRect(x, y - 7, 9, 8, 1, 1, 'S')
+    pdf.line(x, y - 4.5, x + 9, y - 4.5)
+    pdf.line(x + 2.5, y - 8, x + 2.5, y - 6)
+    pdf.line(x + 6.5, y - 8, x + 6.5, y - 6)
   }
 
   pdf.setFillColor(safeColors.white)
@@ -421,11 +457,21 @@ function buildFallbackPdf({
   })
 
   drawText(company?.name || companyName || t('brandName'), innerX + 54, cursorY + 2, { bold: true, size: 16 })
-  drawText(company?.phone || '', innerX + 54, cursorY + 20, { size: 11, color: safeColors.slate500 })
-  drawText(company?.email || '', innerX + 54, cursorY + 36, { size: 11, color: safeColors.slate500 })
+  if (company?.phone) {
+    drawContactIcon('phone', innerX + 54, cursorY + 18)
+    drawText(company.phone, innerX + 68, cursorY + 18, { size: 10, color: safeColors.slate900 })
+  }
+  if (company?.email) {
+    drawContactIcon('email', innerX + 54, cursorY + 32)
+    drawText(company.email, innerX + 68, cursorY + 32, { size: 10, color: safeColors.slate900 })
+  }
+  if (company?.website) {
+    drawContactIcon('website', innerX + 54, cursorY + 46)
+    drawText(company.website, innerX + 68, cursorY + 46, { size: 10, color: safeColors.slate900 })
+  }
 
-  drawText(t('estimate').toUpperCase(), cardX + cardWidth - 24, cursorY + 2, { bold: true, size: 11, color: safeColors.blue500, align: 'right' })
-  drawText(estimateNumber, cardX + cardWidth - 24, cursorY + 22, { bold: true, size: 13, align: 'right' })
+  drawText(t('estimate').toUpperCase(), cardX + cardWidth - 24, cursorY + 2, { bold: true, size: 11, color: safeColors.slate900, align: 'right' })
+  drawText(estimateNumber, cardX + cardWidth - 24, cursorY + 22, { bold: true, size: 13, color: accentTextColor, align: 'right' })
 
   cursorY += 52
   const infoRowHeight = 76
@@ -439,16 +485,16 @@ function buildFallbackPdf({
   if (showGlobalMaterialsIncluded) {
     pdf.line(innerX + (columnWidth * 2), cursorY, innerX + (columnWidth * 2), cursorY + infoRowHeight)
   }
-  drawText(t('client').toUpperCase(), innerX + 14, cursorY + 16, { bold: true, size: 9.5, color: safeColors.slate400 })
-  drawText(t('date').toUpperCase(), innerX + columnWidth + 14, cursorY + 16, { bold: true, size: 9.5, color: safeColors.slate400 })
+  drawText(t('client').toUpperCase(), innerX + 14, cursorY + 16, { bold: true, size: 9.5, color: safeColors.slate900 })
+  drawText(t('date').toUpperCase(), innerX + columnWidth + 14, cursorY + 16, { bold: true, size: 9.5, color: safeColors.slate900 })
   drawText(lead?.client || clientName, innerX + 14, cursorY + 33, { bold: true, size: 10.5, color: safeColors.slate900 })
   drawText(lead?.address || lead?.location || '', innerX + 14, cursorY + 47, { size: 9.5, color: safeColors.slate700 })
   drawText(formatDisplayDate(estimateDate), innerX + columnWidth + 14, cursorY + 33, { size: 10.5, color: safeColors.slate700 })
   if (showGlobalMaterialsIncluded) {
-    drawText(t('materialsIncluded').toUpperCase(), innerX + (columnWidth * 2) + 14, cursorY + 16, { bold: true, size: 9.5, color: safeColors.slate400 })
-    pdf.setFillColor(materialsIncluded ? safeColors.blue50 : safeColors.slate100)
-    pdf.roundedRect(innerX + (columnWidth * 2) + 14, cursorY + 26, 52, 20, 10, 10, 'F')
-    drawText(materialsIncluded ? t('yes') : t('no'), innerX + (columnWidth * 2) + 40, cursorY + 39, { bold: true, size: 9.5, color: materialsIncluded ? safeColors.blue700 : safeColors.slate700, align: 'center' })
+    drawText(t('materialsIncluded').toUpperCase(), innerX + (columnWidth * 2) + 14, cursorY + 16, { bold: true, size: 9.5, color: safeColors.slate900 })
+    pdf.setDrawColor(accentColor)
+    pdf.roundedRect(innerX + (columnWidth * 2) + 14, cursorY + 26, 52, 20, 10, 10, 'S')
+    drawText(materialsIncluded ? t('yes') : t('no'), innerX + (columnWidth * 2) + 40, cursorY + 39, { bold: true, size: 9.5, color: accentTextColor, align: 'center' })
   }
   cursorY += infoRowHeight + 10
 
@@ -458,8 +504,8 @@ function buildFallbackPdf({
   pdf.setFillColor(safeColors.slate50)
   pdf.rect(innerX, cursorY, cardWidth - 40, 26, 'F')
   pdf.line(innerX + 314, cursorY, innerX + 314, cursorY + 26)
-  drawText(t('description').toUpperCase(), innerX + 14, cursorY + 17, { bold: true, size: 9.5, color: safeColors.slate400 })
-  drawText(`${t('estimate').toUpperCase()} ${t('totalAmount').toUpperCase()}`, innerX + (cardWidth - 54), cursorY + 17, { bold: true, size: 9.5, color: safeColors.blue700, align: 'right' })
+  drawText(t('description').toUpperCase(), innerX + 14, cursorY + 17, { bold: true, size: 9.5, color: safeColors.slate900 })
+  drawText(`${t('estimate').toUpperCase()} ${t('totalAmount').toUpperCase()}`, innerX + (cardWidth - 54), cursorY + 17, { bold: true, size: 9.5, color: safeColors.slate900, align: 'right' })
   drawText(lead?.projectTitle || lead?.projectType || t('projectTitle'), innerX + 14, cursorY + 40, { bold: true, size: 12 })
   drawText(currency.format(Number(total || 0)), innerX + (cardWidth - 54), cursorY + 40, { bold: true, size: 16, align: 'right' })
   cursorY += 62
@@ -475,7 +521,7 @@ function buildFallbackPdf({
   }
 
   if (lineItems.length > 0) {
-    const itemDescriptionWidth = cardWidth - 134
+    const itemDescriptionWidth = cardWidth - 150
     const totalColumnX = cardX + cardWidth - 36
     const formattedLineItems = lineItems.map((item) => {
       const titleSegments = (item?.titleSegments || []).map((segment) => ({ ...segment, bold: true }))
@@ -516,8 +562,6 @@ function buildFallbackPdf({
     cursorY += 42
 
     lineItems.forEach((item, index) => {
-      const itemMaterialsIncluded = Boolean(item?.materialsIncluded)
-
       if (index > 0) {
         pdf.setDrawColor(safeColors.slate100)
         pdf.line(innerX + 14, cursorY - 10, cardX + cardWidth - 34, cursorY - 10)
@@ -531,13 +575,16 @@ function buildFallbackPdf({
           (line?.[0]?.fontSize || getEstimateTextSizePoints()) * 1.48
         )
         ensureSpace(lineHeight + 12)
-        drawFormattedLine(line, innerX + 16, cursorY, { color: safeColors.slate700 })
+        drawFormattedLine(line, innerX + 48, cursorY, { color: safeColors.slate700 })
         cursorY += lineHeight
       })
       drawText(currency.format(Number(item?.amount || 0)), totalColumnX, startingY, { bold: true, size: 11, align: 'right' })
-      pdf.setFillColor(itemMaterialsIncluded ? safeColors.blue50 : safeColors.slate100)
-      pdf.roundedRect(innerX + 16, cursorY + 2, 122, 18, 9, 9, 'F')
-      drawText(getEstimateMaterialsLabel(item, t), innerX + 77, cursorY + 14, { bold: true, size: 8.5, color: itemMaterialsIncluded ? safeColors.blue700 : safeColors.slate700, align: 'center' })
+      pdf.setDrawColor(accentColor)
+      pdf.circle(innerX + 29, startingY - 3, 9, 'S')
+      drawText(String(index + 1), innerX + 29, startingY, { bold: true, size: 8.5, color: accentTextColor, align: 'center' })
+      pdf.setDrawColor(accentColor)
+      pdf.roundedRect(innerX + 48, cursorY + 2, 122, 18, 9, 9, 'S')
+      drawText(getEstimateMaterialsLabel(item, t), innerX + 109, cursorY + 14, { bold: true, size: 8.5, color: accentTextColor, align: 'center' })
       cursorY += 28
     })
   }
@@ -549,7 +596,16 @@ function buildFallbackPdf({
     })
   }
   if (acceptedPaymentMethods.length) {
-    drawSectionBlock(t('acceptedPaymentMethods'), acceptedPaymentMethods.map((method) => `• ${method}`).join('\n'))
+    drawSectionBlock(t('acceptedPaymentMethods'), '', {
+      contentBlocks: [{
+        type: 'bulletList',
+        items: acceptedPaymentMethods.map((method) => ({
+          size: 'small',
+          segments: [{ text: method, bold: false, underline: false }],
+        })),
+      }],
+      bulletColor: accentColor,
+    })
   }
 
   const totalsLines = [
@@ -558,8 +614,8 @@ function buildFallbackPdf({
     ...(taxAmount > 0 ? [`${t('salesTax')}: ${currency.format(taxAmount)}`] : []),
     `${t('totalEstimate')}: ${currency.format(total)}`,
   ]
-  drawSectionBlock(t('totalEstimate'), totalsLines.join('\n'), { minHeight: 76 })
-  drawSectionBlock(t('validUntil'), formatDisplayDate(validUntil), { minHeight: 62 })
+  drawSectionBlock(t('totalEstimate'), totalsLines.join('\n'), { minHeight: 76, titleColor: accentTextColor })
+  drawSectionBlock(t('validUntil'), formatDisplayDate(validUntil), { minHeight: 62, titleColor: accentTextColor, titleIcon: 'calendar' })
 
   ensureSpace(50)
   pdf.setDrawColor(safeColors.slate200)
@@ -568,7 +624,7 @@ function buildFallbackPdf({
   drawText(t('thankYouForEstimateOpportunity'), cardX + (cardWidth / 2), cursorY, {
     bold: true,
     size: 11,
-    color: safeColors.blue700,
+    color: accentTextColor,
     align: 'center',
   })
   cursorY += 16

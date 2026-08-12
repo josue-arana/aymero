@@ -9,10 +9,20 @@ import {
 
 const paginationDebounceMs = 180
 
-function getPageCountLabel(pageCount, t) {
+const defaultTranslationKeys = {
+  pageCountSingle: 'estimatePageCountSingle',
+  pageCountMultiple: 'estimatePageCountMultiple',
+  pageOf: 'estimatePageOf',
+  paginationLabel: 'estimatePreviewPagination',
+  preparing: 'preparingEstimatePreview',
+  updating: 'updatingEstimatePreview',
+  unavailable: 'estimatePreviewUnavailable',
+}
+
+function getPageCountLabel(pageCount, t, translationKeys) {
   return pageCount === 1
-    ? t('estimatePageCountSingle', { count: pageCount })
-    : t('estimatePageCountMultiple', { count: pageCount })
+    ? t(translationKeys.pageCountSingle, { count: pageCount })
+    : t(translationKeys.pageCountMultiple, { count: pageCount })
 }
 
 export function PaginatedEstimatePreview({
@@ -21,6 +31,7 @@ export function PaginatedEstimatePreview({
   sourceWidth = ESTIMATE_DOCUMENT_SOURCE_WIDTH,
   sourcePadding = ESTIMATE_DOCUMENT_SOURCE_PADDING,
   className = '',
+  translationKeys = defaultTranslationKeys,
 }) {
   const sourceRef = useRef(null)
   const timerRef = useRef(null)
@@ -82,7 +93,7 @@ export function PaginatedEstimatePreview({
     <div
       className={`relative min-w-0 ${className}`.trim()}
       aria-busy={isPaginating}
-      aria-label={t('estimatePreviewPagination')}
+      aria-label={t(translationKeys.paginationLabel)}
     >
       <div
         aria-hidden="true"
@@ -106,12 +117,12 @@ export function PaginatedEstimatePreview({
 
       <div className="mb-3 flex min-h-6 items-center justify-end gap-2 px-1 text-xs font-semibold text-slate-500">
         {pageCount ? (
-          <span aria-live="polite">{getPageCountLabel(pageCount, t)}</span>
+          <span aria-live="polite">{getPageCountLabel(pageCount, t, translationKeys)}</span>
         ) : null}
         {isPaginating ? (
           <span role="status" className="inline-flex items-center gap-1.5">
             <span aria-hidden="true" className="h-2 w-2 animate-pulse rounded-full bg-blue-500" />
-            {t('updatingEstimatePreview')}
+            {t(translationKeys.updating)}
           </span>
         ) : null}
       </div>
@@ -119,13 +130,13 @@ export function PaginatedEstimatePreview({
       {!snapshot && isPaginating ? (
         <div role="status" className="overflow-hidden rounded-2xl border border-slate-200 bg-white shadow-sm">
           <div className="aspect-[8.5/11] animate-pulse bg-gradient-to-br from-white via-slate-50 to-slate-100" />
-          <span className="sr-only">{t('preparingEstimatePreview')}</span>
+          <span className="sr-only">{t(translationKeys.preparing)}</span>
         </div>
       ) : null}
 
       {paginationFailed && !snapshot ? (
         <div role="alert" className="rounded-2xl border border-amber-200 bg-amber-50 px-4 py-5 text-center text-sm font-semibold text-amber-800">
-          {t('estimatePreviewUnavailable')}
+          {t(translationKeys.unavailable)}
         </div>
       ) : null}
 
@@ -137,14 +148,14 @@ export function PaginatedEstimatePreview({
               <section
                 key={`${page.start}-${page.end}`}
                 role="group"
-                aria-label={t('estimatePageOf', {
+                aria-label={t(translationKeys.pageOf, {
                   page: page.number,
                   count: snapshot.model.pageCount,
                 })}
                 className="min-w-0"
               >
                 <p className="mb-2 text-center text-[11px] font-semibold text-slate-500">
-                  {t('estimatePageOf', {
+                  {t(translationKeys.pageOf, {
                     page: page.number,
                     count: snapshot.model.pageCount,
                   })}

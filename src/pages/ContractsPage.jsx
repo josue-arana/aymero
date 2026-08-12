@@ -3,6 +3,7 @@ import { useLocation, useNavigate, useParams } from 'react-router-dom'
 import { Archive, ArrowLeft, MoreVertical } from 'lucide-react'
 import { ActionMenu } from '../components/common/ActionMenu'
 import { ContractPdfTemplate } from '../components/contracts/ContractPdfTemplate'
+import { PaginatedContractPreview } from '../components/contracts/PaginatedContractPreview'
 import { SelectField } from '../components/ui/SelectField'
 import { currency } from '../utils/formatters'
 import { getPortalData } from '../utils/portal'
@@ -10,7 +11,7 @@ import { SendToCustomerModal } from '../components/common/SendToCustomerModal'
 import { ConfirmRecordModal } from '../components/common/ConfirmRecordModal'
 import dataProvider from '../services/dataProvider'
 import { ModalShell } from '../components/common/ModalShell'
-import { ScaledDocumentPreview, defaultDocumentPreviewWidth } from '../components/common/ScaledDocumentPreview'
+import { defaultDocumentPreviewWidth } from '../components/common/ScaledDocumentPreview'
 import { useToast } from '../components/common/ToastProvider'
 import { useAuth } from '../contexts/AuthContext'
 import { USE_SUPABASE, USE_SUPABASE_CONTRACTS } from '../config/backendConfig'
@@ -25,6 +26,7 @@ import { createTranslator } from '../translations'
 import { findRelatedClient } from '../utils/clients'
 import { buildContractNotesAndTermsItems, buildContractWorkBreakdownFromEstimate, buildGeneratedContractPaymentTerms, hasContractWorkBreakdown, normalizeContractWorkBreakdown, resolveContractAcceptanceLegalText, stripLeadingBulletMarker } from '../utils/contractDocument'
 import { normalizeDocumentLanguageOverride, resolveClientFacingLanguage } from '../utils/language'
+import { ESTIMATE_PAPER_MARGIN } from '../utils/estimatePagination'
 
 function formatContractDate(value, language = 'en') {
   const locale = language === 'es' ? 'es-ES' : 'en-US'
@@ -382,6 +384,8 @@ export function ContractPreviewPage({ lead, clientRecord = null, t, appLanguage 
     try {
       await printDocumentElement(pdfTemplateRef.current, {
         documentTitle: `${previewContractNumber} ${lead?.client || ''}`.trim(),
+        pageMarginInches: ESTIMATE_PAPER_MARGIN / 72,
+        safeInsetInches: 0,
       })
     } catch (error) {
       showToast(error?.message || t('contractPdfGenerateFailed'), 'error')
@@ -483,9 +487,9 @@ export function ContractPreviewPage({ lead, clientRecord = null, t, appLanguage 
       <ModalShell isOpen={showPreviewModal} onBackdropClick={() => setShowPreviewModal(false)} panelClassName="p-2 sm:max-w-[64rem] sm:p-3 lg:max-w-[68rem]">
         <div className="rounded-3xl bg-white text-slate-950">
           <div className="p-1">
-            <ScaledDocumentPreview pageWidth={contractPreviewPageWidth} pagePadding={18}>
+            <PaginatedContractPreview t={contractT}>
               <ContractPdfTemplate {...contractPreviewProps} />
-            </ScaledDocumentPreview>
+            </PaginatedContractPreview>
           </div>
           <div className="mt-6 grid gap-3 sm:grid-cols-2">
             <button onClick={handlePrint} className="rounded-2xl bg-slate-950 px-4 py-3 text-sm font-bold text-white hover:bg-slate-800">{shouldUsePdfForPrint ? t('downloadPdf') : t('print')}</button>
@@ -507,7 +511,7 @@ export function ContractPreviewPage({ lead, clientRecord = null, t, appLanguage 
         <div
           ref={pdfTemplateRef}
           data-contract-pdf-root="true"
-          style={{ width: `${contractPreviewPageWidth}px`, backgroundColor: '#ffffff', color: '#0f172a', padding: '18px', boxSizing: 'border-box' }}
+          style={{ width: `${contractPreviewPageWidth}px`, backgroundColor: '#ffffff', color: '#0f172a', padding: 0, boxSizing: 'border-box' }}
         >
           <ContractPdfTemplate {...contractPreviewProps} />
         </div>
@@ -521,7 +525,7 @@ function ContractDocument({ isEditing, lead, company, contractDate, contractNumb
     <div className="space-y-5 text-sm leading-6 text-slate-700">
       {!isEditing ? (
         <div className="overflow-hidden rounded-[28px] bg-slate-50 p-2 sm:p-3">
-          <ScaledDocumentPreview pageWidth={contractPreviewPageWidth} pagePadding={18}>
+          <PaginatedContractPreview t={contractT}>
             <ContractPdfTemplate
               company={company}
               lead={lead}
@@ -533,7 +537,7 @@ function ContractDocument({ isEditing, lead, company, contractDate, contractNumb
               total={contractTotal}
               t={contractT}
             />
-          </ScaledDocumentPreview>
+          </PaginatedContractPreview>
         </div>
       ) : null}
       {isEditing ? (

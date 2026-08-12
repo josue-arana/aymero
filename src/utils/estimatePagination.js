@@ -86,7 +86,7 @@ function getTextLineRanges(flowNode, rootElement, rootRect, renderedScale) {
   return ranges
 }
 
-function collectEstimateProtectedRanges(element, sourcePageHeight) {
+function collectDocumentProtectedRanges(element, sourcePageHeight) {
   const rootRect = element.getBoundingClientRect()
   const renderedScale = rootRect.width > 0 && element.offsetWidth > 0
     ? rootRect.width / element.offsetWidth
@@ -112,7 +112,7 @@ function collectEstimateProtectedRanges(element, sourcePageHeight) {
     protectedRanges.push(closingGroupRange)
   }
 
-  const workHeading = element.querySelector('[data-estimate-work-heading="true"]')
+  const workHeading = element.querySelector('[data-estimate-work-heading="true"], [data-contract-work-heading="true"]')
   const firstWorkItem = element.querySelector('[data-line-item-card="true"]')
   const firstWorkGroupRange = combineRanges(workHeading, firstWorkItem)
 
@@ -121,15 +121,15 @@ function collectEstimateProtectedRanges(element, sourcePageHeight) {
   }
 
   element.querySelectorAll(
-    '[data-estimate-keep-together="true"], [data-estimate-work-heading="true"], [data-estimate-footer="true"]'
+    '[data-estimate-keep-together="true"], [data-estimate-work-heading="true"], [data-estimate-footer="true"], [data-contract-keep-together="true"], [data-contract-work-heading="true"], [data-contract-signatures="true"]'
   ).forEach((node) => {
     const range = getRange(node)
     if (range) protectedRanges.push(range)
   })
 
-  element.querySelectorAll('[data-estimate-section-heading="true"]').forEach((heading) => {
-    const section = heading.closest('[data-estimate-section="true"]')
-    const firstFlowNode = section?.querySelector('[data-estimate-flow-text="true"]')
+  element.querySelectorAll('[data-estimate-section-heading="true"], [data-contract-section-heading="true"]').forEach((heading) => {
+    const section = heading.closest('[data-estimate-section="true"], [data-contract-section="true"]')
+    const firstFlowNode = section?.querySelector('[data-estimate-flow-text="true"], [data-contract-flow-text="true"]')
     const headingRange = getRange(heading)
     const firstLineRange = firstFlowNode
       ? getTextLineRanges(firstFlowNode, element, rootRect, renderedScale)[0]
@@ -146,7 +146,7 @@ function collectEstimateProtectedRanges(element, sourcePageHeight) {
     }
   })
 
-  element.querySelectorAll('[data-estimate-flow-text="true"]').forEach((flowNode) => {
+  element.querySelectorAll('[data-estimate-flow-text="true"], [data-contract-flow-text="true"]').forEach((flowNode) => {
     protectedRanges.push(...getTextLineRanges(flowNode, element, rootRect, renderedScale))
   })
 
@@ -168,7 +168,7 @@ export function getEstimatePaginationModel(element) {
   const printableHeight = ESTIMATE_PAPER_HEIGHT - (ESTIMATE_PAPER_MARGIN * 2)
   const sourceScale = elementWidth / printableWidth
   const sourcePageHeight = printableHeight * sourceScale
-  const protectedRanges = collectEstimateProtectedRanges(element, sourcePageHeight)
+  const protectedRanges = collectDocumentProtectedRanges(element, sourcePageHeight)
   const pageBreakOffsets = calculateEstimatePageBreakOffsets({
     contentHeight,
     sourcePageHeight,

@@ -7,7 +7,7 @@ import { ModalShell } from '../common/ModalShell'
 import { EstimatePdfTemplate } from '../estimates/EstimatePdfTemplate'
 import { PaginatedEstimatePreview } from '../estimates/PaginatedEstimatePreview'
 import { ContractPdfTemplate } from '../contracts/ContractPdfTemplate'
-import { ScaledDocumentPreview, defaultDocumentPreviewWidth } from '../common/ScaledDocumentPreview'
+import { PaginatedContractPreview } from '../contracts/PaginatedContractPreview'
 import { useToast } from '../common/ToastProvider'
 import { currency } from '../../utils/formatters'
 import { getContractDisplayNumber } from '../../utils/contractNumber'
@@ -20,6 +20,11 @@ import { createTranslator } from '../../translations'
 import { tStatus } from '../../translations'
 import { getPaymentTermLabel } from '../../utils/paymentTerms'
 import { resolveEstimatePricingMode } from '../../utils/estimateDocument'
+import {
+  buildContractNotesAndTermsItems as buildCanonicalContractNotesAndTermsItems,
+  buildContractWorkBreakdownFromEstimate,
+  normalizeContractWorkBreakdown,
+} from '../../utils/contractDocument'
 import {
   ESTIMATE_DOCUMENT_SOURCE_PADDING,
   ESTIMATE_DOCUMENT_SOURCE_WIDTH,
@@ -175,16 +180,15 @@ function buildPreviewLead(project = {}, client = {}) {
 }
 
 function buildContractNotesAndTermsItems(contract = {}, t = (key) => key) {
-  return [
-    { title: t('materialsAndScheduling'), content: contract?.materials || t('materialsText') },
-    { title: t('projectTimeline'), content: contract?.timeline || '' },
-    { title: t('clientCommunicationAndAdjustments'), content: [contract?.changeOrders, contract?.clientResponsibilities].filter(Boolean).join('\n\n') || t('changeOrdersText') },
-    { title: t('paymentTerms'), content: getPaymentTermLabel(contract?.paymentTerms, t) || t('contractTermsText') },
-    { title: t('acceptanceLegalConfirmation'), content: [t('compactContractAcceptanceText'), contract?.warrantyDisclaimer || t('warrantyDisclaimerText')].filter(Boolean).join('\n\n') },
-  ]
+  return buildCanonicalContractNotesAndTermsItems({
+    paymentTerms: contract?.paymentTerms || '',
+    total: Number(contract?.total ?? contract?.totalAmount ?? contract?.contractAmount ?? 0),
+    depositAmount: contract?.depositAmount ?? contract?.deposit_amount ?? null,
+    acceptanceLegalText: contract?.acceptanceLegalText || contract?.acceptance_legal_text || '',
+    legacyAcceptanceText: contract?.warrantyDisclaimer || '',
+    t,
+  })
 }
-
-const portalDocumentPreviewPageWidth = defaultDocumentPreviewWidth
 
 function DocumentPreviewModal({ isOpen, title, onClose, onPrimaryAction, primaryLabel, onDownload, children, t = (key) => key }) {
   const showsStandaloneDownload = primaryLabel !== t('downloadPdf')
@@ -343,9 +347,12 @@ export function PortalSummary({
     contractDate: contract?.signedDate || formatDisplayDate(contract?.updatedAt || contract?.updated_at || new Date()),
     notesAndTermsItems: buildContractNotesAndTermsItems(contract, contractDocumentT),
     scope: contract?.scope || contract?.scopeOfWork || estimate?.summary || '',
+    workBreakdown: normalizeContractWorkBreakdown(contract?.workBreakdown || contract?.work_breakdown || []).length
+      ? normalizeContractWorkBreakdown(contract?.workBreakdown || contract?.work_breakdown || [])
+      : buildContractWorkBreakdownFromEstimate(estimate),
     total: Number(contract?.total ?? contract?.totalAmount ?? contract?.contractAmount ?? 0),
     t: contractDocumentT,
-  }), [company, contract, contractDocumentT, contractNumber, estimate?.summary, previewLead])
+  }), [company, contract, contractDocumentT, contractNumber, estimate, previewLead])
   const openDocument = searchParams.get('document') || ''
 
   function setOpenDocument(nextDocument) {
@@ -422,6 +429,7 @@ export function PortalSummary({
         company,
         lead: previewLead,
         scope: contractPreviewProps.scope,
+        workBreakdown: contractPreviewProps.workBreakdown,
         paymentTerms: getPaymentTermLabel(contract?.paymentTerms, contractDocumentT) || contractDocumentT('contractTermsText'),
         materials: contract?.materials || contractDocumentT('materialsText'),
         timeline: contract?.timeline || '',
@@ -446,6 +454,8 @@ export function PortalSummary({
     try {
       await printDocumentElement(contractPreviewRef.current, {
         documentTitle: `${contractNumber} ${previewLead.client || ''}`.trim(),
+        pageMarginInches: ESTIMATE_PAPER_MARGIN / 72,
+        safeInsetInches: 0,
       })
     } catch (error) {
       showToast(error?.message || t('contractPdfGenerateFailed'), 'error')
@@ -638,7 +648,7 @@ export function PortalSummary({
           <div
             ref={contractPreviewRef}
             data-contract-pdf-root="true"
-            style={{ width: `${portalDocumentPreviewPageWidth}px`, backgroundColor: '#ffffff', color: '#0f172a', padding: '18px', boxSizing: 'border-box' }}
+            style={{ width: `${ESTIMATE_DOCUMENT_SOURCE_WIDTH}px`, backgroundColor: '#ffffff', color: '#0f172a', padding: 0, boxSizing: 'border-box' }}
           >
             <ContractPdfTemplate {...contractPreviewProps} />
           </div>
@@ -671,9 +681,9 @@ export function PortalSummary({
           onDownload={handleDownloadContract}
           t={t}
         >
-          <ScaledDocumentPreview pageWidth={portalDocumentPreviewPageWidth} pagePadding={18}>
+          <PaginatedContractPreview t={contractDocumentT}>
             <ContractPdfTemplate {...contractPreviewProps} />
-          </ScaledDocumentPreview>
+          </PaginatedContractPreview>
         </DocumentPreviewModal>
       ) : null}
 

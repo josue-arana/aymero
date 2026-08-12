@@ -1,5 +1,11 @@
 import { currency } from './formatters'
 import { getPaymentTermLabel } from './paymentTerms'
+import {
+  ESTIMATE_LABOR_ONLY,
+  ESTIMATE_MATERIALS_INCLUDED,
+  ESTIMATE_OWNER_SUPPLIED_MATERIALS,
+  normalizeEstimateLineItemForDocument,
+} from './estimateDocument'
 
 function toSafeNumber(value, fallback = 0) {
   const parsed = Number(value)
@@ -17,6 +23,26 @@ function normalizeMaterialsIncluded(value, fallbackValue = null) {
 
   if (typeof fallbackValue === 'boolean') {
     return fallbackValue
+  }
+
+  return null
+}
+
+function normalizeMaterialsStatus(item = {}, materialsIncluded = null) {
+  if (item?.materialsStatus === ESTIMATE_OWNER_SUPPLIED_MATERIALS) {
+    return ESTIMATE_OWNER_SUPPLIED_MATERIALS
+  }
+
+  if (item?.materialsStatus === ESTIMATE_LABOR_ONLY) {
+    return ESTIMATE_LABOR_ONLY
+  }
+
+  if (item?.materialsStatus === ESTIMATE_MATERIALS_INCLUDED) {
+    return ESTIMATE_MATERIALS_INCLUDED
+  }
+
+  if (typeof materialsIncluded === 'boolean') {
+    return materialsIncluded ? ESTIMATE_MATERIALS_INCLUDED : ESTIMATE_LABOR_ONLY
   }
 
   return null
@@ -59,25 +85,39 @@ export function normalizeContractWorkBreakdown(items = [], fallbackMaterialsIncl
   return items
     .map((item, index) => {
       const rawText = normalizeMultilineText(
-        item?.description
+        item?.rawText
           ?? item?.name
+          ?? item?.description
           ?? item?.title
           ?? ''
       )
       const amount = toSafeNumber(item?.amount)
       const materialsIncluded = normalizeMaterialsIncluded(item?.materialsIncluded, fallbackMaterialsIncluded)
-      const { title, details } = splitContractWorkBreakdownDescription(rawText, '')
+      const materialsStatus = normalizeMaterialsStatus(item, materialsIncluded)
+      const normalizedRichItem = normalizeEstimateLineItemForDocument({
+        ...item,
+        name: rawText,
+      }, {
+        displayOrder: index,
+        fallbackMaterialsIncluded: Boolean(materialsIncluded),
+      })
 
       return {
         id: item?.id || `contract-breakdown-${index}`,
-        title,
-        details,
-        description: rawText,
+        title: normalizedRichItem.title,
+        titleSize: normalizedRichItem.titleSize,
+        titleSegments: normalizedRichItem.titleSegments,
+        details: normalizedRichItem.detailLines,
+        description: normalizedRichItem.description,
+        descriptionBlocks: normalizedRichItem.descriptionBlocks,
+        contentBlocks: normalizedRichItem.contentBlocks,
+        rawText,
         amount,
         materialsIncluded,
+        materialsStatus,
       }
     })
-    .filter((item) => item.description || item.amount > 0)
+    .filter((item) => item.rawText || item.amount > 0)
 }
 
 export function buildContractWorkBreakdownFromEstimate(estimate = {}) {
