@@ -1,0 +1,35 @@
+.client-portal-page {
+  width: 100%;
+  box-sizing: border-box;
+  padding-top: max(24px, env(safe-area-inset-top));
+  padding-right: max(16px, env(safe-area-inset-right));
+  padding-bottom: max(24px, env(safe-area-inset-bottom));
+  padding-left: max(16px, env(safe-area-inset-left));
+}
+
+.client-portal-page__container {
+  display: grid;
+  width: 100%;
+  max-width: 72rem;
+  margin: 0 auto;
+  gap: 24px;
+}
+
+.client-portal-page__sections {
+  display: grid;
+  gap: 20px;
+}
+
+@media (min-width: 640px) {
+  .client-portal-page {
+    padding-right: max(20px, env(safe-area-inset-right));
+    padding-left: max(20px, env(safe-area-inset-left));
+  }
+}
+
+@media (min-width: 1024px) {
+  .client-portal-page {
+    padding-right: max(32px, env(safe-area-inset-right));
+    padding-left: max(32px, env(safe-area-inset-left));
+  }
+}
