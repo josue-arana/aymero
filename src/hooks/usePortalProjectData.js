@@ -30,6 +30,13 @@ function normalizeEstimateRecord(estimate) {
 function normalizeContractRecord(contract) {
   if (!hasContractData(contract)) return null
 
+  const storedTotal = contract?.total ?? contract?.totalAmount ?? contract?.contractAmount
+  const hasValidStoredTotal = storedTotal !== null
+    && storedTotal !== undefined
+    && storedTotal !== ''
+    && Number.isFinite(Number(storedTotal))
+  const hasStoredContractAmount = hasValidStoredTotal && contract?.hasStoredContractAmount !== false
+
   return {
     ...contract,
     id: contract?.id || null,
@@ -38,7 +45,8 @@ function normalizeContractRecord(contract) {
     estimateId: contract?.estimateId || contract?.estimate_id || null,
     number: contract?.number || contract?.contractNumber || '',
     contractNumber: contract?.contractNumber || contract?.number || '',
-    total: toSafeNumber(contract?.total ?? contract?.totalAmount ?? contract?.contractAmount),
+    total: toSafeNumber(storedTotal),
+    hasStoredContractAmount,
     status: contract?.status || '',
     signedDate: contract?.signedDate || contract?.signed_at || '',
     scope: contract?.scope || contract?.scopeOfWork || contract?.scope_of_work || '',

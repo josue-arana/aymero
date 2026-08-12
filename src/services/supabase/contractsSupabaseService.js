@@ -244,6 +244,10 @@ function toAppContract(row) {
   const parsedTerms = parseTerms(row?.terms)
   const signedDate = row?.signed_at ? formatSignedDate(row.signed_at) : ''
   const status = mapStatusToUi(row?.status)
+  const hasStoredContractAmount = row?.total_amount !== null
+    && row?.total_amount !== undefined
+    && row?.total_amount !== ''
+    && Number.isFinite(Number(row.total_amount))
 
   return {
     id: row?.id || undefined,
@@ -272,6 +276,7 @@ function toAppContract(row) {
     totalAmount: toNumber(row?.total_amount),
     contractTotal: toNumber(row?.total_amount),
     contractAmount: toNumber(row?.total_amount),
+    hasStoredContractAmount,
     depositAmount: row?.deposit_amount === null || row?.deposit_amount === undefined ? null : toNumber(row?.deposit_amount),
     status,
     signed: status === 'Signed' || Boolean(row?.signed_at),
