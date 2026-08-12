@@ -1,0 +1,44 @@
+.document-contract {
+  -webkit-print-color-adjust: exact;
+  print-color-adjust: exact;
+}
+
+.document-contract [data-contract-flow-text="true"] {
+  orphans: 3;
+  widows: 3;
+}
+
+.document-contract [data-contract-keep-together="true"],
+.document-contract [data-contract-work-heading="true"],
+.document-contract [data-contract-signatures="true"] {
+  break-inside: avoid;
+  page-break-inside: avoid;
+}
+
+@page {
+  size: letter portrait;
+  margin: 0.5in;
+}
+
+@media print {
+  .document-contract {
+    width: 100% !important;
+    max-width: 100% !important;
+    margin: 0 !important;
+    border-radius: 0 !important;
+    box-shadow: none !important;
+    overflow: visible !important;
+  }
+
+  .document-contract [data-contract-section="true"] {
+    break-inside: auto;
+    page-break-inside: auto;
+  }
+
+  .document-contract [data-contract-work-heading="true"],
+  .document-contract [data-line-item-card="true"],
+  .document-contract [data-contract-signatures="true"] {
+    break-inside: avoid;
+    page-break-inside: avoid;
+  }
+}

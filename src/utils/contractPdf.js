@@ -1,7 +1,15 @@
 import html2canvas from 'html2canvas'
 import { jsPDF } from 'jspdf'
-import { buildContractNotesAndTermsItems, normalizeContractWorkBreakdown, shouldRenderContractScopeText, splitContractWorkBreakdownDescription, stripLeadingBulletMarker } from './contractDocument'
+import { buildContractNotesAndTermsItems, normalizeContractWorkBreakdown, shouldRenderContractScopeText } from './contractDocument'
 import { currency } from './formatters'
+import { normalizeEstimateRichText } from './estimateDocument'
+import { getReadableBrandTextColor, normalizeBrandColor } from '../data/brandColors'
+import {
+  ESTIMATE_PAPER_MARGIN,
+  ESTIMATE_PAPER_WIDTH,
+  getEstimatePaginationModel,
+  waitForEstimateDocumentAssets,
+} from './estimatePagination'
 
 const safeColors = {
   white: '#ffffff',
@@ -13,15 +21,23 @@ const safeColors = {
   slate500: '#64748b',
   slate700: '#334155',
   slate900: '#0f172a',
-  blue50: '#eff6ff',
-  blue500: '#3b82f6',
-  blue700: '#1d4ed8',
 }
 
 const pdfPage = {
   width: 612,
   height: 792,
   margin: 22,
+}
+
+function createContractCanvasSlice(sourceCanvas, startY, height) {
+  const sliceCanvas = document.createElement('canvas')
+  sliceCanvas.width = sourceCanvas.width
+  sliceCanvas.height = Math.max(Math.ceil(height), 1)
+  const context = sliceCanvas.getContext('2d')
+  context.fillStyle = '#ffffff'
+  context.fillRect(0, 0, sliceCanvas.width, sliceCanvas.height)
+  context.drawImage(sourceCanvas, 0, Math.floor(startY), sourceCanvas.width, Math.ceil(height), 0, 0, sourceCanvas.width, Math.ceil(height))
+  return sliceCanvas
 }
 
 function toAsciiText(value) {
@@ -89,6 +105,19 @@ function wrapMultilineText(text, maxChars) {
     .flatMap((line) => (line.trim() ? wrapLine(line, maxChars) : ['']))
 }
 
+function getRichTextPlainLines(value) {
+  return normalizeEstimateRichText(value).blocks.flatMap((block) => {
+    if (block?.type === 'lineBreak') return ['']
+    if (block?.type === 'bulletList') {
+      return (block.items || []).map((item) => `• ${(item.segments || []).map((segment) => segment.text).join('')}`)
+    }
+    if (block?.type === 'paragraph') {
+      return [String((block.segments || []).map((segment) => segment.text).join(''))]
+    }
+    return []
+  })
+}
+
 function buildBillToLines(lead = {}, t = (key) => key) {
   const lines = [
     lead?.client,
@@ -117,6 +146,12 @@ function buildLicenseLines(company = {}, t = (key) => key) {
   }
 
   return lines.length > 0 ? lines : [t('notAdded')]
+}
+
+function getContractMaterialsLabel(item = {}, t = (key) => key) {
+  if (item?.materialsStatus === 'owner_supplied_materials') return t('ownerSuppliedMaterials')
+  if (item?.materialsStatus === 'labor_only' || item?.materialsIncluded === false) return t('laborOnly')
+  return t('materialsIncludedTag')
 }
 
 function sanitizeCloneTree(root, clonedDoc) {
@@ -199,6 +234,8 @@ function buildFallbackPdf({
   const workLines = buildWorkLines(lead, t)
   const licenseLines = buildLicenseLines(company, t)
   const normalizedWorkBreakdown = normalizeContractWorkBreakdown(workBreakdown)
+  const accentColor = normalizeBrandColor(company?.primaryColor || company?.primary_color)
+  const accentTextColor = getReadableBrandTextColor(accentColor)
 
   function drawPageFrame() {
     pdf.setFillColor(safeColors.white)
@@ -219,6 +256,25 @@ function buildFallbackPdf({
     pdf.setFontSize(options.size || 12)
     pdf.setTextColor(options.color || safeColors.slate900)
     pdf.text(text, x, y, options.align ? { align: options.align } : undefined)
+  }
+
+  function drawContactIcon(type, x, y) {
+    pdf.setDrawColor(accentColor)
+    pdf.setLineWidth(1)
+    if (type === 'email') {
+      pdf.rect(x, y - 6, 9, 7, 'S')
+      pdf.line(x, y - 6, x + 4.5, y - 2)
+      pdf.line(x + 9, y - 6, x + 4.5, y - 2)
+      return
+    }
+    if (type === 'website') {
+      pdf.circle(x + 4.5, y - 2.5, 4.5, 'S')
+      pdf.line(x, y - 2.5, x + 9, y - 2.5)
+      pdf.line(x + 4.5, y - 7, x + 4.5, y + 2)
+      return
+    }
+    pdf.circle(x + 4.5, y - 2.5, 4.5, 'S')
+    pdf.line(x + 2.5, y - 4.5, x + 6.5, y - 0.5)
   }
 
   function drawNotesSection(items) {
@@ -246,7 +302,7 @@ function buildFallbackPdf({
       pdf.line(rightX, cursorY, rightX, contentBottomY)
       pdf.setFillColor(safeColors.slate50)
       pdf.rect(leftX, cursorY, sectionWidth, headingHeight, 'F')
-      drawText(t('notesAndTerms').toUpperCase(), textStartX, cursorY + 14, { bold: true, size: 9, color: safeColors.slate400 })
+      drawText(t('notesAndTerms').toUpperCase(), textStartX, cursorY + 14, { bold: true, size: 9, color: safeColors.slate900 })
       cursorY += headingHeight + 10
       sectionStarted = true
     }
@@ -274,10 +330,11 @@ function buildFallbackPdf({
     }
 
     resolvedItems.forEach((item, index) => {
-      const contentLines = wrapMultilineText(item?.content || '', 92)
+      const contentLines = getRichTextPlainLines(item?.content || '')
+        .flatMap((line) => wrapMultilineText(line, 92))
       ensureNotesSpace(24)
       if (index > 0) {
-        pdf.setDrawColor(safeColors.slate100)
+        pdf.setDrawColor(safeColors.slate200)
         pdf.line(textStartX, cursorY - 2, dividerEndX, cursorY - 2)
         cursorY += 6
       }
@@ -316,14 +373,24 @@ function buildFallbackPdf({
   })
 
   drawText(company?.name || companyName || t('brandName'), innerX + 54, cursorY + 2, { bold: true, size: 15 })
-  drawText(company?.phone || '', innerX + 54, cursorY + 20, { size: 11, color: safeColors.slate500 })
-  drawText(company?.email || '', innerX + 54, cursorY + 36, { size: 11, color: safeColors.slate500 })
+  if (company?.phone) {
+    drawContactIcon('phone', innerX + 54, cursorY + 18)
+    drawText(company.phone, innerX + 68, cursorY + 18, { size: 10, color: safeColors.slate900 })
+  }
+  if (company?.email) {
+    drawContactIcon('email', innerX + 54, cursorY + 32)
+    drawText(company.email, innerX + 68, cursorY + 32, { size: 10, color: safeColors.slate900 })
+  }
+  if (company?.website) {
+    drawContactIcon('website', innerX + 54, cursorY + 46)
+    drawText(company.website, innerX + 68, cursorY + 46, { size: 10, color: safeColors.slate900 })
+  }
 
-  drawText(t('contract').toUpperCase(), cardX + cardWidth - 24, cursorY + 2, { bold: true, size: 11, color: safeColors.blue500, align: 'right' })
-  drawText(contractNumber, cardX + cardWidth - 24, cursorY + 18, { bold: true, size: 12, align: 'right' })
-  drawText(t('date').toUpperCase(), cardX + cardWidth - 24, cursorY + 34, { bold: true, size: 9, color: safeColors.slate400, align: 'right' })
-  drawText(contractDate || new Date().toLocaleDateString(), cardX + cardWidth - 24, cursorY + 48, { size: 10, color: safeColors.slate700, align: 'right' })
-
+  drawText(t('contract').toUpperCase(), cardX + cardWidth - 24, cursorY + 2, { bold: true, size: 11, color: safeColors.slate900, align: 'right' })
+  drawText(contractNumber, cardX + cardWidth - 24, cursorY + 18, { bold: true, size: 12, color: accentTextColor, align: 'right' })
+  if (contractDate) {
+    drawText(contractDate, cardX + cardWidth - 24, cursorY + 34, { size: 9, color: safeColors.slate500, align: 'right' })
+  }
   cursorY += 52
   const infoRowHeight = 76
   ensureSpace(infoRowHeight + 8)
@@ -332,15 +399,15 @@ function buildFallbackPdf({
   const columnWidth = (cardWidth - 40) / 3
   pdf.line(innerX + columnWidth, cursorY, innerX + columnWidth, cursorY + infoRowHeight)
   pdf.line(innerX + (columnWidth * 2), cursorY, innerX + (columnWidth * 2), cursorY + infoRowHeight)
-  drawText(t('billTo').toUpperCase(), innerX + 14, cursorY + 16, { bold: true, size: 9, color: safeColors.slate400 })
-  drawText(t('workToBePerformedAt').toUpperCase(), innerX + columnWidth + 14, cursorY + 16, { bold: true, size: 9, color: safeColors.slate400 })
-  drawText(t('licenseInfo').toUpperCase(), innerX + (columnWidth * 2) + 14, cursorY + 16, { bold: true, size: 9, color: safeColors.slate400 })
+  drawText(t('billTo').toUpperCase(), innerX + 14, cursorY + 16, { bold: true, size: 9, color: safeColors.slate900 })
+  drawText(t('jobLocation').toUpperCase(), innerX + columnWidth + 14, cursorY + 16, { bold: true, size: 9, color: safeColors.slate900 })
+  drawText(t('licenseInfo').toUpperCase(), innerX + (columnWidth * 2) + 14, cursorY + 16, { bold: true, size: 9, color: safeColors.slate900 })
   billToLines.forEach((line, index) => drawText(line, innerX + 14, cursorY + 32 + (index * 13), { size: index === 0 ? 10 : 9, color: safeColors.slate700, bold: index === 0 }))
   workLines.forEach((line, index) => drawText(line, innerX + columnWidth + 14, cursorY + 32 + (index * 13), { size: index === 0 ? 10 : 9, color: safeColors.slate700, bold: index === 1 }))
   licenseLines.forEach((line, index) => drawText(line, innerX + (columnWidth * 2) + 14, cursorY + 32 + (index * 13), { size: 9, color: safeColors.slate700 }))
   cursorY += infoRowHeight + 10
 
-  const scopeLines = wrapMultilineText(scope, 72)
+  const scopeLines = getRichTextPlainLines(scope).flatMap((line) => wrapMultilineText(line, 72))
   const descriptionSectionWidth = cardWidth - 40
   const totalDividerX = innerX + 314
   const descriptionHeaderHeight = 26
@@ -351,8 +418,8 @@ function buildFallbackPdf({
   pdf.setFillColor(safeColors.slate50)
   pdf.rect(innerX, cursorY, descriptionSectionWidth, descriptionHeaderHeight, 'F')
   pdf.line(totalDividerX, cursorY, totalDividerX, cursorY + descriptionHeaderHeight)
-  drawText(t('description').toUpperCase(), innerX + 14, cursorY + 17, { bold: true, size: 9, color: safeColors.slate400 })
-  drawText(t('projectTotal').toUpperCase(), innerX + descriptionSectionWidth - 14, cursorY + 17, { bold: true, size: 9, color: safeColors.blue700, align: 'right' })
+  drawText(t('project').toUpperCase(), innerX + 14, cursorY + 17, { bold: true, size: 9, color: safeColors.slate900 })
+  drawText(t('projectTotal').toUpperCase(), innerX + descriptionSectionWidth - 14, cursorY + 17, { bold: true, size: 9, color: safeColors.slate900, align: 'right' })
   drawText(lead?.projectTitle || lead?.projectType || t('projectScope'), innerX + 14, cursorY + 40, { bold: true, size: 11 })
   drawText(currency.format(Number(total || 0)), innerX + descriptionSectionWidth - 14, cursorY + 40, { bold: true, size: 15, align: 'right' })
   cursorY += 56
@@ -361,41 +428,63 @@ function buildFallbackPdf({
   pdf.setFontSize(10)
   pdf.setTextColor(safeColors.slate700)
 
+  if (shouldRenderContractScopeText(scope, normalizedWorkBreakdown)) {
+    ensureSpace(28)
+    drawText(t('projectScope').toUpperCase(), innerX + 14, cursorY, { bold: true, size: 9, color: safeColors.slate900 })
+    cursorY += 18
+    pdf.setTextColor(safeColors.slate700)
+    scopeLines.forEach((line) => {
+      ensureSpace(12)
+      pdf.text(line || ' ', innerX + 14, cursorY, { maxWidth: descriptionSectionWidth - 28 })
+      cursorY += 12
+    })
+    cursorY += 8
+  }
+
   if (normalizedWorkBreakdown.length > 0) {
+    ensureSpace(28)
+    drawText(t('workBreakdown').toUpperCase(), innerX + 14, cursorY, { bold: true, size: 9, color: safeColors.slate900 })
+    drawText(t('amount').toUpperCase(), innerX + descriptionSectionWidth - 14, cursorY, { bold: true, size: 9, color: safeColors.slate500, align: 'right' })
+    cursorY += 20
     normalizedWorkBreakdown.forEach((item, index) => {
-      const descriptionParts = splitContractWorkBreakdownDescription(item.description, item.title || t('item'))
-      const detailLines = descriptionParts.details
-        .map((line) => stripLeadingBulletMarker(line))
-        .filter(Boolean)
-        .flatMap((line) => wrapMultilineText(line, 62))
+      const titleText = (item.titleSegments || []).map((segment) => segment.text).join('') || item.title || t('item')
+      const detailLines = (item.descriptionBlocks || []).flatMap((block) => {
+        if (block?.type === 'lineBreak') return ['']
+        if (block?.type === 'bulletList') return (block.items || []).map((bullet) => `• ${(bullet.segments || []).map((segment) => segment.text).join('')}`)
+        if (block?.type === 'paragraph') return [(block.segments || []).map((segment) => segment.text).join('')]
+        return []
+      }).flatMap((line) => wrapMultilineText(line, 62))
       ensureSpace(28 + (detailLines.length * 12))
       if (index > 0) {
         pdf.setDrawColor(safeColors.slate200)
         pdf.line(innerX + 14, cursorY - 4, innerX + descriptionSectionWidth - 14, cursorY - 4)
       }
-      drawText(`${index + 1}. ${descriptionParts.title || t('item')}`, innerX + 14, cursorY, { bold: true, size: 10, color: safeColors.slate900 })
-      drawText(currency.format(Number(item.amount || 0)), innerX + descriptionSectionWidth - 14, cursorY, { bold: true, size: 10, color: safeColors.blue700, align: 'right' })
+      pdf.setDrawColor(accentColor)
+      pdf.circle(innerX + 23, cursorY - 3, 9, 'S')
+      drawText(String(index + 1), innerX + 23, cursorY, { bold: true, size: 8.5, color: accentTextColor, align: 'center' })
+      drawText(titleText, innerX + 40, cursorY, { bold: true, size: 10, color: safeColors.slate900 })
+      drawText(currency.format(Number(item.amount || 0)), innerX + descriptionSectionWidth - 14, cursorY, { bold: true, size: 10, color: safeColors.slate900, align: 'right' })
       cursorY += 13
-      if (typeof item.materialsIncluded === 'boolean') {
-        drawText(item.materialsIncluded ? t('includesMaterials') : t('materialsNotIncluded'), innerX + 14, cursorY, { size: 9, color: safeColors.slate500 })
+      if (item.materialsStatus || typeof item.materialsIncluded === 'boolean') {
+        const tagLabel = getContractMaterialsLabel(item, t)
+        pdf.setFont('helvetica', 'bold')
+        pdf.setFontSize(8.5)
+        const tagWidth = Math.min(pdf.getTextWidth(tagLabel) + 14, 150)
+        pdf.setDrawColor(accentColor)
+        pdf.roundedRect(innerX + 40, cursorY - 9, tagWidth, 15, 7, 7, 'S')
+        drawText(tagLabel, innerX + 47, cursorY + 1, { bold: true, size: 8.5, color: accentTextColor })
         cursorY += 12
       }
       detailLines.forEach((line) => {
         ensureSpace(12)
-        pdf.text(`• ${line || ''}`, innerX + 22, cursorY, { maxWidth: descriptionSectionWidth - 36 })
+        pdf.setTextColor(safeColors.slate700)
+        pdf.text(`• ${line || ''}`, innerX + 40, cursorY, { maxWidth: descriptionSectionWidth - 54 })
         cursorY += 12
       })
       cursorY += 6
     })
   }
 
-  if (shouldRenderContractScopeText(scope, normalizedWorkBreakdown)) {
-    scopeLines.forEach((line) => {
-      ensureSpace(12)
-      pdf.text(line || ' ', innerX + 14, cursorY, { maxWidth: descriptionSectionWidth - 28 })
-      cursorY += 12
-    })
-  }
   cursorY += 8
 
   drawNotesSection(notesAndTermsItems)
@@ -404,8 +493,8 @@ function buildFallbackPdf({
   const signatureColumns = [
     { label: t('contractorDate'), value: '', x: innerX, width: 86 },
     { label: company?.ownerName || company?.name || t('brandName'), value: '', x: innerX + 98, width: 150 },
-    { label: lead?.client || clientName || t('client'), value: '', x: innerX + 260, width: 150 },
-    { label: t('clientDate'), value: '', x: innerX + 422, width: 86 },
+    { label: t('clientDate'), value: '', x: innerX + 260, width: 86 },
+    { label: lead?.client || clientName || t('client'), value: '', x: innerX + 358, width: 150 },
   ]
   signatureColumns.forEach(({ label, value, x, width }) => {
     pdf.setDrawColor(safeColors.slate300)
@@ -463,6 +552,16 @@ export async function downloadContractPdf({
   }
 
   try {
+    await waitForEstimateDocumentAssets(element)
+    const pageWidth = ESTIMATE_PAPER_WIDTH
+    const margin = ESTIMATE_PAPER_MARGIN
+    const renderWidth = pageWidth - (margin * 2)
+    const pagination = getEstimatePaginationModel(element)
+    if (!pagination?.pageCount) {
+      throw new Error('Contract PDF pagination could not be calculated.')
+    }
+    const { elementWidth, pages } = pagination
+
     const canvas = await html2canvas(element, {
       backgroundColor: '#ffffff',
       scale: 2,
@@ -489,26 +588,16 @@ export async function downloadContractPdf({
       format: 'letter',
       compress: true,
     })
-    const pageWidth = pdf.internal.pageSize.getWidth()
-    const pageHeight = pdf.internal.pageSize.getHeight()
-    const margin = 36
-    const renderWidth = pageWidth - (margin * 2)
-    const renderHeight = (canvas.height * renderWidth) / canvas.width
-    const printableHeight = pageHeight - (margin * 2)
-    const imageData = canvas.toDataURL('image/png')
+    const canvasScale = canvas.width / elementWidth
 
-    let remainingHeight = renderHeight
-    let offsetY = margin
-
-    while (remainingHeight > 0) {
-      pdf.addImage(imageData, 'PNG', margin, offsetY, renderWidth, renderHeight, undefined, 'FAST')
-      remainingHeight -= printableHeight
-
-      if (remainingHeight > 0) {
-        pdf.addPage()
-        offsetY = margin - (renderHeight - remainingHeight)
-      }
-    }
+    pages.forEach((page, index) => {
+      const canvasStart = page.start * canvasScale
+      const canvasHeight = Math.min(page.height * canvasScale, canvas.height - canvasStart)
+      if (index > 0) pdf.addPage()
+      const pageCanvas = createContractCanvasSlice(canvas, canvasStart, canvasHeight)
+      const renderedHeight = (pageCanvas.height * renderWidth) / pageCanvas.width
+      pdf.addImage(pageCanvas.toDataURL('image/png'), 'PNG', margin, margin, renderWidth, renderedHeight, undefined, 'FAST')
+    })
 
     const fileName = buildContractPdfFileName({
       contractNumber,

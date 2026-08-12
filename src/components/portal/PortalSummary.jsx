@@ -7,19 +7,21 @@ import { ModalShell } from '../common/ModalShell'
 import { EstimatePdfTemplate } from '../estimates/EstimatePdfTemplate'
 import { PaginatedEstimatePreview } from '../estimates/PaginatedEstimatePreview'
 import { ContractPdfTemplate } from '../contracts/ContractPdfTemplate'
-import { ScaledDocumentPreview, defaultDocumentPreviewWidth } from '../common/ScaledDocumentPreview'
+import { PaginatedContractPreview } from '../contracts/PaginatedContractPreview'
 import { useToast } from '../common/ToastProvider'
 import { currency } from '../../utils/formatters'
 import { getContractDisplayNumber } from '../../utils/contractNumber'
 import { getEstimateDisplayNumber } from '../../utils/estimateNumber'
-import { downloadContractPdf } from '../../utils/contractPdf'
-import { downloadEstimatePdf } from '../../utils/estimatePdf'
 import { printDocumentElement } from '../../utils/printDocument'
-import { shouldUseGeneratedPdfForPrint } from '../../utils/documentOutput'
 import { createTranslator } from '../../translations'
 import { tStatus } from '../../translations'
 import { getPaymentTermLabel } from '../../utils/paymentTerms'
 import { resolveEstimatePricingMode } from '../../utils/estimateDocument'
+import {
+  buildContractNotesAndTermsItems as buildCanonicalContractNotesAndTermsItems,
+  buildContractWorkBreakdownFromEstimate,
+  normalizeContractWorkBreakdown,
+} from '../../utils/contractDocument'
 import {
   ESTIMATE_DOCUMENT_SOURCE_PADDING,
   ESTIMATE_DOCUMENT_SOURCE_WIDTH,
@@ -175,18 +177,17 @@ function buildPreviewLead(project = {}, client = {}) {
 }
 
 function buildContractNotesAndTermsItems(contract = {}, t = (key) => key) {
-  return [
-    { title: t('materialsAndScheduling'), content: contract?.materials || t('materialsText') },
-    { title: t('projectTimeline'), content: contract?.timeline || '' },
-    { title: t('clientCommunicationAndAdjustments'), content: [contract?.changeOrders, contract?.clientResponsibilities].filter(Boolean).join('\n\n') || t('changeOrdersText') },
-    { title: t('paymentTerms'), content: getPaymentTermLabel(contract?.paymentTerms, t) || t('contractTermsText') },
-    { title: t('acceptanceLegalConfirmation'), content: [t('compactContractAcceptanceText'), contract?.warrantyDisclaimer || t('warrantyDisclaimerText')].filter(Boolean).join('\n\n') },
-  ]
+  return buildCanonicalContractNotesAndTermsItems({
+    paymentTerms: contract?.paymentTerms || '',
+    total: Number(contract?.total ?? contract?.totalAmount ?? contract?.contractAmount ?? 0),
+    depositAmount: contract?.depositAmount ?? contract?.deposit_amount ?? null,
+    acceptanceLegalText: contract?.acceptanceLegalText || contract?.acceptance_legal_text || '',
+    legacyAcceptanceText: contract?.warrantyDisclaimer || '',
+    t,
+  })
 }
 
-const portalDocumentPreviewPageWidth = defaultDocumentPreviewWidth
-
-function DocumentPreviewModal({ isOpen, title, onClose, onPrimaryAction, primaryLabel, onDownload, children, t = (key) => key }) {
+function DocumentPreviewModal({ isOpen, title, onClose, onPrimaryAction, primaryLabel, onDownload, downloadLabel, children, t = (key) => key }) {
   const showsStandaloneDownload = primaryLabel !== t('downloadPdf')
 
   return (
@@ -207,7 +208,7 @@ function DocumentPreviewModal({ isOpen, title, onClose, onPrimaryAction, primary
         <div className={`mt-6 grid gap-3 px-4 pb-4 sm:px-5 sm:pb-5 ${showsStandaloneDownload ? 'sm:grid-cols-3' : 'sm:grid-cols-2'}`}>
           <button onClick={onPrimaryAction} className="rounded-2xl bg-slate-950 px-4 py-3 text-sm font-bold text-white hover:bg-slate-800">{primaryLabel}</button>
           {showsStandaloneDownload ? (
-            <button onClick={onDownload} className="rounded-2xl border border-slate-200 px-4 py-3 text-sm font-bold text-slate-800 hover:bg-slate-50">{t('downloadPdf')}</button>
+            <button onClick={onDownload} className="rounded-2xl border border-slate-200 px-4 py-3 text-sm font-bold text-slate-800 hover:bg-slate-50">{downloadLabel || t('downloadPdf')}</button>
           ) : null}
           <button onClick={onClose} className="rounded-2xl border border-slate-200 px-4 py-3 text-sm font-bold text-slate-800 hover:bg-slate-50">{t('close')}</button>
         </div>
@@ -282,7 +283,6 @@ export function PortalSummary({
   const estimatePreviewRef = useRef(null)
   const contractPreviewRef = useRef(null)
   const [selectedPhotoIndex, setSelectedPhotoIndex] = useState(-1)
-  const shouldUsePdfForPrint = useMemo(() => shouldUseGeneratedPdfForPrint(), [])
   const hasEstimate = Boolean(estimate)
   const hasContract = Boolean(contract)
   const hasPayments = Boolean(paymentSummary?.payments?.length)
@@ -343,9 +343,12 @@ export function PortalSummary({
     contractDate: contract?.signedDate || formatDisplayDate(contract?.updatedAt || contract?.updated_at || new Date()),
     notesAndTermsItems: buildContractNotesAndTermsItems(contract, contractDocumentT),
     scope: contract?.scope || contract?.scopeOfWork || estimate?.summary || '',
+    workBreakdown: normalizeContractWorkBreakdown(contract?.workBreakdown || contract?.work_breakdown || []).length
+      ? normalizeContractWorkBreakdown(contract?.workBreakdown || contract?.work_breakdown || [])
+      : buildContractWorkBreakdownFromEstimate(estimate),
     total: Number(contract?.total ?? contract?.totalAmount ?? contract?.contractAmount ?? 0),
     t: contractDocumentT,
-  }), [company, contract, contractDocumentT, contractNumber, estimate?.summary, previewLead])
+  }), [company, contract, contractDocumentT, contractNumber, estimate, previewLead])
   const openDocument = searchParams.get('document') || ''
 
   function setOpenDocument(nextDocument) {
@@ -364,39 +367,17 @@ export function PortalSummary({
     if (!estimatePreviewRef.current) return
 
     try {
-      await downloadEstimatePdf({
-        element: estimatePreviewRef.current,
-        estimateNumber,
-        estimateDate: estimatePreviewProps.estimateDate,
-        clientName: previewLead.client,
-        companyName: company?.name || '',
-        company,
-        lead: previewLead,
-        pricingMode: estimatePreviewProps.pricingMode,
-        scope: estimatePreviewProps.scope,
-        lineItems: estimatePreviewProps.lineItems,
-        materialsIncluded: estimatePreviewProps.materialsIncluded,
-        paymentTerms: estimatePreviewProps.paymentTerms,
-        total: estimatePreviewProps.total,
-        subtotal: estimatePreviewProps.subtotal,
-        discountAmount: estimatePreviewProps.discountAmount,
-        taxAmount: estimatePreviewProps.taxAmount,
-        messageFromContractor: estimatePreviewProps.messageFromContractor,
-        validUntil: estimatePreviewProps.validUntil,
-        t,
+      await printDocumentElement(estimatePreviewRef.current, {
+        documentTitle: `${estimateNumber} ${previewLead.client || ''}`.trim(),
+        pageMarginInches: ESTIMATE_PAPER_MARGIN / 72,
+        safeInsetInches: 0,
       })
-      showToast(t('estimatePdfGenerated'))
     } catch (error) {
       showToast(error?.message || t('estimatePdfGenerateFailed'), 'error')
     }
   }
 
   async function handlePrintEstimate() {
-    if (shouldUsePdfForPrint) {
-      await handleDownloadEstimate()
-      return
-    }
-
     try {
       await printDocumentElement(estimatePreviewRef.current, {
         documentTitle: `${estimateNumber} ${previewLead.client || ''}`.trim(),
@@ -408,44 +389,14 @@ export function PortalSummary({
     }
   }
 
-  async function handleDownloadContract() {
+  async function openContractPrintDialog() {
     if (!contractPreviewRef.current) return
-
-    try {
-      await downloadContractPdf({
-        element: contractPreviewRef.current,
-        contractNumber,
-        contractDate: contractPreviewProps.contractDate,
-        notesAndTermsItems: contractPreviewProps.notesAndTermsItems,
-        clientName: previewLead.client,
-        companyName: company?.name || '',
-        company,
-        lead: previewLead,
-        scope: contractPreviewProps.scope,
-        paymentTerms: getPaymentTermLabel(contract?.paymentTerms, contractDocumentT) || contractDocumentT('contractTermsText'),
-        materials: contract?.materials || contractDocumentT('materialsText'),
-        timeline: contract?.timeline || '',
-        changeOrders: contract?.changeOrders || contractDocumentT('changeOrdersText'),
-        clientResponsibilities: contract?.clientResponsibilities || contractDocumentT('clientResponsibilitiesText'),
-        warrantyDisclaimer: contract?.warrantyDisclaimer || contractDocumentT('warrantyDisclaimerText'),
-        total: contractPreviewProps.total,
-        t: contractDocumentT,
-      })
-      showToast(t('contractPdfGenerated'))
-    } catch (error) {
-      showToast(error?.message || t('contractPdfGenerateFailed'), 'error')
-    }
-  }
-
-  async function handlePrintContract() {
-    if (shouldUsePdfForPrint) {
-      await handleDownloadContract()
-      return
-    }
 
     try {
       await printDocumentElement(contractPreviewRef.current, {
         documentTitle: `${contractNumber} ${previewLead.client || ''}`.trim(),
+        pageMarginInches: ESTIMATE_PAPER_MARGIN / 72,
+        safeInsetInches: 0,
       })
     } catch (error) {
       showToast(error?.message || t('contractPdfGenerateFailed'), 'error')
@@ -550,7 +501,7 @@ export function PortalSummary({
                   )}
                   secondaryAction={(
                     <button onClick={handleDownloadEstimate} className="w-full rounded-2xl border border-slate-200 bg-white px-4 py-3 text-sm font-bold text-slate-800 hover:bg-slate-50 sm:w-auto">
-                      {t('downloadPdf')}
+                      {t('saveAsPdf')}
                     </button>
                   )}
                 />
@@ -572,8 +523,8 @@ export function PortalSummary({
                     </button>
                   )}
                   secondaryAction={(
-                    <button onClick={handleDownloadContract} className="w-full rounded-2xl border border-slate-200 bg-white px-4 py-3 text-sm font-bold text-slate-800 hover:bg-slate-50 sm:w-auto">
-                      {t('downloadPdf')}
+                    <button onClick={openContractPrintDialog} className="w-full rounded-2xl border border-slate-200 bg-white px-4 py-3 text-sm font-bold text-slate-800 hover:bg-slate-50 sm:w-auto">
+                      {t('saveAsPdf')}
                     </button>
                   )}
                 />
@@ -638,7 +589,7 @@ export function PortalSummary({
           <div
             ref={contractPreviewRef}
             data-contract-pdf-root="true"
-            style={{ width: `${portalDocumentPreviewPageWidth}px`, backgroundColor: '#ffffff', color: '#0f172a', padding: '18px', boxSizing: 'border-box' }}
+            style={{ width: `${ESTIMATE_DOCUMENT_SOURCE_WIDTH}px`, backgroundColor: '#ffffff', color: '#0f172a', padding: 0, boxSizing: 'border-box' }}
           >
             <ContractPdfTemplate {...contractPreviewProps} />
           </div>
@@ -651,8 +602,9 @@ export function PortalSummary({
           title={t('viewEstimate')}
           onClose={() => setOpenDocument(null)}
           onPrimaryAction={handlePrintEstimate}
-          primaryLabel={shouldUsePdfForPrint ? t('downloadPdf') : t('print')}
+          primaryLabel={t('print')}
           onDownload={handleDownloadEstimate}
+          downloadLabel={t('saveAsPdf')}
           t={t}
         >
           <PaginatedEstimatePreview t={t}>
@@ -666,14 +618,15 @@ export function PortalSummary({
           isOpen={openDocument === 'contract'}
           title={t('viewContract')}
           onClose={() => setOpenDocument(null)}
-          onPrimaryAction={handlePrintContract}
-          primaryLabel={shouldUsePdfForPrint ? t('downloadPdf') : t('print')}
-          onDownload={handleDownloadContract}
+          onPrimaryAction={openContractPrintDialog}
+          primaryLabel={t('print')}
+          onDownload={openContractPrintDialog}
+          downloadLabel={t('saveAsPdf')}
           t={t}
         >
-          <ScaledDocumentPreview pageWidth={portalDocumentPreviewPageWidth} pagePadding={18}>
+          <PaginatedContractPreview t={contractDocumentT}>
             <ContractPdfTemplate {...contractPreviewProps} />
-          </ScaledDocumentPreview>
+          </PaginatedContractPreview>
         </DocumentPreviewModal>
       ) : null}
 

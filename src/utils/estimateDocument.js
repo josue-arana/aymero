@@ -598,6 +598,17 @@ function normalizeEstimateWorkItem(item = {}, {
   }
 }
 
+export function normalizeEstimateLineItemForDocument(item = {}, {
+  displayOrder = 0,
+  fallbackMaterialsIncluded = false,
+} = {}) {
+  return normalizeEstimateWorkItem(item, {
+    displayOrder,
+    fallbackMaterialsIncluded,
+    idPrefix: 'estimate-item',
+  })
+}
+
 export function normalizeEstimateDocument({
   pricingMode,
   scope = '',

@@ -49,7 +49,7 @@
 
 @page {
   size: letter portrait;
-  margin: 0.45in;
+  margin: 0.5in;
 }
 
 @media print {
@@ -77,8 +77,4 @@
     page-break-inside: avoid;
   }
 
-  .document-estimate [data-estimate-footer="true"] {
-    break-before: avoid-page;
-    page-break-before: avoid;
-  }
 }

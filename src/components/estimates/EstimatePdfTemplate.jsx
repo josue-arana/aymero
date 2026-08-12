@@ -9,7 +9,7 @@ import {
 } from '../../utils/estimateDocument'
 import { getAcceptedPaymentMethodLabels } from '../../utils/acceptedPaymentMethods'
 import { getPaymentTermLabel } from '../../utils/paymentTerms'
-import { normalizeBrandColor } from '../../data/brandColors'
+import { getReadableBrandTextColor, normalizeBrandColor } from '../../data/brandColors'
 import {
   ESTIMATE_DOCUMENT_BORDER_WIDTH,
   ESTIMATE_DOCUMENT_HORIZONTAL_PADDING,
@@ -90,6 +90,14 @@ function HeaderWebsiteIcon({ color }) {
   )
 }
 
+function CalendarIcon({ color }) {
+  return (
+    <svg width="11" height="11" viewBox="0 0 24 24" aria-hidden="true" style={{ display: 'block', flexShrink: 0 }}>
+      <path fill={color} d="M7 2a1 1 0 0 1 1 1v1h8V3a1 1 0 1 1 2 0v1h1a3 3 0 0 1 3 3v12a3 3 0 0 1-3 3H5a3 3 0 0 1-3-3V7a3 3 0 0 1 3-3h1V3a1 1 0 0 1 1-1m12 8H5v9a1 1 0 0 0 1 1h12a1 1 0 0 0 1-1z" />
+    </svg>
+  )
+}
+
 function formatAddressLines(value) {
   const address = String(value || '').trim()
   if (!address) return []
@@ -144,7 +152,7 @@ function CompanyBadge({ company = {}, accentColor, t }) {
             alignItems: 'center',
             justifyContent: 'center',
             borderRadius: '18px',
-            backgroundColor: accentColor,
+            backgroundColor: colors.slate900,
             color: colors.white,
             fontSize: '22px',
             fontWeight: 700,
@@ -174,7 +182,7 @@ function CompanyBadge({ company = {}, accentColor, t }) {
   )
 }
 
-function SummaryBlock({ label, accentColor, children, align = 'left' }) {
+function SummaryBlock({ label, children, align = 'left' }) {
   return (
     <div style={{ minWidth: 0 }}>
       <p
@@ -185,7 +193,7 @@ function SummaryBlock({ label, accentColor, children, align = 'left' }) {
           fontWeight: 700,
           letterSpacing: '0.18em',
           textTransform: 'uppercase',
-          color: accentColor,
+          color: colors.ink,
           textAlign: align,
         }}
       >
@@ -210,21 +218,23 @@ function getMaterialsTagLabel(materialsStatus, t) {
   return t('materialsIncludedTag')
 }
 
-function MaterialTag({ materialsStatus, accentColor, t }) {
+function MaterialTag({ materialsStatus, accentColor, accentTextColor, t }) {
   return (
     <span
+      data-estimate-material-tag="true"
       style={{
-        display: 'inline-flex',
+        display: 'inline-block',
         maxWidth: '100%',
-        alignItems: 'center',
+        boxSizing: 'border-box',
         border: `1px solid ${accentColor}`,
         borderRadius: '999px',
-        padding: '2px 7px',
-        color: accentColor,
+        padding: '0 7px',
+        color: accentTextColor,
         fontSize: '9px',
-        lineHeight: 1.35,
+        lineHeight: '16px',
         fontWeight: 650,
         overflowWrap: 'anywhere',
+        verticalAlign: 'top',
       }}
     >
       {getMaterialsTagLabel(materialsStatus, t)}
@@ -232,7 +242,7 @@ function MaterialTag({ materialsStatus, accentColor, t }) {
   )
 }
 
-function InlineEstimateText({ segments = [] }) {
+export function EstimateInlineText({ segments = [] }) {
   return segments.map((segment, index) => (
     <span
       key={index}
@@ -248,7 +258,7 @@ function InlineEstimateText({ segments = [] }) {
   ))
 }
 
-function RichWorkItemContent({ blocks = [], accentColor }) {
+export function EstimateRichTextBlocks({ blocks = [], flowTextAttribute = 'data-estimate-flow-text' }) {
   return blocks.map((block, blockIndex) => {
     if (block?.type === 'lineBreak') {
       return <div key={`break-${blockIndex}`} style={{ height: '7px' }} aria-hidden="true" />
@@ -263,9 +273,9 @@ function RichWorkItemContent({ blocks = [], accentColor }) {
         >
           {(block.items || []).map((bullet, bulletIndex) => (
             <li key={`${blockIndex}-${bulletIndex}`} style={{ display: 'grid', width: '100%', minWidth: 0, gridTemplateColumns: '5px minmax(0,1fr)', gap: '6px', alignItems: 'start' }}>
-              <span aria-hidden="true" style={{ width: '3px', height: '3px', marginTop: '6px', borderRadius: '999px', backgroundColor: accentColor }} />
-              <span data-estimate-flow-text="true" style={{ minWidth: 0, whiteSpace: 'pre-wrap', fontSize: getEstimateTextSizeCss(bullet?.size), lineHeight: 1.48, color: colors.ink, overflowWrap: 'anywhere', wordBreak: 'break-word' }}>
-                <InlineEstimateText segments={bullet.segments} />
+              <span aria-hidden="true" style={{ width: '3px', height: '3px', marginTop: '6px', borderRadius: '999px', backgroundColor: colors.ink }} />
+              <span {...{ [flowTextAttribute]: 'true' }} style={{ minWidth: 0, whiteSpace: 'pre-wrap', fontSize: getEstimateTextSizeCss(bullet?.size), lineHeight: 1.48, color: colors.ink, overflowWrap: 'anywhere', wordBreak: 'break-word' }}>
+                <EstimateInlineText segments={bullet.segments} />
               </span>
             </li>
           ))}
@@ -275,8 +285,8 @@ function RichWorkItemContent({ blocks = [], accentColor }) {
 
     if (block?.type === 'paragraph') {
       return (
-        <p data-estimate-flow-text="true" key={`paragraph-${blockIndex}`} style={{ width: '100%', maxWidth: 'none', minWidth: 0, margin: 0, whiteSpace: 'pre-wrap', fontSize: getEstimateTextSizeCss(block?.size), lineHeight: 1.5, color: colors.ink, overflowWrap: 'anywhere', wordBreak: 'break-word' }}>
-          <InlineEstimateText segments={block.segments} />
+        <p {...{ [flowTextAttribute]: 'true' }} key={`paragraph-${blockIndex}`} style={{ width: '100%', maxWidth: 'none', minWidth: 0, margin: 0, whiteSpace: 'pre-wrap', fontSize: getEstimateTextSizeCss(block?.size), lineHeight: 1.5, color: colors.ink, overflowWrap: 'anywhere', wordBreak: 'break-word' }}>
+          <EstimateInlineText segments={block.segments} />
         </p>
       )
     }
@@ -288,7 +298,7 @@ function RichWorkItemContent({ blocks = [], accentColor }) {
 const workBreakdownGridColumns = '24px minmax(0,1fr) 88px'
 const workBreakdownColumnGap = '8px'
 
-function WorkBreakdownItem({ item, index, accentColor, t }) {
+function WorkBreakdownItem({ item, index, accentColor, accentTextColor, t }) {
   const descriptionBlocks = Array.isArray(item?.descriptionBlocks) ? item.descriptionBlocks : []
 
   return (
@@ -299,33 +309,36 @@ function WorkBreakdownItem({ item, index, accentColor, t }) {
         display: 'grid',
         gridTemplateColumns: workBreakdownGridColumns,
         gap: workBreakdownColumnGap,
-        alignItems: 'start',
+        alignItems: 'stretch',
         padding: '13px 0',
         borderTop: index === 0 ? 'none' : `1px solid ${colors.slate200}`,
         breakInside: 'avoid',
         pageBreakInside: 'avoid',
       }}
     >
-      <div
-        style={{
-          display: 'flex',
-          width: '24px',
-          height: '24px',
-          alignItems: 'center',
-          justifyContent: 'center',
-          borderRadius: '999px',
-          border: `1px solid ${accentColor}`,
-          backgroundColor: colors.white,
-          color: accentColor,
-          fontSize: '10px',
-          fontWeight: 700,
-          lineHeight: 1,
-          marginTop: '2px',
-        }}
-      >
-        {index + 1}
+      <div data-estimate-item-marker-cell="true" style={{ display: 'flex', minHeight: 0, alignItems: 'center', justifyContent: 'center' }}>
+        <div
+          data-estimate-item-marker="true"
+          style={{
+            display: 'block',
+            width: '24px',
+            height: '24px',
+            flexShrink: 0,
+            boxSizing: 'border-box',
+            borderRadius: '999px',
+            border: `1px solid ${accentColor}`,
+            backgroundColor: colors.white,
+            color: accentTextColor,
+            fontSize: '10px',
+            fontWeight: 700,
+            lineHeight: '22px',
+            textAlign: 'center',
+          }}
+        >
+          {index + 1}
+        </div>
       </div>
-      <div style={{ width: '100%', maxWidth: 'none', minWidth: 0 }}>
+      <div data-estimate-item-content="true" style={{ width: '100%', maxWidth: 'none', minWidth: 0 }}>
         <p
           data-estimate-flow-text="true"
           style={{
@@ -339,26 +352,26 @@ function WorkBreakdownItem({ item, index, accentColor, t }) {
           }}
         >
           {item?.title
-            ? <InlineEstimateText segments={item?.titleSegments} />
+            ? <EstimateInlineText segments={item?.titleSegments} />
             : t('item')}
         </p>
         {descriptionBlocks.length ? (
           <div style={{ width: '100%', maxWidth: 'none', minWidth: 0, marginTop: '5px', display: 'grid', gap: '3px' }}>
-            <RichWorkItemContent blocks={descriptionBlocks} accentColor={accentColor} />
+            <EstimateRichTextBlocks blocks={descriptionBlocks} />
           </div>
         ) : null}
         <div style={{ marginTop: descriptionBlocks.length ? '8px' : '5px' }}>
-          <MaterialTag materialsStatus={item?.materialsStatus} accentColor={accentColor} t={t} />
+          <MaterialTag materialsStatus={item?.materialsStatus} accentColor={accentColor} accentTextColor={accentTextColor} t={t} />
         </div>
       </div>
-      <div style={{ paddingTop: '3px', textAlign: 'right', whiteSpace: 'nowrap', fontSize: '11.5px', lineHeight: 1.4, fontWeight: 700, color: colors.ink }}>
+      <div data-estimate-item-amount="true" style={{ display: 'flex', minHeight: 0, alignItems: 'center', justifyContent: 'flex-end', textAlign: 'right', whiteSpace: 'nowrap', fontSize: '11.5px', lineHeight: 1.4, fontWeight: 700, color: colors.ink }}>
         {currency.format(Number(item?.amount || 0))}
       </div>
     </div>
   )
 }
 
-function LowerSectionHeading({ children, accentColor }) {
+function LowerSectionHeading({ children }) {
   return (
     <p
       style={{
@@ -368,7 +381,7 @@ function LowerSectionHeading({ children, accentColor }) {
         fontWeight: 700,
         letterSpacing: '0.18em',
         textTransform: 'uppercase',
-        color: accentColor,
+        color: colors.ink,
       }}
     >
       {children}
@@ -376,7 +389,18 @@ function LowerSectionHeading({ children, accentColor }) {
   )
 }
 
-function EstimateTotalRow({ label, value, emphasized = false, accentColor }) {
+function ValidUntilHeading({ children, accentColor, accentTextColor }) {
+  return (
+    <p style={{ margin: 0, color: accentTextColor, fontSize: '10px', lineHeight: 1.3, fontWeight: 700, letterSpacing: '0.18em', textTransform: 'uppercase' }}>
+      <span data-estimate-validity-icon="true" aria-hidden="true" style={{ display: 'inline-block', width: '11px', height: '11px', marginRight: '5px', verticalAlign: '-1px' }}>
+        <CalendarIcon color={accentColor} />
+      </span>
+      {children}
+    </p>
+  )
+}
+
+function EstimateTotalRow({ label, value, emphasized = false, accentTextColor }) {
   return (
     <div style={{ display: 'flex', alignItems: 'baseline', justifyContent: 'space-between', gap: '18px' }}>
       <span
@@ -384,7 +408,7 @@ function EstimateTotalRow({ label, value, emphasized = false, accentColor }) {
           fontSize: emphasized ? '11px' : '10.5px',
           lineHeight: 1.4,
           fontWeight: emphasized ? 700 : 500,
-          color: emphasized ? accentColor : colors.slate500,
+          color: emphasized ? accentTextColor : colors.slate500,
         }}
       >
         {label}
@@ -448,6 +472,7 @@ export function EstimatePdfTemplate({
   const hasLineItems = normalizedDocument.sections.workBreakdown.visible
   const hasContractorMessage = normalizedDocument.sections.messageFromContractor.visible
   const accentColor = resolveCompanyAccentColor(company)
+  const accentTextColor = getReadableBrandTextColor(accentColor)
   const acceptedPaymentMethods = getAcceptedPaymentMethodLabels(company?.acceptedPaymentMethods, t)
   const displayValidUntil = resolveValidUntil(normalizedDocument.validUntil, estimateDate)
   const jobLocationLines = formatAddressLines(lead?.address || lead?.location || '')
@@ -492,12 +517,12 @@ export function EstimatePdfTemplate({
               fontWeight: 700,
               letterSpacing: '0.12em',
               textTransform: 'uppercase',
-              color: accentColor,
+              color: colors.ink,
             }}
           >
             {t('estimate')}
           </h1>
-          <p style={{ margin: '9px 0 0', maxWidth: '210px', fontSize: '12px', lineHeight: 1.35, fontWeight: 400, color: colors.slate500, overflowWrap: 'anywhere', wordBreak: 'break-word' }}>
+          <p style={{ margin: '9px 0 0', maxWidth: '210px', fontSize: '12px', lineHeight: 1.35, fontWeight: 400, color: accentTextColor, overflowWrap: 'anywhere', wordBreak: 'break-word' }}>
             {estimateNumber}
           </p>
         </div>
@@ -521,12 +546,12 @@ export function EstimatePdfTemplate({
               padding: 'var(--document-summary-padding-y) var(--document-summary-padding-x)',
             }}
           >
-            <SummaryBlock label={t('client')} accentColor={accentColor}>
+            <SummaryBlock label={t('client')}>
               <div style={{ fontWeight: 700 }}>{lead?.client || ''}</div>
             </SummaryBlock>
           </div>
           <div style={{ minWidth: 0, borderLeft: `1px solid ${colors.slate200}`, padding: 'var(--document-summary-padding-y) var(--document-summary-padding-x)' }}>
-            <SummaryBlock label={t('jobLocation')} accentColor={accentColor}>
+            <SummaryBlock label={t('jobLocation')}>
               {jobLocationLines.length ? (
                 <div style={{ display: 'grid', gap: '1px' }}>
                   {jobLocationLines.map((line, index) => <div key={`${line}-${index}`}>{line}</div>)}
@@ -535,7 +560,7 @@ export function EstimatePdfTemplate({
             </SummaryBlock>
           </div>
           <div style={{ minWidth: 0, borderLeft: `1px solid ${colors.slate200}`, padding: 'var(--document-summary-padding-y) var(--document-summary-padding-x)' }}>
-            <SummaryBlock label={t('date')} accentColor={accentColor}>
+            <SummaryBlock label={t('date')}>
               <div>{formatDisplayDate(estimateDate, language)}</div>
             </SummaryBlock>
           </div>
@@ -549,15 +574,15 @@ export function EstimatePdfTemplate({
               textAlign: 'right',
             }}
           >
-            <SummaryBlock label={t('totalEstimate')} accentColor={accentColor} align="right">
+            <SummaryBlock label={t('totalEstimate')} align="right">
               <div style={{ fontSize: '25px', lineHeight: 1, fontWeight: 700, letterSpacing: '-0.025em', color: colors.ink }}>
                 {currency.format(documentTotal)}
               </div>
             </SummaryBlock>
           </div>
         </div>
-        <div style={{ display: 'grid', gridTemplateColumns: '118px minmax(0,1fr)', gap: '18px', borderTop: `1px solid ${colors.slate200}`, padding: '12px var(--document-summary-padding-x)', alignItems: 'start' }}>
-          <p style={{ margin: 0, fontSize: '11px', lineHeight: 1.35, fontWeight: 700, letterSpacing: '0.18em', textTransform: 'uppercase', color: accentColor }}>
+        <div style={{ display: 'grid', gridTemplateColumns: '118px minmax(0,1fr)', gap: '18px', borderTop: `1px solid ${colors.slate200}`, padding: '12px var(--document-summary-padding-x)', alignItems: 'center' }}>
+          <p style={{ margin: 0, fontSize: '11px', lineHeight: 1.35, fontWeight: 700, letterSpacing: '0.18em', textTransform: 'uppercase', color: colors.ink }}>
             {t('project')}
           </p>
           <p style={{ margin: 0, minWidth: 0, whiteSpace: 'normal', fontSize: '13px', lineHeight: 1.45, fontWeight: 650, color: colors.ink, overflowWrap: 'anywhere', wordBreak: 'break-word' }}>
@@ -577,7 +602,7 @@ export function EstimatePdfTemplate({
               fontWeight: 700,
               letterSpacing: '0.22em',
               textTransform: 'uppercase',
-              color: accentColor,
+              color: colors.ink,
             }}
           >
             {t('scopeOfWork')}
@@ -613,7 +638,7 @@ export function EstimatePdfTemplate({
                 overflow: 'visible',
               }}
             >
-              <RichWorkItemContent blocks={scopeContentBlocks} accentColor={accentColor} />
+              <EstimateRichTextBlocks blocks={scopeContentBlocks} />
             </div>
           </div>
         </section>
@@ -631,7 +656,7 @@ export function EstimatePdfTemplate({
                 fontWeight: 700,
                 letterSpacing: '0.22em',
                 textTransform: 'uppercase',
-                color: accentColor,
+                color: colors.ink,
               }}
             >
               {t('workBreakdown')}
@@ -664,6 +689,7 @@ export function EstimatePdfTemplate({
                 item={item}
                 index={index}
                 accentColor={accentColor}
+                accentTextColor={accentTextColor}
                 t={t}
               />
             ))}
@@ -687,7 +713,7 @@ export function EstimatePdfTemplate({
         >
         <div style={{ minWidth: 0, borderTop: `1px solid ${colors.slate300}` }}>
           <div style={{ padding: '14px 0' }}>
-            <LowerSectionHeading accentColor={accentColor}>{t('paymentTerms')}</LowerSectionHeading>
+            <LowerSectionHeading>{t('paymentTerms')}</LowerSectionHeading>
             <div data-estimate-flow-text="true" style={{ width: '100%', maxWidth: 'none', minWidth: 0, marginTop: '6px', whiteSpace: 'pre-line', fontSize: '11px', lineHeight: 1.48, color: colors.ink, overflowWrap: 'anywhere', wordBreak: 'break-word' }}>
               {getPaymentTermLabel(paymentTerms, t)}
             </div>
@@ -695,16 +721,16 @@ export function EstimatePdfTemplate({
 
           {hasContractorMessage ? (
             <div style={{ borderTop: `1px solid ${colors.slate200}`, padding: '14px 0' }}>
-              <LowerSectionHeading accentColor={accentColor}>{t('messageFromContractor')}</LowerSectionHeading>
+              <LowerSectionHeading>{t('messageFromContractor')}</LowerSectionHeading>
               <div style={{ width: '100%', maxWidth: 'none', minWidth: 0, marginTop: '7px', display: 'grid', gap: '3px' }}>
-                <RichWorkItemContent blocks={contractorMessage.contentBlocks} accentColor={accentColor} />
+                <EstimateRichTextBlocks blocks={contractorMessage.contentBlocks} />
               </div>
             </div>
           ) : null}
 
           {acceptedPaymentMethods.length ? (
             <div style={{ borderTop: `1px solid ${colors.slate200}`, padding: '14px 0 0' }}>
-              <LowerSectionHeading accentColor={accentColor}>{t('acceptedPaymentMethods')}</LowerSectionHeading>
+              <LowerSectionHeading>{t('acceptedPaymentMethods')}</LowerSectionHeading>
               <ul
                 style={{
                   margin: '8px 0 0',
@@ -718,7 +744,7 @@ export function EstimatePdfTemplate({
               >
                 {acceptedPaymentMethods.map((method) => (
                   <li key={method} style={{ display: 'grid', gridTemplateColumns: '6px minmax(0,1fr)', gap: '7px', alignItems: 'start', fontSize: '10.5px', lineHeight: 1.4, color: colors.ink }}>
-                    <span aria-hidden="true" style={{ width: '3px', height: '3px', marginTop: '6px', borderRadius: '999px', backgroundColor: accentColor }} />
+                    <span data-estimate-payment-bullet="true" aria-hidden="true" style={{ color: accentColor, fontSize: '10.5px', lineHeight: 1.4, textAlign: 'center' }}>•</span>
                     <span data-estimate-flow-text="true" style={{ overflowWrap: 'anywhere', wordBreak: 'break-word' }}>{method}</span>
                   </li>
                 ))}
@@ -739,12 +765,12 @@ export function EstimatePdfTemplate({
             }}
           >
             <div style={{ display: 'grid', gap: '8px' }}>
-              <EstimateTotalRow label={t('subtotal')} value={documentSubtotal} accentColor={accentColor} />
-              {documentDiscount > 0 ? <EstimateTotalRow label={t('discount')} value={-documentDiscount} accentColor={accentColor} /> : null}
-              {documentTax > 0 ? <EstimateTotalRow label={t('salesTax')} value={documentTax} accentColor={accentColor} /> : null}
+              <EstimateTotalRow label={t('subtotal')} value={documentSubtotal} accentTextColor={accentTextColor} />
+              {documentDiscount > 0 ? <EstimateTotalRow label={t('discount')} value={-documentDiscount} accentTextColor={accentTextColor} /> : null}
+              {documentTax > 0 ? <EstimateTotalRow label={t('salesTax')} value={documentTax} accentTextColor={accentTextColor} /> : null}
             </div>
             <div style={{ marginTop: '10px', borderTop: `1px solid ${colors.slate300}`, paddingTop: '10px' }}>
-              <EstimateTotalRow label={t('totalEstimate')} value={documentTotal} emphasized accentColor={accentColor} />
+              <EstimateTotalRow label={t('totalEstimate')} value={documentTotal} emphasized accentTextColor={accentTextColor} />
             </div>
           </div>
 
@@ -759,7 +785,7 @@ export function EstimatePdfTemplate({
               textAlign: 'center',
             }}
           >
-            <LowerSectionHeading accentColor={accentColor}>{t('validUntil')}</LowerSectionHeading>
+            <ValidUntilHeading accentColor={accentColor} accentTextColor={accentTextColor}>{t('validUntil')}</ValidUntilHeading>
             <p style={{ margin: '6px 0 0', fontSize: '11.5px', lineHeight: 1.4, fontWeight: 700, color: colors.ink }}>
               {formatDisplayDate(displayValidUntil, language)}
             </p>
@@ -778,7 +804,7 @@ export function EstimatePdfTemplate({
             pageBreakInside: 'avoid',
           }}
         >
-          <p style={{ margin: 0, fontSize: '12px', lineHeight: 1.4, fontWeight: 700, color: accentColor }}>
+          <p style={{ margin: 0, fontSize: '12px', lineHeight: 1.4, fontWeight: 700, color: accentTextColor }}>
             {t('thankYouForEstimateOpportunity')}
           </p>
           <p style={{ margin: '4px 0 0', fontSize: '10.5px', lineHeight: 1.35, fontWeight: 650, color: colors.ink }}>

@@ -1,18 +1,27 @@
 import { calculateDocumentPageBreakOffsets } from './documentPagination.js'
+import {
+  DOCUMENT_PAPER_HEIGHT_POINTS,
+  DOCUMENT_PAPER_MARGIN_POINTS,
+  DOCUMENT_PAPER_WIDTH_POINTS,
+  DOCUMENT_SOURCE_PADDING_PIXELS,
+  DOCUMENT_SOURCE_WIDTH_PIXELS,
+  getDocumentPaperGeometry,
+} from './documentPaper.js'
 
-export const ESTIMATE_PAPER_WIDTH = 612
-export const ESTIMATE_PAPER_HEIGHT = 792
-export const ESTIMATE_PAPER_MARGIN = 36
-export const ESTIMATE_DOCUMENT_SOURCE_WIDTH = 780
-export const ESTIMATE_DOCUMENT_SOURCE_PADDING = 0
+export const ESTIMATE_PAPER_WIDTH = DOCUMENT_PAPER_WIDTH_POINTS
+export const ESTIMATE_PAPER_HEIGHT = DOCUMENT_PAPER_HEIGHT_POINTS
+export const ESTIMATE_PAPER_MARGIN = DOCUMENT_PAPER_MARGIN_POINTS
+export const ESTIMATE_DOCUMENT_SOURCE_WIDTH = DOCUMENT_SOURCE_WIDTH_PIXELS
+export const ESTIMATE_DOCUMENT_SOURCE_PADDING = DOCUMENT_SOURCE_PADDING_PIXELS
 export const ESTIMATE_DOCUMENT_BORDER_WIDTH = 1
 export const ESTIMATE_DOCUMENT_HORIZONTAL_PADDING = 20
 export const ESTIMATE_RICH_CONTENT_BORDER_WIDTH = 1
 export const ESTIMATE_RICH_CONTENT_HORIZONTAL_PADDING = 12
 
 export function getEstimatePrintableWidthModel(sourceWidth = ESTIMATE_DOCUMENT_SOURCE_WIDTH) {
-  const printablePaperWidth = ESTIMATE_PAPER_WIDTH - (ESTIMATE_PAPER_MARGIN * 2)
-  const sourceToPaperScale = printablePaperWidth / sourceWidth
+  const paperGeometry = getDocumentPaperGeometry(sourceWidth)
+  const printablePaperWidth = paperGeometry.printableWidthPoints
+  const sourceToPaperScale = paperGeometry.sourceToPaperScale
   const documentOuterWidth = sourceWidth - (ESTIMATE_DOCUMENT_SOURCE_PADDING * 2)
   const documentInnerWidth = documentOuterWidth
     - (ESTIMATE_DOCUMENT_BORDER_WIDTH * 2)
@@ -86,7 +95,7 @@ function getTextLineRanges(flowNode, rootElement, rootRect, renderedScale) {
   return ranges
 }
 
-function collectEstimateProtectedRanges(element, sourcePageHeight) {
+function collectDocumentProtectedRanges(element, sourcePageHeight) {
   const rootRect = element.getBoundingClientRect()
   const renderedScale = rootRect.width > 0 && element.offsetWidth > 0
     ? rootRect.width / element.offsetWidth
@@ -104,15 +113,7 @@ function collectEstimateProtectedRanges(element, sourcePageHeight) {
     }
   }
 
-  const closingSection = element.querySelector('[data-estimate-footer-section="true"]')
-  const documentFooter = element.querySelector('[data-estimate-footer="true"]')
-  const closingGroupRange = combineRanges(closingSection, documentFooter)
-
-  if (closingGroupRange && closingGroupRange.end - closingGroupRange.start <= sourcePageHeight * 0.92) {
-    protectedRanges.push(closingGroupRange)
-  }
-
-  const workHeading = element.querySelector('[data-estimate-work-heading="true"]')
+  const workHeading = element.querySelector('[data-estimate-work-heading="true"], [data-contract-work-heading="true"]')
   const firstWorkItem = element.querySelector('[data-line-item-card="true"]')
   const firstWorkGroupRange = combineRanges(workHeading, firstWorkItem)
 
@@ -121,15 +122,15 @@ function collectEstimateProtectedRanges(element, sourcePageHeight) {
   }
 
   element.querySelectorAll(
-    '[data-estimate-keep-together="true"], [data-estimate-work-heading="true"], [data-estimate-footer="true"]'
+    '[data-estimate-keep-together="true"], [data-estimate-work-heading="true"], [data-estimate-footer="true"], [data-contract-keep-together="true"], [data-contract-work-heading="true"], [data-contract-signatures="true"]'
   ).forEach((node) => {
     const range = getRange(node)
     if (range) protectedRanges.push(range)
   })
 
-  element.querySelectorAll('[data-estimate-section-heading="true"]').forEach((heading) => {
-    const section = heading.closest('[data-estimate-section="true"]')
-    const firstFlowNode = section?.querySelector('[data-estimate-flow-text="true"]')
+  element.querySelectorAll('[data-estimate-section-heading="true"], [data-contract-section-heading="true"]').forEach((heading) => {
+    const section = heading.closest('[data-estimate-section="true"], [data-contract-section="true"]')
+    const firstFlowNode = section?.querySelector('[data-estimate-flow-text="true"], [data-contract-flow-text="true"]')
     const headingRange = getRange(heading)
     const firstLineRange = firstFlowNode
       ? getTextLineRanges(firstFlowNode, element, rootRect, renderedScale)[0]
@@ -146,7 +147,7 @@ function collectEstimateProtectedRanges(element, sourcePageHeight) {
     }
   })
 
-  element.querySelectorAll('[data-estimate-flow-text="true"]').forEach((flowNode) => {
+  element.querySelectorAll('[data-estimate-flow-text="true"], [data-contract-flow-text="true"]').forEach((flowNode) => {
     protectedRanges.push(...getTextLineRanges(flowNode, element, rootRect, renderedScale))
   })
 
@@ -164,11 +165,10 @@ export function getEstimatePaginationModel(element) {
   const contentHeight = Math.max(element.scrollHeight, element.offsetHeight)
   if (!elementWidth || !contentHeight) return null
 
-  const printableWidth = ESTIMATE_PAPER_WIDTH - (ESTIMATE_PAPER_MARGIN * 2)
-  const printableHeight = ESTIMATE_PAPER_HEIGHT - (ESTIMATE_PAPER_MARGIN * 2)
-  const sourceScale = elementWidth / printableWidth
-  const sourcePageHeight = printableHeight * sourceScale
-  const protectedRanges = collectEstimateProtectedRanges(element, sourcePageHeight)
+  const paperGeometry = getDocumentPaperGeometry(elementWidth)
+  const sourceScale = elementWidth / paperGeometry.printableWidthPoints
+  const sourcePageHeight = paperGeometry.sourcePageHeight
+  const protectedRanges = collectDocumentProtectedRanges(element, sourcePageHeight)
   const pageBreakOffsets = calculateEstimatePageBreakOffsets({
     contentHeight,
     sourcePageHeight,
