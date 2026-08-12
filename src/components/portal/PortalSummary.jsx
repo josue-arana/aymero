@@ -13,7 +13,6 @@ import { currency } from '../../utils/formatters'
 import { getContractDisplayNumber } from '../../utils/contractNumber'
 import { getEstimateDisplayNumber } from '../../utils/estimateNumber'
 import { downloadContractPdf } from '../../utils/contractPdf'
-import { downloadEstimatePdf } from '../../utils/estimatePdf'
 import { printDocumentElement } from '../../utils/printDocument'
 import { shouldUseGeneratedPdfForPrint } from '../../utils/documentOutput'
 import { createTranslator } from '../../translations'
@@ -190,7 +189,7 @@ function buildContractNotesAndTermsItems(contract = {}, t = (key) => key) {
   })
 }
 
-function DocumentPreviewModal({ isOpen, title, onClose, onPrimaryAction, primaryLabel, onDownload, children, t = (key) => key }) {
+function DocumentPreviewModal({ isOpen, title, onClose, onPrimaryAction, primaryLabel, onDownload, downloadLabel, children, t = (key) => key }) {
   const showsStandaloneDownload = primaryLabel !== t('downloadPdf')
 
   return (
@@ -211,7 +210,7 @@ function DocumentPreviewModal({ isOpen, title, onClose, onPrimaryAction, primary
         <div className={`mt-6 grid gap-3 px-4 pb-4 sm:px-5 sm:pb-5 ${showsStandaloneDownload ? 'sm:grid-cols-3' : 'sm:grid-cols-2'}`}>
           <button onClick={onPrimaryAction} className="rounded-2xl bg-slate-950 px-4 py-3 text-sm font-bold text-white hover:bg-slate-800">{primaryLabel}</button>
           {showsStandaloneDownload ? (
-            <button onClick={onDownload} className="rounded-2xl border border-slate-200 px-4 py-3 text-sm font-bold text-slate-800 hover:bg-slate-50">{t('downloadPdf')}</button>
+            <button onClick={onDownload} className="rounded-2xl border border-slate-200 px-4 py-3 text-sm font-bold text-slate-800 hover:bg-slate-50">{downloadLabel || t('downloadPdf')}</button>
           ) : null}
           <button onClick={onClose} className="rounded-2xl border border-slate-200 px-4 py-3 text-sm font-bold text-slate-800 hover:bg-slate-50">{t('close')}</button>
         </div>
@@ -371,39 +370,17 @@ export function PortalSummary({
     if (!estimatePreviewRef.current) return
 
     try {
-      await downloadEstimatePdf({
-        element: estimatePreviewRef.current,
-        estimateNumber,
-        estimateDate: estimatePreviewProps.estimateDate,
-        clientName: previewLead.client,
-        companyName: company?.name || '',
-        company,
-        lead: previewLead,
-        pricingMode: estimatePreviewProps.pricingMode,
-        scope: estimatePreviewProps.scope,
-        lineItems: estimatePreviewProps.lineItems,
-        materialsIncluded: estimatePreviewProps.materialsIncluded,
-        paymentTerms: estimatePreviewProps.paymentTerms,
-        total: estimatePreviewProps.total,
-        subtotal: estimatePreviewProps.subtotal,
-        discountAmount: estimatePreviewProps.discountAmount,
-        taxAmount: estimatePreviewProps.taxAmount,
-        messageFromContractor: estimatePreviewProps.messageFromContractor,
-        validUntil: estimatePreviewProps.validUntil,
-        t,
+      await printDocumentElement(estimatePreviewRef.current, {
+        documentTitle: `${estimateNumber} ${previewLead.client || ''}`.trim(),
+        pageMarginInches: ESTIMATE_PAPER_MARGIN / 72,
+        safeInsetInches: 0,
       })
-      showToast(t('estimatePdfGenerated'))
     } catch (error) {
       showToast(error?.message || t('estimatePdfGenerateFailed'), 'error')
     }
   }
 
   async function handlePrintEstimate() {
-    if (shouldUsePdfForPrint) {
-      await handleDownloadEstimate()
-      return
-    }
-
     try {
       await printDocumentElement(estimatePreviewRef.current, {
         documentTitle: `${estimateNumber} ${previewLead.client || ''}`.trim(),
@@ -560,7 +537,7 @@ export function PortalSummary({
                   )}
                   secondaryAction={(
                     <button onClick={handleDownloadEstimate} className="w-full rounded-2xl border border-slate-200 bg-white px-4 py-3 text-sm font-bold text-slate-800 hover:bg-slate-50 sm:w-auto">
-                      {t('downloadPdf')}
+                      {t('saveAsPdf')}
                     </button>
                   )}
                 />
@@ -661,8 +638,9 @@ export function PortalSummary({
           title={t('viewEstimate')}
           onClose={() => setOpenDocument(null)}
           onPrimaryAction={handlePrintEstimate}
-          primaryLabel={shouldUsePdfForPrint ? t('downloadPdf') : t('print')}
+          primaryLabel={t('print')}
           onDownload={handleDownloadEstimate}
+          downloadLabel={t('saveAsPdf')}
           t={t}
         >
           <PaginatedEstimatePreview t={t}>

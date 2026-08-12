@@ -334,7 +334,7 @@ function buildFallbackPdf({
         .flatMap((line) => wrapMultilineText(line, 92))
       ensureNotesSpace(24)
       if (index > 0) {
-        pdf.setDrawColor(safeColors.slate100)
+        pdf.setDrawColor(safeColors.slate200)
         pdf.line(textStartX, cursorY - 2, dividerEndX, cursorY - 2)
         cursorY += 6
       }

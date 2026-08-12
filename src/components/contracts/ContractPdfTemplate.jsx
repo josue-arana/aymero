@@ -212,13 +212,12 @@ function WorkBreakdownSection({ workBreakdown, hasScope, accentColor, accentText
 function NotesAndTermsSection({ items, t }) {
   if (!Array.isArray(items) || items.length === 0) return null
   const contentItems = items.slice(0, 2).filter(Boolean)
-  const twoColumn = contentItems.length > 1
   return (
     <section data-contract-notes="true" data-contract-section="true" style={{ marginTop: 'var(--document-section-gap)', border: `1px solid ${colors.slate200}`, borderRadius: '14px', backgroundColor: colors.white, padding: '14px', breakInside: 'auto', pageBreakInside: 'auto' }}>
       <SectionHeading>{t('notesAndTerms')}</SectionHeading>
-      <div style={{ marginTop: '10px', display: 'grid', gridTemplateColumns: twoColumn ? 'minmax(0,1fr) minmax(0,1fr)' : 'minmax(0,1fr)', gap: 0 }}>
+      <div style={{ marginTop: '10px', display: 'grid', gridTemplateColumns: 'minmax(0,1fr)', gap: 0 }}>
         {contentItems.map((item, index) => (
-          <div key={item.title} style={{ minWidth: 0, paddingLeft: index ? '14px' : 0, paddingRight: !index && twoColumn ? '14px' : 0, borderLeft: index ? `1px solid ${colors.slate200}` : 'none' }}>
+          <div data-contract-notes-item="true" key={item.title} style={{ minWidth: 0, marginTop: index ? '10px' : 0, paddingTop: index ? '10px' : 0, borderTop: index ? `1px solid ${colors.slate200}` : 'none' }}>
             <p style={{ margin: 0, fontSize: '11px', lineHeight: 1.3, fontWeight: 700, color: colors.ink }}>{item.title}</p>
             <div style={{ marginTop: '4px', display: 'grid', gap: '4px', minWidth: 0 }}>
               <EstimateRichTextBlocks blocks={normalizeEstimateRichText(item.content).blocks} flowTextAttribute="data-contract-flow-text" />

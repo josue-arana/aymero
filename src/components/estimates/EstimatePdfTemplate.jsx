@@ -221,18 +221,20 @@ function getMaterialsTagLabel(materialsStatus, t) {
 function MaterialTag({ materialsStatus, accentColor, accentTextColor, t }) {
   return (
     <span
+      data-estimate-material-tag="true"
       style={{
-        display: 'inline-flex',
+        display: 'inline-block',
         maxWidth: '100%',
-        alignItems: 'center',
+        boxSizing: 'border-box',
         border: `1px solid ${accentColor}`,
         borderRadius: '999px',
-        padding: '2px 7px',
+        padding: '0 7px',
         color: accentTextColor,
         fontSize: '9px',
-        lineHeight: 1.35,
+        lineHeight: '16px',
         fontWeight: 650,
         overflowWrap: 'anywhere',
+        verticalAlign: 'top',
       }}
     >
       {getMaterialsTagLabel(materialsStatus, t)}
@@ -307,33 +309,36 @@ function WorkBreakdownItem({ item, index, accentColor, accentTextColor, t }) {
         display: 'grid',
         gridTemplateColumns: workBreakdownGridColumns,
         gap: workBreakdownColumnGap,
-        alignItems: 'start',
+        alignItems: 'stretch',
         padding: '13px 0',
         borderTop: index === 0 ? 'none' : `1px solid ${colors.slate200}`,
         breakInside: 'avoid',
         pageBreakInside: 'avoid',
       }}
     >
-      <div
-        style={{
-          display: 'flex',
-          width: '24px',
-          height: '24px',
-          alignItems: 'center',
-          justifyContent: 'center',
-          borderRadius: '999px',
-          border: `1px solid ${accentColor}`,
-          backgroundColor: colors.white,
-          color: accentTextColor,
-          fontSize: '10px',
-          fontWeight: 700,
-          lineHeight: 1,
-          marginTop: '2px',
-        }}
-      >
-        {index + 1}
+      <div data-estimate-item-marker-cell="true" style={{ display: 'flex', minHeight: 0, alignItems: 'center', justifyContent: 'center' }}>
+        <div
+          data-estimate-item-marker="true"
+          style={{
+            display: 'block',
+            width: '24px',
+            height: '24px',
+            flexShrink: 0,
+            boxSizing: 'border-box',
+            borderRadius: '999px',
+            border: `1px solid ${accentColor}`,
+            backgroundColor: colors.white,
+            color: accentTextColor,
+            fontSize: '10px',
+            fontWeight: 700,
+            lineHeight: '22px',
+            textAlign: 'center',
+          }}
+        >
+          {index + 1}
+        </div>
       </div>
-      <div style={{ width: '100%', maxWidth: 'none', minWidth: 0 }}>
+      <div data-estimate-item-content="true" style={{ width: '100%', maxWidth: 'none', minWidth: 0 }}>
         <p
           data-estimate-flow-text="true"
           style={{
@@ -359,7 +364,7 @@ function WorkBreakdownItem({ item, index, accentColor, accentTextColor, t }) {
           <MaterialTag materialsStatus={item?.materialsStatus} accentColor={accentColor} accentTextColor={accentTextColor} t={t} />
         </div>
       </div>
-      <div style={{ paddingTop: '3px', textAlign: 'right', whiteSpace: 'nowrap', fontSize: '11.5px', lineHeight: 1.4, fontWeight: 700, color: colors.ink }}>
+      <div data-estimate-item-amount="true" style={{ display: 'flex', minHeight: 0, alignItems: 'center', justifyContent: 'flex-end', textAlign: 'right', whiteSpace: 'nowrap', fontSize: '11.5px', lineHeight: 1.4, fontWeight: 700, color: colors.ink }}>
         {currency.format(Number(item?.amount || 0))}
       </div>
     </div>
@@ -386,12 +391,12 @@ function LowerSectionHeading({ children }) {
 
 function ValidUntilHeading({ children, accentColor, accentTextColor }) {
   return (
-    <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'center', gap: '5px', color: accentTextColor }}>
-      <CalendarIcon color={accentColor} />
-      <p style={{ margin: 0, fontSize: '10px', lineHeight: 1.3, fontWeight: 700, letterSpacing: '0.18em', textTransform: 'uppercase' }}>
-        {children}
-      </p>
-    </div>
+    <p style={{ margin: 0, color: accentTextColor, fontSize: '10px', lineHeight: 1.3, fontWeight: 700, letterSpacing: '0.18em', textTransform: 'uppercase' }}>
+      <span data-estimate-validity-icon="true" aria-hidden="true" style={{ display: 'inline-block', width: '11px', height: '11px', marginRight: '5px', verticalAlign: '-1px' }}>
+        <CalendarIcon color={accentColor} />
+      </span>
+      {children}
+    </p>
   )
 }
 
@@ -576,7 +581,7 @@ export function EstimatePdfTemplate({
             </SummaryBlock>
           </div>
         </div>
-        <div style={{ display: 'grid', gridTemplateColumns: '118px minmax(0,1fr)', gap: '18px', borderTop: `1px solid ${colors.slate200}`, padding: '12px var(--document-summary-padding-x)', alignItems: 'start' }}>
+        <div style={{ display: 'grid', gridTemplateColumns: '118px minmax(0,1fr)', gap: '18px', borderTop: `1px solid ${colors.slate200}`, padding: '12px var(--document-summary-padding-x)', alignItems: 'center' }}>
           <p style={{ margin: 0, fontSize: '11px', lineHeight: 1.35, fontWeight: 700, letterSpacing: '0.18em', textTransform: 'uppercase', color: colors.ink }}>
             {t('project')}
           </p>
@@ -739,7 +744,7 @@ export function EstimatePdfTemplate({
               >
                 {acceptedPaymentMethods.map((method) => (
                   <li key={method} style={{ display: 'grid', gridTemplateColumns: '6px minmax(0,1fr)', gap: '7px', alignItems: 'start', fontSize: '10.5px', lineHeight: 1.4, color: colors.ink }}>
-                    <span aria-hidden="true" style={{ width: '3px', height: '3px', marginTop: '6px', borderRadius: '999px', backgroundColor: accentColor }} />
+                    <span data-estimate-payment-bullet="true" aria-hidden="true" style={{ color: accentColor, fontSize: '10.5px', lineHeight: 1.4, textAlign: 'center' }}>•</span>
                     <span data-estimate-flow-text="true" style={{ overflowWrap: 'anywhere', wordBreak: 'break-word' }}>{method}</span>
                   </li>
                 ))}

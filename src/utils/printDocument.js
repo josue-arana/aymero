@@ -1,5 +1,8 @@
+import { DOCUMENT_PAPER_WIDTH_INCHES, getDocumentPaperGeometry } from './documentPaper'
+import { getEstimatePaginationModel, waitForEstimateDocumentAssets } from './estimatePagination'
+
 const defaultPrintPageMarginInches = 0.45
-const printPageWidthInches = 8.5
+const printPageWidthInches = DOCUMENT_PAPER_WIDTH_INCHES
 const defaultPrintSafeInsetInches = 0.2
 
 async function copyDocumentStyles(targetDocument) {
@@ -56,6 +59,61 @@ function preparePrintContentNode(contentNode) {
   }
 }
 
+function isSharedPaginatedDocument(element) {
+  return Boolean(element?.querySelector?.('[data-estimate-document="true"], [data-contract-document="true"]'))
+}
+
+function createPaginatedPrintContent(element, targetDocument, pagination) {
+  const paperGeometry = getDocumentPaperGeometry(pagination.elementWidth)
+  const container = targetDocument.createElement('div')
+  container.dataset.documentPaginatedPrint = 'true'
+
+  pagination.pages.forEach((page, index) => {
+    const pageNode = targetDocument.createElement('section')
+    pageNode.dataset.documentPrintPage = 'true'
+    pageNode.style.position = 'relative'
+    pageNode.style.width = `${pagination.elementWidth}px`
+    pageNode.style.height = `${pagination.sourcePageHeight}px`
+    pageNode.style.overflow = 'hidden'
+    pageNode.style.boxSizing = 'border-box'
+    pageNode.style.zoom = String(paperGeometry.printScale)
+    pageNode.style.breakInside = 'avoid'
+    pageNode.style.pageBreakInside = 'avoid'
+
+    if (index < pagination.pages.length - 1) {
+      pageNode.style.breakAfter = 'page'
+      pageNode.style.pageBreakAfter = 'always'
+    }
+
+    const viewportNode = targetDocument.createElement('div')
+    viewportNode.style.position = 'relative'
+    viewportNode.style.width = `${pagination.elementWidth}px`
+    viewportNode.style.height = `${page.height}px`
+    viewportNode.style.overflow = 'hidden'
+
+    const sliceNode = targetDocument.createElement('div')
+    sliceNode.style.position = 'absolute'
+    sliceNode.style.left = '0'
+    sliceNode.style.top = '0'
+    sliceNode.style.width = `${pagination.elementWidth}px`
+    sliceNode.style.transform = `translateY(-${page.start}px)`
+    sliceNode.style.transformOrigin = 'top left'
+
+    const clonedSource = element.cloneNode(true)
+    clonedSource.style.width = `${pagination.elementWidth}px`
+    clonedSource.style.maxWidth = 'none'
+    clonedSource.style.margin = '0'
+    clonedSource.style.boxSizing = 'border-box'
+    clonedSource.style.overflow = 'visible'
+    sliceNode.appendChild(clonedSource)
+    viewportNode.appendChild(sliceNode)
+    pageNode.appendChild(viewportNode)
+    container.appendChild(pageNode)
+  })
+
+  return container
+}
+
 export async function printDocumentElement(element, {
   documentTitle = 'Document',
   pageMarginInches = defaultPrintPageMarginInches,
@@ -72,16 +130,31 @@ export async function printDocumentElement(element, {
   }
 
   try {
-    const normalizedPageMargin = Number.isFinite(Number(pageMarginInches))
+    const usesSharedPagination = isSharedPaginatedDocument(element)
+    const authoritativePaperGeometry = getDocumentPaperGeometry()
+    const normalizedPageMargin = usesSharedPagination
+      ? authoritativePaperGeometry.pageMarginInches
+      : Number.isFinite(Number(pageMarginInches))
       ? Math.max(Number(pageMarginInches), 0)
       : defaultPrintPageMarginInches
-    const normalizedSafeInset = Number.isFinite(Number(safeInsetInches))
+    const normalizedSafeInset = usesSharedPagination
+      ? 0
+      : Number.isFinite(Number(safeInsetInches))
       ? Math.max(Number(safeInsetInches), 0)
       : defaultPrintSafeInsetInches
     const printableWidthInches = printPageWidthInches - (normalizedPageMargin * 2)
     const printContentMaxWidthInches = Math.max(printableWidthInches - normalizedSafeInset, 0)
-    const contentNode = element.cloneNode(true)
-    preparePrintContentNode(contentNode)
+    let pagination = null
+    let contentNode = null
+
+    if (usesSharedPagination) {
+      await waitForEstimateDocumentAssets(element)
+      pagination = getEstimatePaginationModel(element)
+      if (!pagination?.pageCount) throw new Error('Document print pagination could not be calculated.')
+    } else {
+      contentNode = element.cloneNode(true)
+      preparePrintContentNode(contentNode)
+    }
 
     printWindow.document.open()
     printWindow.document.write(`
@@ -123,6 +196,20 @@ export async function printDocumentElement(element, {
             box-sizing: border-box !important;
             box-shadow: none !important;
           }
+          [data-print-root="true"] [data-document-paginated-print="true"] {
+            width: 100% !important;
+            max-width: none !important;
+            margin: 0 !important;
+            padding: 0 !important;
+            overflow: visible !important;
+          }
+          [data-print-root="true"] [data-document-print-page="true"] {
+            margin: 0 !important;
+            padding: 0 !important;
+            border: 0 !important;
+            break-inside: avoid !important;
+            page-break-inside: avoid !important;
+          }
           [data-print-root="true"] article,
           [data-print-root="true"] section,
           [data-print-root="true"] div {
@@ -144,10 +231,6 @@ export async function printDocumentElement(element, {
           [data-print-root="true"] [data-estimate-flow-text="true"] {
             orphans: 3;
             widows: 3;
-          }
-          [data-print-root="true"] [data-estimate-footer="true"] {
-            break-before: avoid-page;
-            page-break-before: avoid;
           }
           [data-print-root="true"] .invoice-document-information,
           [data-print-root="true"] .invoice-document-summary,
@@ -192,7 +275,11 @@ export async function printDocumentElement(element, {
       throw new Error('Print preview could not be prepared.')
     }
 
-    mountPoint.replaceChildren(contentNode)
+    if (usesSharedPagination) {
+      mountPoint.replaceChildren(createPaginatedPrintContent(element, printWindow.document, pagination))
+    } else {
+      mountPoint.replaceChildren(contentNode)
+    }
 
     await new Promise((resolve) => printWindow.requestAnimationFrame(() => printWindow.requestAnimationFrame(resolve)))
 

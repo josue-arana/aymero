@@ -257,6 +257,7 @@ export const es = {
   "cancelEditing": "Cancelar edición",
   "previewPdf": "Vista previa PDF",
   "downloadPdf": "Descargar PDF",
+  "saveAsPdf": "Guardar como PDF",
   "thankYou": "Gracias",
   "weAppreciateYourBusiness": "¡Agradecemos su preferencia!",
   "estimatePreviewDesktopOnly": "La vista previa del PDF se ve mejor en escritorio. Descarga el PDF para revisarlo en este dispositivo.",

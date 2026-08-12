@@ -544,10 +544,16 @@ function buildFallbackPdf({
       const contentHeight = formattedLines.reduce((height, line) => (
         height + Math.max(14, (line?.[0]?.fontSize || getEstimateTextSizePoints()) * 1.48)
       ), 0)
+      const firstLineHeight = Math.max(
+        14,
+        (formattedLines[0]?.[0]?.fontSize || getEstimateTextSizePoints()) * 1.48
+      )
 
       return {
         titleLines,
         descriptionLines: item?.descriptionBlocks?.length ? descriptionLines : [],
+        contentHeight,
+        firstLineHeight,
         height: contentHeight + 50,
       }
     })
@@ -578,10 +584,16 @@ function buildFallbackPdf({
         drawFormattedLine(line, innerX + 48, cursorY, { color: safeColors.slate700 })
         cursorY += lineHeight
       })
-      drawText(currency.format(Number(item?.amount || 0)), totalColumnX, startingY, { bold: true, size: 11, align: 'right' })
+      const contentTopY = startingY - (formattedItem.firstLineHeight * 0.72)
+      const tagBottomY = startingY + formattedItem.contentHeight + 20
+      const contentCenterY = contentTopY + ((tagBottomY - contentTopY) / 2)
+      const amountBaselineY = contentCenterY + (11 * 0.35)
+      const markerBaselineY = contentCenterY + 3
+
+      drawText(currency.format(Number(item?.amount || 0)), totalColumnX, amountBaselineY, { bold: true, size: 11, align: 'right' })
       pdf.setDrawColor(accentColor)
-      pdf.circle(innerX + 29, startingY - 3, 9, 'S')
-      drawText(String(index + 1), innerX + 29, startingY, { bold: true, size: 8.5, color: accentTextColor, align: 'center' })
+      pdf.circle(innerX + 29, contentCenterY, 9, 'S')
+      drawText(String(index + 1), innerX + 29, markerBaselineY, { bold: true, size: 8.5, color: accentTextColor, align: 'center' })
       pdf.setDrawColor(accentColor)
       pdf.roundedRect(innerX + 48, cursorY + 2, 122, 18, 9, 9, 'S')
       drawText(getEstimateMaterialsLabel(item, t), innerX + 109, cursorY + 14, { bold: true, size: 8.5, color: accentTextColor, align: 'center' })

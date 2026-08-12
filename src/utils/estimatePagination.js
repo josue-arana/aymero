@@ -1,18 +1,27 @@
 import { calculateDocumentPageBreakOffsets } from './documentPagination.js'
+import {
+  DOCUMENT_PAPER_HEIGHT_POINTS,
+  DOCUMENT_PAPER_MARGIN_POINTS,
+  DOCUMENT_PAPER_WIDTH_POINTS,
+  DOCUMENT_SOURCE_PADDING_PIXELS,
+  DOCUMENT_SOURCE_WIDTH_PIXELS,
+  getDocumentPaperGeometry,
+} from './documentPaper.js'
 
-export const ESTIMATE_PAPER_WIDTH = 612
-export const ESTIMATE_PAPER_HEIGHT = 792
-export const ESTIMATE_PAPER_MARGIN = 36
-export const ESTIMATE_DOCUMENT_SOURCE_WIDTH = 780
-export const ESTIMATE_DOCUMENT_SOURCE_PADDING = 0
+export const ESTIMATE_PAPER_WIDTH = DOCUMENT_PAPER_WIDTH_POINTS
+export const ESTIMATE_PAPER_HEIGHT = DOCUMENT_PAPER_HEIGHT_POINTS
+export const ESTIMATE_PAPER_MARGIN = DOCUMENT_PAPER_MARGIN_POINTS
+export const ESTIMATE_DOCUMENT_SOURCE_WIDTH = DOCUMENT_SOURCE_WIDTH_PIXELS
+export const ESTIMATE_DOCUMENT_SOURCE_PADDING = DOCUMENT_SOURCE_PADDING_PIXELS
 export const ESTIMATE_DOCUMENT_BORDER_WIDTH = 1
 export const ESTIMATE_DOCUMENT_HORIZONTAL_PADDING = 20
 export const ESTIMATE_RICH_CONTENT_BORDER_WIDTH = 1
 export const ESTIMATE_RICH_CONTENT_HORIZONTAL_PADDING = 12
 
 export function getEstimatePrintableWidthModel(sourceWidth = ESTIMATE_DOCUMENT_SOURCE_WIDTH) {
-  const printablePaperWidth = ESTIMATE_PAPER_WIDTH - (ESTIMATE_PAPER_MARGIN * 2)
-  const sourceToPaperScale = printablePaperWidth / sourceWidth
+  const paperGeometry = getDocumentPaperGeometry(sourceWidth)
+  const printablePaperWidth = paperGeometry.printableWidthPoints
+  const sourceToPaperScale = paperGeometry.sourceToPaperScale
   const documentOuterWidth = sourceWidth - (ESTIMATE_DOCUMENT_SOURCE_PADDING * 2)
   const documentInnerWidth = documentOuterWidth
     - (ESTIMATE_DOCUMENT_BORDER_WIDTH * 2)
@@ -104,14 +113,6 @@ function collectDocumentProtectedRanges(element, sourcePageHeight) {
     }
   }
 
-  const closingSection = element.querySelector('[data-estimate-footer-section="true"]')
-  const documentFooter = element.querySelector('[data-estimate-footer="true"]')
-  const closingGroupRange = combineRanges(closingSection, documentFooter)
-
-  if (closingGroupRange && closingGroupRange.end - closingGroupRange.start <= sourcePageHeight * 0.92) {
-    protectedRanges.push(closingGroupRange)
-  }
-
   const workHeading = element.querySelector('[data-estimate-work-heading="true"], [data-contract-work-heading="true"]')
   const firstWorkItem = element.querySelector('[data-line-item-card="true"]')
   const firstWorkGroupRange = combineRanges(workHeading, firstWorkItem)
@@ -164,10 +165,9 @@ export function getEstimatePaginationModel(element) {
   const contentHeight = Math.max(element.scrollHeight, element.offsetHeight)
   if (!elementWidth || !contentHeight) return null
 
-  const printableWidth = ESTIMATE_PAPER_WIDTH - (ESTIMATE_PAPER_MARGIN * 2)
-  const printableHeight = ESTIMATE_PAPER_HEIGHT - (ESTIMATE_PAPER_MARGIN * 2)
-  const sourceScale = elementWidth / printableWidth
-  const sourcePageHeight = printableHeight * sourceScale
+  const paperGeometry = getDocumentPaperGeometry(elementWidth)
+  const sourceScale = elementWidth / paperGeometry.printableWidthPoints
+  const sourcePageHeight = paperGeometry.sourcePageHeight
   const protectedRanges = collectDocumentProtectedRanges(element, sourcePageHeight)
   const pageBreakOffsets = calculateEstimatePageBreakOffsets({
     contentHeight,
