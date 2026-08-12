@@ -12,9 +12,7 @@ import { useToast } from '../common/ToastProvider'
 import { currency } from '../../utils/formatters'
 import { getContractDisplayNumber } from '../../utils/contractNumber'
 import { getEstimateDisplayNumber } from '../../utils/estimateNumber'
-import { downloadContractPdf } from '../../utils/contractPdf'
 import { printDocumentElement } from '../../utils/printDocument'
-import { shouldUseGeneratedPdfForPrint } from '../../utils/documentOutput'
 import { createTranslator } from '../../translations'
 import { tStatus } from '../../translations'
 import { getPaymentTermLabel } from '../../utils/paymentTerms'
@@ -285,7 +283,6 @@ export function PortalSummary({
   const estimatePreviewRef = useRef(null)
   const contractPreviewRef = useRef(null)
   const [selectedPhotoIndex, setSelectedPhotoIndex] = useState(-1)
-  const shouldUsePdfForPrint = useMemo(() => shouldUseGeneratedPdfForPrint(), [])
   const hasEstimate = Boolean(estimate)
   const hasContract = Boolean(contract)
   const hasPayments = Boolean(paymentSummary?.payments?.length)
@@ -392,41 +389,8 @@ export function PortalSummary({
     }
   }
 
-  async function handleDownloadContract() {
+  async function openContractPrintDialog() {
     if (!contractPreviewRef.current) return
-
-    try {
-      await downloadContractPdf({
-        element: contractPreviewRef.current,
-        contractNumber,
-        contractDate: contractPreviewProps.contractDate,
-        notesAndTermsItems: contractPreviewProps.notesAndTermsItems,
-        clientName: previewLead.client,
-        companyName: company?.name || '',
-        company,
-        lead: previewLead,
-        scope: contractPreviewProps.scope,
-        workBreakdown: contractPreviewProps.workBreakdown,
-        paymentTerms: getPaymentTermLabel(contract?.paymentTerms, contractDocumentT) || contractDocumentT('contractTermsText'),
-        materials: contract?.materials || contractDocumentT('materialsText'),
-        timeline: contract?.timeline || '',
-        changeOrders: contract?.changeOrders || contractDocumentT('changeOrdersText'),
-        clientResponsibilities: contract?.clientResponsibilities || contractDocumentT('clientResponsibilitiesText'),
-        warrantyDisclaimer: contract?.warrantyDisclaimer || contractDocumentT('warrantyDisclaimerText'),
-        total: contractPreviewProps.total,
-        t: contractDocumentT,
-      })
-      showToast(t('contractPdfGenerated'))
-    } catch (error) {
-      showToast(error?.message || t('contractPdfGenerateFailed'), 'error')
-    }
-  }
-
-  async function handlePrintContract() {
-    if (shouldUsePdfForPrint) {
-      await handleDownloadContract()
-      return
-    }
 
     try {
       await printDocumentElement(contractPreviewRef.current, {
@@ -559,8 +523,8 @@ export function PortalSummary({
                     </button>
                   )}
                   secondaryAction={(
-                    <button onClick={handleDownloadContract} className="w-full rounded-2xl border border-slate-200 bg-white px-4 py-3 text-sm font-bold text-slate-800 hover:bg-slate-50 sm:w-auto">
-                      {t('downloadPdf')}
+                    <button onClick={openContractPrintDialog} className="w-full rounded-2xl border border-slate-200 bg-white px-4 py-3 text-sm font-bold text-slate-800 hover:bg-slate-50 sm:w-auto">
+                      {t('saveAsPdf')}
                     </button>
                   )}
                 />
@@ -654,9 +618,10 @@ export function PortalSummary({
           isOpen={openDocument === 'contract'}
           title={t('viewContract')}
           onClose={() => setOpenDocument(null)}
-          onPrimaryAction={handlePrintContract}
-          primaryLabel={shouldUsePdfForPrint ? t('downloadPdf') : t('print')}
-          onDownload={handleDownloadContract}
+          onPrimaryAction={openContractPrintDialog}
+          primaryLabel={t('print')}
+          onDownload={openContractPrintDialog}
+          downloadLabel={t('saveAsPdf')}
           t={t}
         >
           <PaginatedContractPreview t={contractDocumentT}>
