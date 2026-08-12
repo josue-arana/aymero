@@ -1,5 +1,5 @@
 import { Component, useEffect, useMemo, useState } from 'react'
-import { Archive, ArrowLeft, CalendarDays, Camera, ChevronLeft, ChevronRight, Clock, Download, Edit3, ExternalLink, FileText, MapPin, MoreVertical, Share2, DollarSign, Trash2, Undo2, X } from 'lucide-react'
+import { Archive, ArrowLeft, CalendarDays, Camera, ChevronLeft, ChevronRight, Clock, Copy, Download, Edit3, ExternalLink, FileText, MapPin, MoreVertical, Share2, DollarSign, Trash2, Undo2, X } from 'lucide-react'
 import { useLocation, useNavigate, useParams } from 'react-router-dom'
 import { ActionMenu } from '../components/common/ActionMenu'
 import { ModalShell } from '../components/common/ModalShell'
@@ -30,6 +30,7 @@ import { PROJECT_PHOTO_MAX_FILE_SIZE_BYTES, revokeProjectPhotoPreviewUrl, valida
 import { calculateProjectPaymentSummary, collectProjectInvoiceIds, dedupePayments, mergeProjectTimeline, normalizePaymentRecord } from '../utils/projectPayments'
 import { dedupeById, resolveLinkedProjectId } from '../utils/projectIdentity'
 import { getRecordDetailsTitleKey } from '../utils/recordDetailsTitle'
+import projectWorkspaceHeroBackground from '../assets/page-heroes/jobs-bg.png'
 
 function logProjectDetailDevError(message, error, meta) {
   if (!import.meta.env.DEV) return
@@ -39,6 +40,28 @@ function logProjectDetailDevError(message, error, meta) {
     error,
     ...meta,
   })
+}
+
+async function copyTextToClipboard(value) {
+  const text = String(value || '').trim()
+  if (!text) throw new Error('Missing clipboard value')
+
+  if (navigator.clipboard?.writeText) {
+    await navigator.clipboard.writeText(text)
+    return
+  }
+
+  const textarea = document.createElement('textarea')
+  textarea.value = text
+  textarea.setAttribute('readonly', '')
+  textarea.style.position = 'fixed'
+  textarea.style.opacity = '0'
+  document.body.appendChild(textarea)
+  textarea.select()
+  const didCopy = document.execCommand('copy')
+  textarea.remove()
+
+  if (!didCopy) throw new Error('Clipboard copy failed')
 }
 
 function matchesProjectScheduleEvent(event = {}, { projectId = '', relatedLeadId = '', clientId = '', projectTitle = '', projectType = '' } = {}) {
@@ -1053,7 +1076,8 @@ function ProjectDetailPageContent({ lead, companySettings, clients = [], schedul
     { label: t('recordPayment'), icon: DollarSign, action: () => { setEditingPayment(null); setShowPaymentModal(true) }, primary: true, disabled: !canRecordPayment },
     { label: t('scheduleJob'), icon: CalendarDays, action: onScheduleEvent },
     { label: t('uploadPhotos'), icon: Camera, action: () => setShowPhotoModal(true) },
-  ]
+    hasLeadLink ? { label: t('edit'), icon: Edit3, action: () => setIsEditOpen(true) } : null,
+  ].filter(Boolean)
   const moreMenuItems = [
     hasEstimate
       ? {
@@ -1086,14 +1110,6 @@ function ProjectDetailPageContent({ lead, companySettings, clients = [], schedul
           onClick: () => navigate(`/clients/${currentLead.clientId}`),
         }
       : null,
-    hasLeadLink
-      ? {
-        id: 'edit-lead',
-        label: t('editLinkedLead'),
-        icon: <Edit3 className="mr-2 h-4 w-4" />,
-        onClick: () => setIsEditOpen(true),
-      }
-      : null,
     projectIsArchived
       ? {
           id: 'restore-project',
@@ -1119,6 +1135,20 @@ function ProjectDetailPageContent({ lead, companySettings, clients = [], schedul
   ].filter(Boolean)
   const linkedLeadId = currentLead?.leadId || relatedLeadId || null
   const paymentConfirmTarget = paymentConfirmAction?.payment || null
+  const projectTitle = currentLead.projectTitle || currentLead.projectType || t('unknownProject')
+  const projectClientName = currentLead.client || ''
+  const projectAddress = currentLead.address || currentLead.location || ''
+  const projectCreatedDate = formatProjectDetailDate(currentLead.createdAt || currentLead.created_at)
+  const projectSignedDate = resolvedContract?.signedDate
+    ? formatProjectDetailDate(resolvedContract.signedDate, resolvedContract.signedDate)
+    : ''
+  const projectStatus = currentLead.projectStatus || currentLead.status
+  const projectValue = Number(currentLead.value)
+  const portalShareUrl = normalizePortalShareUrl(portal.shareUrl)
+  const hasProjectValue = currentLead.value !== null
+    && currentLead.value !== undefined
+    && currentLead.value !== ''
+    && Number.isFinite(projectValue)
 
   function closePaymentModal() {
     setShowPaymentModal(false)
@@ -1383,108 +1413,173 @@ function ProjectDetailPageContent({ lead, companySettings, clients = [], schedul
     setFailedPhotoIds((current) => (current.includes(photoId) ? current : [...current, photoId]))
   }
 
+  async function copyPortalLink() {
+    try {
+      await copyTextToClipboard(portalShareUrl)
+      showToast(t('portalLinkCopied'))
+    } catch {
+      showToast(t('portalLinkCopyFailed'), 'error')
+    }
+  }
+
   return (
     <div className="space-y-6">
-      <button onClick={onBack} className="inline-flex items-center gap-2 text-sm font-semibold text-slate-600 hover:text-slate-950">
-        <ArrowLeft className="h-4 w-4" /> {t('backToDashboard')}
-      </button>
+      <nav aria-label={t('projectWorkspace')} className="flex min-w-0 items-center gap-2 text-sm font-semibold">
+        <button type="button" onClick={onBack} className="inline-flex shrink-0 items-center gap-2 text-slate-600 transition hover:text-slate-950 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-blue-500 focus-visible:ring-offset-2">
+          <ArrowLeft className="h-4 w-4" aria-hidden="true" /> {t('backToDashboard')}
+        </button>
+        <ChevronRight className="h-4 w-4 shrink-0 text-slate-300" aria-hidden="true" />
+        <span className="min-w-0 truncate text-slate-950" aria-current="page">{projectTitle}</span>
+      </nav>
 
-      <section className="rounded-3xl bg-gradient-to-br from-slate-950 to-slate-800 p-5 text-white shadow-xl sm:p-6">
-        <div className="flex flex-col justify-between gap-5 lg:flex-row lg:items-end">
-          <div>
-            <p className="text-sm font-semibold uppercase tracking-[0.25em] text-blue-200">{t('projectWorkspace')}</p>
-            <h1 className="mt-2 text-3xl font-bold tracking-tight">{currentLead.projectTitle || currentLead.projectType}</h1>
-            <p className="mt-2 text-slate-300">{currentLead.client || t('noClientLinked')}{currentLead.location ? ` · ${currentLead.location}` : ''}</p>
-            <div className="mt-3 flex flex-wrap gap-2">
-              {!hasLeadLink ? <span className="rounded-full bg-white/10 px-3 py-1 text-xs font-bold text-slate-200">{t('noLeadLinked')}</span> : null}
-              {!hasClientLink ? <span className="rounded-full bg-white/10 px-3 py-1 text-xs font-bold text-slate-200">{t('noClientLinked')}</span> : null}
+      <section data-project-workspace-hero="true" className="relative overflow-hidden rounded-3xl border border-slate-800 bg-slate-950 p-5 text-white shadow-xl shadow-slate-950/15 sm:p-7 lg:p-8">
+        <div className="pointer-events-none absolute inset-0" aria-hidden="true">
+          <img src={projectWorkspaceHeroBackground} alt="" className="h-full w-full object-cover object-center opacity-70" />
+          <div className="absolute inset-0 bg-[linear-gradient(105deg,rgba(2,6,23,0.98)_0%,rgba(15,23,42,0.92)_54%,rgba(15,23,42,0.55)_100%)]" />
+        </div>
+
+        <div className="relative grid min-w-0 gap-7 lg:grid-cols-[minmax(0,1.15fr)_minmax(300px,0.85fr)] lg:items-end lg:gap-10">
+          <div className="min-w-0">
+            <p className="text-xs font-bold uppercase tracking-[0.24em] text-blue-200 sm:text-sm">{t('projectWorkspace')}</p>
+            <h1 className="mt-3 break-words text-3xl font-bold leading-tight tracking-tight sm:text-4xl lg:text-5xl">{projectTitle}</h1>
+
+            <div className="mt-4 min-w-0">
+              <p className="text-xs font-bold uppercase tracking-[0.16em] text-slate-400">{t('client')}</p>
+              <p className="mt-1.5 break-words text-lg font-bold text-white sm:text-xl">{projectClientName || t('noClientLinked')}</p>
             </div>
-            {projectIsArchived && <span className="mt-3 inline-flex rounded-full bg-amber-100 px-3 py-1 text-xs font-bold text-amber-800">{t('archived')}</span>}
+
+            {projectAddress ? (
+              <p className="mt-3 flex min-w-0 items-start gap-2 text-sm leading-6 text-slate-300 sm:text-base">
+                <MapPin className="mt-0.5 h-4 w-4 shrink-0 text-blue-200" aria-hidden="true" />
+                <span className="break-words">{projectAddress}</span>
+              </p>
+            ) : null}
+
+            {(!hasLeadLink || (!hasClientLink && !projectClientName)) ? (
+              <div className="mt-4 flex flex-wrap gap-2">
+                {!hasLeadLink ? <span className="rounded-full border border-white/10 bg-white/10 px-3 py-1 text-xs font-bold text-slate-200">{t('noLeadLinked')}</span> : null}
+                {!hasClientLink && !projectClientName ? <span className="rounded-full border border-white/10 bg-white/10 px-3 py-1 text-xs font-bold text-slate-200">{t('noClientLinked')}</span> : null}
+              </div>
+            ) : null}
           </div>
-          {isAnalyticsMode && (
-            <div className="flex items-center justify-between gap-3 rounded-2xl border border-white/15 bg-white/10 px-4 py-3 lg:block">
-              <p className="text-xs text-slate-300">{t('projectValue')}</p>
-              <p className="text-2xl font-bold">{currency.format(currentLead.value)}</p>
+
+          <dl className="grid min-w-0 grid-cols-2 gap-px overflow-hidden rounded-2xl border border-white/10 bg-white/10 backdrop-blur-sm">
+            {projectStatus ? (
+              <div className="min-w-0 bg-slate-950/35 p-4">
+                <dt className="text-[0.68rem] font-bold uppercase tracking-[0.16em] text-slate-400">{t('status')}</dt>
+                <dd className="mt-2 flex flex-wrap items-center gap-2">
+                  <StatusBadge status={projectStatus} t={t} />
+                  {projectIsArchived ? <span className="inline-flex rounded-full bg-amber-100 px-2.5 py-1 text-xs font-bold text-amber-800 ring-1 ring-amber-200">{t('archived')}</span> : null}
+                </dd>
+              </div>
+            ) : null}
+            {hasProjectValue ? (
+              <div className="min-w-0 bg-slate-950/35 p-4">
+                <dt className="text-[0.68rem] font-bold uppercase tracking-[0.16em] text-slate-400">{t('projectValue')}</dt>
+                <dd className="mt-2 break-words text-xl font-bold tracking-tight text-white sm:text-2xl">{currency.format(projectValue)}</dd>
+              </div>
+            ) : null}
+            {projectCreatedDate ? (
+              <div className={`min-w-0 bg-slate-950/35 p-4 ${!projectSignedDate ? 'col-span-2' : ''}`}>
+                <dt className="text-[0.68rem] font-bold uppercase tracking-[0.16em] text-slate-400">{t('dateCreated')}</dt>
+                <dd className="mt-2 break-words text-sm font-semibold leading-5 text-white">{projectCreatedDate}</dd>
+              </div>
+            ) : null}
+            {projectSignedDate ? (
+              <div className={`min-w-0 bg-slate-950/35 p-4 ${!projectCreatedDate ? 'col-span-2' : ''}`}>
+                <dt className="text-[0.68rem] font-bold uppercase tracking-[0.16em] text-slate-400">{t('signedDate')}</dt>
+                <dd className="mt-2 break-words text-sm font-semibold leading-5 text-white">{projectSignedDate}</dd>
+              </div>
+            ) : null}
+          </dl>
+        </div>
+
+        <div data-project-workspace-hero-actions="true" className="relative mt-7 flex flex-col gap-2 border-t border-white/10 pt-5 sm:flex-row sm:flex-wrap sm:items-center">
+          {actionButtons.map((button) => {
+            const Icon = button.icon
+            return (
+              <button
+                key={button.label}
+                type="button"
+                onClick={button.action}
+                disabled={button.disabled}
+                className={`inline-flex min-h-12 w-full items-center justify-center gap-2 rounded-2xl px-4 py-3 text-sm font-bold transition focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-blue-200 focus-visible:ring-offset-2 focus-visible:ring-offset-slate-950 disabled:cursor-not-allowed disabled:opacity-60 sm:w-auto ${button.primary ? 'bg-blue-500 text-white shadow-lg shadow-blue-950/25 hover:bg-blue-400 disabled:bg-blue-400' : 'border border-white/15 bg-white/10 text-white hover:bg-white/15'}`}
+              >
+                <Icon className="h-4 w-4" aria-hidden="true" /> {button.label}
+              </button>
+            )
+          })}
+          {moreMenuItems.length > 0 ? (
+            <ActionMenu
+              label={<><MoreVertical className="h-4 w-4" aria-hidden="true" /> {t('more')}</>}
+              ariaLabel={t('more')}
+              containerClassName="w-full sm:w-auto"
+              buttonClassName="inline-flex min-h-12 w-full items-center justify-center gap-2 rounded-2xl border border-white/15 bg-white/10 px-4 py-3 text-sm font-bold text-white transition hover:bg-white/15 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-blue-200 focus-visible:ring-offset-2 focus-visible:ring-offset-slate-950 sm:w-auto"
+              menuClassName="max-w-[calc(100vw-3rem)]"
+              items={moreMenuItems}
+            />
+          ) : null}
+          {projectIsArchived ? (
+            <button type="button" onClick={() => setConfirmAction({ mode: 'delete' })} className="inline-flex min-h-12 w-full items-center justify-center gap-2 rounded-2xl border border-red-300/30 bg-red-400/10 px-4 py-3 text-sm font-bold text-red-100 transition hover:bg-red-400/20 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-red-200 focus-visible:ring-offset-2 focus-visible:ring-offset-slate-950 sm:w-auto">
+              <Trash2 className="h-4 w-4" aria-hidden="true" /> {t('deletePermanently')}
+            </button>
+          ) : null}
+        </div>
+        {!canRecordPayment ? (
+          <p className="relative mt-3 text-sm text-amber-200">{t('recordPaymentRequiresRealProject')}</p>
+        ) : null}
+      </section>
+
+      <div data-project-workspace-layout="true" className="grid min-w-0 grid-cols-1 gap-4 md:grid-cols-2 xl:grid-cols-6">
+      <section className="contents">
+        <div className="order-1 min-w-0 [&>article]:h-full xl:col-span-2">
+          <InfoCard title={t('clientInformation')}>
+            <DetailRow label={t('name')} value={currentLead.client || t('noClientLinked')} />
+            <DetailRow label={t('phone')} value={currentLead.phone || t('notAdded')} />
+            <DetailRow label={t('email')} value={currentLead.email || t('notAdded')} />
+            <DetailRow label={t('address')} value={currentLead.address || currentLead.location} />
+            {hasClientLink && (
+              <button
+                onClick={() => navigate(`/clients/${currentLead.clientId}`)}
+                className="mt-4 inline-flex w-full items-center justify-center gap-2 rounded-2xl border border-slate-200 bg-white px-4 py-3 text-sm font-bold text-slate-800 hover:bg-slate-50 sm:w-auto"
+              >
+                {t('viewClient')}
+              </button>
+            )}
+          </InfoCard>
+        </div>
+        {isAnalyticsMode && (
+          <div className="order-7 min-w-0 md:col-span-2 [&>article]:h-full xl:col-span-6">
+            <InfoCard title={recordDetailsTitle}>
+              <DetailRow label={t('status')} value={tStatus(t, currentLead.projectStatus || currentLead.status)} />
+              <DetailRow label={t('priority')} value={currentLead.priority} />
+              <DetailRow label={t('source')} value={currentLead.source || t('notAdded')} />
+              <DetailRow label={t('projectType')} value={currentLead.projectType || currentLead.projectTitle || t('unknownProject')} />
+            </InfoCard>
+          </div>
+        )}
+        <div className="order-2 min-w-0 [&>article]:h-full xl:col-span-2">
+          <InfoCard title={t('customerPortal')} bodyClassName="space-y-3">
+            <p className="text-sm leading-6 text-slate-600">{t('clientPortalCardHelp')}</p>
+            <div className="grid gap-2">
+              <button type="button" onClick={onOpenPortal} className="inline-flex min-h-11 w-full items-center justify-center gap-2 rounded-2xl bg-blue-600 px-4 py-2.5 text-sm font-bold text-white transition hover:bg-blue-700 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-blue-500 focus-visible:ring-offset-2">
+                {t('openCustomerPortal')} <ExternalLink className="h-4 w-4" aria-hidden="true" />
+              </button>
+              <div className="grid grid-cols-2 gap-2">
+                <button type="button" onClick={copyPortalLink} disabled={!portalShareUrl} className="inline-flex min-h-11 w-full items-center justify-center gap-2 rounded-2xl border border-slate-200 bg-white px-3 py-2.5 text-sm font-bold text-slate-800 transition hover:bg-slate-50 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-blue-500 focus-visible:ring-offset-2 disabled:cursor-not-allowed disabled:opacity-60">
+                  <Copy className="h-4 w-4 shrink-0" aria-hidden="true" /> {t('copyLink')}
+                </button>
+                <button type="button" onClick={() => setShowPortalLinkModal(true)} className="inline-flex min-h-11 w-full items-center justify-center gap-2 rounded-2xl border border-slate-200 bg-white px-3 py-2.5 text-sm font-bold text-slate-800 transition hover:bg-slate-50 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-blue-500 focus-visible:ring-offset-2">
+                  <Share2 className="h-4 w-4 shrink-0" aria-hidden="true" /> {t('sendLinkToClient')}
+                </button>
+              </div>
             </div>
-          )}
+          </InfoCard>
         </div>
       </section>
 
-      <section className="rounded-3xl border border-slate-200 bg-white p-5 shadow-sm">
-          <div className="mb-4">
-            <h2 className="text-xl font-bold text-slate-950">{t('contractorActions')}</h2>
-            <p className="mt-1 text-sm text-slate-500">{t('contractorActionsHelp')}</p>
-          </div>
-          <div className="grid gap-3 sm:grid-cols-2 xl:grid-cols-4">
-            {actionButtons.map((button) => {
-              const Icon = button.icon
-              return (
-                <button
-                  key={button.label}
-                  type="button"
-                  onClick={button.action}
-                  disabled={button.disabled}
-                  className={`flex min-h-[58px] items-center justify-center gap-2 rounded-2xl px-4 py-3 text-sm font-bold transition disabled:cursor-not-allowed disabled:opacity-60 ${button.primary ? 'bg-blue-600 text-white hover:bg-blue-700 disabled:bg-blue-400' : 'border border-slate-200 bg-slate-50 text-slate-800 hover:bg-white hover:shadow-sm disabled:hover:bg-slate-50 disabled:hover:shadow-none'}`}
-                >
-                  <Icon className="h-4 w-4" /> {button.label}
-                </button>
-              )
-            })}
-            {moreMenuItems.length > 0 && (
-              <ActionMenu label={t('more')} items={moreMenuItems} />
-            )}
-          </div>
-          {!canRecordPayment && (
-            <p className="mt-3 text-sm text-amber-700">{t('recordPaymentRequiresRealProject')}</p>
-          )}
-          {projectIsArchived && (
-            <button onClick={() => setConfirmAction({ mode: 'delete' })} className="mt-3 inline-flex w-full items-center justify-center gap-2 rounded-2xl border border-red-200 bg-red-50 px-4 py-3 text-sm font-bold text-red-700 hover:bg-red-100 sm:w-auto">
-              <Trash2 className="h-4 w-4" /> {t('deletePermanently')}
-            </button>
-          )}
-      </section>
-
-      <section className="grid gap-4 lg:grid-cols-3">
-        <InfoCard title={t('clientInformation')}>
-          <DetailRow label={t('name')} value={currentLead.client || t('noClientLinked')} />
-          <DetailRow label={t('phone')} value={currentLead.phone || t('notAdded')} />
-          <DetailRow label={t('email')} value={currentLead.email || t('notAdded')} />
-          <DetailRow label={t('address')} value={currentLead.address || currentLead.location} />
-          {hasClientLink && (
-            <button
-              onClick={() => navigate(`/clients/${currentLead.clientId}`)}
-              className="mt-4 inline-flex w-full items-center justify-center gap-2 rounded-2xl border border-slate-200 bg-white px-4 py-3 text-sm font-bold text-slate-800 hover:bg-slate-50 sm:w-auto"
-            >
-              {t('viewClient')}
-            </button>
-          )}
-        </InfoCard>
-        {isAnalyticsMode && (
-          <InfoCard title={recordDetailsTitle}>
-            <DetailRow label={t('status')} value={tStatus(t, currentLead.projectStatus || currentLead.status)} />
-            <DetailRow label={t('priority')} value={currentLead.priority} />
-            <DetailRow label={t('source')} value={currentLead.source || t('notAdded')} />
-            <DetailRow label={t('projectType')} value={currentLead.projectType || currentLead.projectTitle || t('unknownProject')} />
-          </InfoCard>
-        )}
-        <InfoCard title={t('customerPortal')}>
-          <p className="text-sm leading-6 text-slate-600">{t('clientPortalCardHelp')}</p>
-          <div className="mt-4 min-w-0 overflow-hidden rounded-2xl bg-slate-50 p-3 text-sm font-semibold text-slate-700">
-            <p className="break-all">{normalizePortalShareUrl(portal.shareUrl)}</p>
-          </div>
-          <div className="mt-4 grid gap-3">
-            <button onClick={onOpenPortal} className="inline-flex w-full items-center justify-center gap-2 rounded-2xl bg-blue-600 px-4 py-3 text-sm font-bold text-white hover:bg-blue-700">
-              {t('openCustomerPortal')} <ExternalLink className="h-4 w-4" />
-            </button>
-            <button onClick={() => setShowPortalLinkModal(true)} className="inline-flex w-full items-center justify-center gap-2 rounded-2xl border border-slate-200 bg-white px-4 py-3 text-sm font-bold text-slate-800 hover:bg-slate-50">
-              {t('sendLinkToClient')} <Share2 className="h-4 w-4" />
-            </button>
-          </div>
-        </InfoCard>
-      </section>
-
-      <section className="grid gap-4 lg:grid-cols-[minmax(0,1.15fr)_minmax(0,0.85fr)]">
-        <div className="rounded-3xl border border-slate-200 bg-white p-5 shadow-sm">
+      <section className="contents">
+        <div className="order-3 min-w-0 rounded-3xl border border-slate-200 bg-white p-5 shadow-sm md:col-span-2 xl:col-span-2">
           <div className="mb-4">
             <h2 className="text-xl font-bold text-slate-950">{t('projectDocuments')}</h2>
             <p className="text-sm text-slate-500">{t('documents')}</p>
@@ -1539,7 +1634,7 @@ function ProjectDetailPageContent({ lead, companySettings, clients = [], schedul
           </div>
         </div>
 
-        <div className="rounded-3xl border border-slate-200 bg-white p-5 shadow-sm">
+        <div className="order-4 min-w-0 rounded-3xl border border-slate-200 bg-white p-5 shadow-sm xl:col-span-3">
           <div className="mb-4">
             <h2 className="text-xl font-bold text-slate-950">{t('paymentHistory')}</h2>
             <p className="text-sm text-slate-500">{t('paymentsRecorded')}</p>
@@ -1633,7 +1728,7 @@ function ProjectDetailPageContent({ lead, companySettings, clients = [], schedul
         </div>
       </section>
 
-      <section className="rounded-3xl border border-slate-200 bg-white p-5 shadow-sm">
+      <section className="order-6 min-w-0 rounded-3xl border border-slate-200 bg-white p-5 shadow-sm md:col-span-2 xl:col-span-6">
         <div className="mb-4 flex flex-col justify-between gap-3 sm:flex-row sm:items-center">
           <div>
             <h2 className="text-xl font-bold text-slate-950">{t('projectPhotos')}</h2>
@@ -1710,7 +1805,7 @@ function ProjectDetailPageContent({ lead, companySettings, clients = [], schedul
         )}
       </section>
 
-      <section id="project-schedule" className="scroll-mt-24 rounded-3xl border border-slate-200 bg-white p-5 shadow-sm">
+      <section id="project-schedule" className="order-5 min-w-0 scroll-mt-24 rounded-3xl border border-slate-200 bg-white p-5 shadow-sm xl:col-span-3">
         <div className="mb-4 flex flex-col justify-between gap-3 sm:flex-row sm:items-center">
           <div>
             <h2 className="text-xl font-bold text-slate-950">{t('projectSchedule')}</h2>
@@ -1818,6 +1913,7 @@ function ProjectDetailPageContent({ lead, companySettings, clients = [], schedul
           </div>
         )}
       </section>
+      </div>
 
       <LeadFormModal
         isOpen={isEditOpen}
@@ -1922,7 +2018,7 @@ function ProjectDetailPageContent({ lead, companySettings, clients = [], schedul
         documentType="portalLink"
         customer={{ name: currentLead.client, phone: currentLead.phone, email: currentLead.email }}
         projectTitle={currentLead.projectTitle || currentLead.projectType}
-        portalUrl={normalizePortalShareUrl(portal.shareUrl)}
+        portalUrl={portalShareUrl}
         onClose={() => setShowPortalLinkModal(false)}
         onSent={() => setShowPortalLinkModal(false)}
         t={t}

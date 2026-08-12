@@ -134,27 +134,27 @@ function formatDisplayDate(value) {
   })
 }
 
-function normalizeStatusValue(status = '') {
-  const rawValue = String(status || '').trim()
-  if (!rawValue) return ''
+function resolveExplicitContractSignedDate(contract = {}) {
+  const signedDate = (
+    contract?.signedDate
+    || contract?.signed_date
+    || contract?.signedAt
+    || contract?.signed_at
+    || ''
+  )
 
-  const token = rawValue.split('.').filter(Boolean).pop() || rawValue
-  return token
-    .replace(/[_-]+/g, ' ')
-    .replace(/\b\w/g, (character) => character.toUpperCase())
+  return String(signedDate).trim()
 }
 
-function formatCustomerFacingDocumentStatus(status = '', documentType = '', t = (key) => key) {
-  const normalizedStatus = normalizeStatusValue(status)
-  if (!normalizedStatus) return t('notAdded')
+function resolveContractCardAmount(contract = {}) {
+  const storedAmount = contract?.total ?? contract?.totalAmount ?? contract?.contractAmount
+  const hasValidStoredAmount = storedAmount !== null
+    && storedAmount !== undefined
+    && storedAmount !== ''
+    && Number.isFinite(Number(storedAmount))
+  const hasStoredAmount = hasValidStoredAmount && contract?.hasStoredContractAmount !== false
 
-  if (normalizedStatus === 'Sent') {
-    if (documentType === 'estimate') return t('estimateSent')
-    if (documentType === 'contract') return t('contractSent')
-    if (documentType === 'invoice') return t('invoiceSent')
-  }
-
-  return tStatus(t, normalizedStatus)
+  return hasStoredAmount ? Number(storedAmount) : null
 }
 
 function getPortalPhotoDisplayTitle(photo = {}, t = (key) => key) {
@@ -218,19 +218,23 @@ function DocumentPreviewModal({ isOpen, title, onClose, onPrimaryAction, primary
 }
 
 function DocumentRow({ title, details = [], primaryAction = null, secondaryAction = null }) {
+  const visibleDetails = details.filter((detail) => detail?.label && detail?.value)
+
   return (
-    <div className="rounded-2xl border border-slate-200 bg-slate-50 p-4 sm:p-5">
-      <div className="flex flex-col gap-4 lg:flex-row lg:items-start lg:justify-between">
+    <div data-portal-document-card="true" className="rounded-2xl border border-slate-200 bg-slate-50 p-4 sm:p-5">
+      <div className="flex flex-col gap-3 lg:flex-row lg:items-center lg:justify-between">
         <div className="min-w-0 flex-1">
           <p className="text-sm font-bold text-slate-950">{title}</p>
-          <div className="mt-3 grid gap-3 sm:grid-cols-2">
-            {details.map((detail) => (
-              <div key={detail.label}>
-                <p className="text-xs font-semibold uppercase tracking-[0.18em] text-slate-500">{detail.label}</p>
-                <p className="mt-1 text-sm font-semibold text-slate-900">{detail.value}</p>
-              </div>
-            ))}
-          </div>
+          {visibleDetails.length ? (
+            <div data-portal-document-details="true" className="mt-2 grid gap-3 sm:grid-cols-2">
+              {visibleDetails.map((detail) => (
+                <div key={detail.label}>
+                  <p className="text-xs font-semibold uppercase tracking-[0.18em] text-slate-500">{detail.label}</p>
+                  <p className="mt-1 text-sm font-semibold text-slate-900">{detail.value}</p>
+                </div>
+              ))}
+            </div>
+          ) : null}
         </div>
         <div className="flex shrink-0 flex-col gap-3 sm:flex-row sm:flex-wrap lg:flex-col xl:flex-row">
           {primaryAction}
@@ -294,6 +298,8 @@ export function PortalSummary({
   const previewLead = useMemo(() => buildPreviewLead(project, client), [client, project])
   const estimateNumber = estimate ? getEstimateDisplayNumber(estimate, project) : ''
   const contractNumber = contract ? getContractDisplayNumber(contract, project) : ''
+  const contractSignedDate = resolveExplicitContractSignedDate(contract)
+  const contractCardAmount = resolveContractCardAmount(contract)
   const contractOutputLanguage = contract?.contractLanguage && contract.contractLanguage !== 'match' ? contract.contractLanguage : null
   const contractDocumentT = useMemo(() => (
     contractOutputLanguage ? createTranslator(contractOutputLanguage) : t
@@ -490,8 +496,6 @@ export function PortalSummary({
                 <DocumentRow
                   title={t('estimate')}
                   details={[
-                    { label: t('number'), value: formatValue(estimateNumber, t('notAdded')) },
-                    { label: t('status'), value: formatCustomerFacingDocumentStatus(estimate?.status, 'estimate', t) },
                     { label: t('estimateAmount'), value: formatCurrencyValue(estimate?.total ?? estimate?.totalAmount ?? estimate?.amount, t('notAdded')) },
                   ]}
                   primaryAction={(
@@ -513,9 +517,8 @@ export function PortalSummary({
                 <DocumentRow
                   title={t('contract')}
                   details={[
-                    { label: t('number'), value: formatValue(contractNumber, t('notAdded')) },
-                    { label: t('status'), value: formatCustomerFacingDocumentStatus(contract?.status, 'contract', t) },
-                    { label: t('signedDate'), value: formatValue(contract?.signedDate, t('notAdded')) },
+                    ...(contractCardAmount !== null ? [{ label: t('contractAmount'), value: currency.format(contractCardAmount) }] : []),
+                    ...(contractSignedDate ? [{ label: t('signedDate'), value: contractSignedDate }] : []),
                   ]}
                   primaryAction={(
                     <button onClick={() => setOpenDocument('contract')} className="w-full rounded-2xl bg-slate-950 px-4 py-3 text-sm font-bold text-white hover:bg-slate-800 sm:w-auto">
