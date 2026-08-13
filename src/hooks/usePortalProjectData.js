@@ -2,6 +2,7 @@ import { useEffect, useMemo, useState } from 'react'
 import { USE_SUPABASE_EVENTS, USE_SUPABASE_PAYMENTS, USE_SUPABASE_PROJECTS } from '../config/backendConfig'
 import { useAuth } from '../contexts/AuthContext'
 import dataProvider from '../services/dataProvider'
+import publicPortalService from '../services/publicPortalService'
 import { getClientsContractorId } from '../services/system/clientsRuntimeService'
 import { getProjectsContractorId } from '../services/system/projectsRuntimeService'
 import { hasContractData, readLinkedContractDraft, writeLinkedContractDrafts } from '../utils/contractLinks'
@@ -171,6 +172,7 @@ function readProjectEventFallbacks(project = {}) {
     ...(Array.isArray(project?.scheduleEvents) ? project.scheduleEvents : []),
     ...(Array.isArray(project?.schedule) ? project.schedule : []),
     ...(Array.isArray(project?.events) ? project.events : []),
+    ...(Array.isArray(project?.portal?.events) ? project.portal.events : []),
   ]))
 }
 
@@ -203,6 +205,9 @@ export function usePortalProjectData({ portalId = '', projects = [], clients = [
   const [client, setClient] = useState(() => findClientRecord(clients, initialProject))
   const [paymentRecords, setPaymentRecords] = useState(() => readProjectPaymentFallbacks(initialProject))
   const [eventRecords, setEventRecords] = useState(() => readProjectEventFallbacks(initialProject))
+  const [publicCompanySettings, setPublicCompanySettings] = useState(null)
+  const [publicPortalPhotos, setPublicPortalPhotos] = useState([])
+  const [portalLoadError, setPortalLoadError] = useState(null)
   const [isLoading, setIsLoading] = useState(Boolean(USE_SUPABASE_PROJECTS && portalId))
   const [hasLoaded, setHasLoaded] = useState(!USE_SUPABASE_PROJECTS)
 
@@ -221,44 +226,48 @@ export function usePortalProjectData({ portalId = '', projects = [], clients = [
       return undefined
     }
 
-    if (!projectsContractorId) {
-      setProject(initialProject || null)
-      setIsLoading(false)
-      setHasLoaded(true)
-      return undefined
-    }
-
     let isCancelled = false
+    const abortController = new AbortController()
 
     async function loadProject() {
       setIsLoading(true)
+      setPortalLoadError(null)
 
       try {
-        let resolvedProject = initialProject || null
-
-        if (!resolvedProject) {
-          const response = await dataProvider.projects.getById(portalId, { contractorId: projectsContractorId })
-
-          if (response?.data && !response?.error) {
-            resolvedProject = response.data
-          } else {
-            const listResponse = await dataProvider.projects.list({
-              contractorId: projectsContractorId,
-              includeArchived: true,
-            })
-
-            if (!listResponse?.error && Array.isArray(listResponse?.data)) {
-              resolvedProject = findPortalProject(listResponse.data, portalId)
+        const response = await publicPortalService.getByToken(portalId, { signal: abortController.signal })
+        const payload = response?.data || null
+        const resolvedProject = payload?.project
+          ? {
+              ...payload.project,
+              publicPortalData: true,
+              portal: {
+                ...(payload.project.portal || {}),
+                client: payload.client || {},
+                estimate: payload.estimate || {},
+                contract: payload.contract || {},
+                payments: Array.isArray(payload.payments) ? payload.payments : [],
+                events: Array.isArray(payload.events) ? payload.events : [],
+                photos: Array.isArray(payload.photos) ? payload.photos : [],
+              },
             }
-          }
-        }
+          : initialProject || null
 
         if (!isCancelled) {
           setProject(resolvedProject || null)
+          setClient(payload?.client || findClientRecord(clients, resolvedProject))
+          setEstimate(normalizeEstimateRecord(payload?.estimate || resolvedProject?.portal?.estimate))
+          setContract(normalizeContractRecord(payload?.contract || resolvedProject?.portal?.contract))
+          setPaymentRecords(dedupePayments(payload?.payments || readProjectPaymentFallbacks(resolvedProject)))
+          setEventRecords(sortProjectEvents(dedupeProjectEvents(payload?.events || readProjectEventFallbacks(resolvedProject))))
+          setPublicPortalPhotos(Array.isArray(payload?.photos) ? payload.photos : [])
+          setPublicCompanySettings(payload?.companySettings || null)
+          setPortalLoadError(response?.error || null)
         }
-      } catch {
+      } catch (error) {
+        if (error?.name === 'AbortError') return
         if (!isCancelled) {
           setProject(initialProject || null)
+          setPortalLoadError(error)
         }
       } finally {
         if (!isCancelled) {
@@ -272,13 +281,19 @@ export function usePortalProjectData({ portalId = '', projects = [], clients = [
 
     return () => {
       isCancelled = true
+      abortController.abort()
     }
-  }, [initialProject, portalId, projectsContractorId])
+  }, [clients, initialProject, portalId])
 
   useEffect(() => {
     let isCancelled = false
 
     async function loadEstimate() {
+      if (project?.publicPortalData) {
+        setEstimate(normalizeEstimateRecord(project?.portal?.estimate))
+        return
+      }
+
       const linkedProjectId = resolveLinkedProjectId(project)
       const linkedLeadId = project?.leadId || project?.lead_id || ''
       const projectDraft = readLinkedEstimateDraft(project || portalId, [portalId, linkedProjectId, linkedLeadId])
@@ -336,6 +351,11 @@ export function usePortalProjectData({ portalId = '', projects = [], clients = [
     let isCancelled = false
 
     async function loadContract() {
+      if (project?.publicPortalData) {
+        setContract(normalizeContractRecord(project?.portal?.contract))
+        return
+      }
+
       const linkedProjectId = resolveLinkedProjectId(project)
       const linkedLeadId = project?.leadId || project?.lead_id || ''
       const linkedEstimateId = estimate?.id || project?.estimateId || project?.estimate_id || ''
@@ -394,6 +414,11 @@ export function usePortalProjectData({ portalId = '', projects = [], clients = [
     let isCancelled = false
 
     async function loadClient() {
+      if (project?.publicPortalData) {
+        setClient(project?.portal?.client || null)
+        return
+      }
+
       const fallbackClient = findClientRecord(clients, project)
       const clientId = project?.clientId || project?.client_id || fallbackClient?.id || ''
 
@@ -433,6 +458,12 @@ export function usePortalProjectData({ portalId = '', projects = [], clients = [
 
     async function loadPayments() {
       const fallbackPayments = readProjectPaymentFallbacks(project)
+
+      if (project?.publicPortalData) {
+        setPaymentRecords(fallbackPayments)
+        return
+      }
+
       const linkedProjectId = resolveLinkedProjectId(project)
       const linkedLeadId = project?.leadId || project?.lead_id || ''
       const clientId = project?.clientId || project?.client_id || ''
@@ -491,6 +522,11 @@ export function usePortalProjectData({ portalId = '', projects = [], clients = [
     let isCancelled = false
 
     async function loadEvents() {
+      if (project?.publicPortalData) {
+        setEventRecords(readProjectEventFallbacks(project))
+        return
+      }
+
       const linkedProjectId = resolveLinkedProjectId(project)
       const relatedLeadId = project?.leadId || project?.lead_id || ''
       const clientId = project?.clientId || project?.client_id || ''
@@ -581,6 +617,10 @@ export function usePortalProjectData({ portalId = '', projects = [], clients = [
     contract,
     paymentSummary,
     upcomingEvents,
+    publicCompanySettings,
+    publicPortalPhotos,
+    portalVisibility: publicCompanySettings?.portal || null,
+    portalLoadError,
     contractorId: hydratedProject?.contractorId || project?.contractorId || project?.contractor_id || projectsContractorId || '',
     isLoading,
     notFound: hasLoaded && !hydratedProject,

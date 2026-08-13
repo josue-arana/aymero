@@ -4319,7 +4319,7 @@ function ProjectRoute({ companySettings, leads, clients, scheduleEvents = [], ar
       clients={clients}
       isArchived={archivedIds.includes(projectId)}
       onBack={onBack}
-      onOpenPortal={() => onOpenPortal(projectId)}
+      onOpenPortal={(portalTargetId) => onOpenPortal(portalTargetId || projectId)}
       onOpenContract={onOpenContract}
       onConvertEstimate={onConvertEstimate}
       onUpdateLead={onUpdateLead}
