@@ -349,6 +349,8 @@ export const es = {
   "clientPortalUnavailableHelp": "No se pudo cargar el portal en este momento. Inténtalo de nuevo más tarde o comunícate con tu contratista.",
   "loadingProject": "Cargando proyecto",
   "projectLoadingHelp": "Estamos cargando los detalles más recientes de este trabajo.",
+  "loadingClientPortal": "Cargando el Portal del Cliente",
+  "loadingClientPortalHelp": "Cargando la información más reciente de tu proyecto...",
   "portalNotFound": "Portal no encontrado",
   "portalNotFoundDescription": "Este enlace del portal no coincide con un proyecto activo.",
   "portalClientEmptyState": "La información del cliente aparecerá aquí cuando este proyecto esté vinculado a un cliente.",

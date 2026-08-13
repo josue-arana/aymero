@@ -63,10 +63,10 @@ function logPortalPhotoLoadError(error, meta = {}) {
   })
 }
 
-function ClientPortalPageContainer({ children }) {
+function ClientPortalPageContainer({ children, loading = false }) {
   return (
-    <main className="client-portal-page">
-      <div className="client-portal-page__container">
+    <main className={`client-portal-page${loading ? ' client-portal-page--loading' : ''}`}>
+      <div className={`client-portal-page__container${loading ? ' client-portal-page__container--loading' : ''}`}>
         {children}
       </div>
     </main>
@@ -91,11 +91,16 @@ function CustomerPortalNotFound({ onBack, canGoBack = false, isUnavailable = fal
 
 function CustomerPortalLoading({ t }) {
   return (
-    <ClientPortalPageContainer>
-      <section className="rounded-3xl border border-slate-200 bg-white p-8 text-center shadow-sm">
-        <h1 className="text-2xl font-bold text-slate-950">{t('customerPortal')}</h1>
-        <p className="mx-auto mt-3 max-w-xl text-sm leading-6 text-slate-500">{t('projectLoadingHelp')}</p>
-      </section>
+    <ClientPortalPageContainer loading>
+      <div className="client-portal-loader" role="status" aria-live="polite">
+        <span className="client-portal-loader__mark" aria-hidden="true">
+          <span className="client-portal-loader__core" />
+        </span>
+        <div>
+          <h1 className="client-portal-loader__title">{t('loadingClientPortal')}</h1>
+          <p className="client-portal-loader__message">{t('loadingClientPortalHelp')}</p>
+        </div>
+      </div>
     </ClientPortalPageContainer>
   )
 }
@@ -252,13 +257,16 @@ export function CustomerPortalPage({ projects = [], clients = [], onBack, t, lan
   const hasProjectValue = Number.isFinite(projectValue) && projectValue > 0
   const projectPhone = client?.phone || project?.phone || ''
   const projectStatus = project?.projectStatus || project?.status || ''
+  const isPublicTokenPortal = project?.publicPortalData === true
 
   return (
     <ClientPortalPageContainer>
-      <div className="flex items-center justify-between gap-3">
-        <button onClick={() => onBack?.(project?.id || project?.projectId || resolvedPortalId)} className="inline-flex items-center gap-2 text-sm font-semibold text-slate-600 hover:text-slate-950">
-          <ArrowLeft className="h-4 w-4" /> {t('back')}
-        </button>
+      <div className={`flex items-center gap-3 ${isPublicTokenPortal ? 'justify-end' : 'justify-between'}`}>
+        {!isPublicTokenPortal ? (
+          <button onClick={() => onBack?.(project?.id || project?.projectId || resolvedPortalId)} className="inline-flex items-center gap-2 text-sm font-semibold text-slate-600 hover:text-slate-950">
+            <ArrowLeft className="h-4 w-4" /> {t('back')}
+          </button>
+        ) : null}
         <button onClick={() => setLanguage(language === 'en' ? 'es' : 'en')} className="rounded-2xl border border-slate-200 bg-white px-4 py-3 text-xs font-bold text-slate-700 hover:bg-slate-50">{language === 'en' ? '🇪🇸 Español' : '🇺🇸 English'}</button>
       </div>
 
