@@ -102,6 +102,18 @@ function mapContract(row: Record<string, unknown> | null) {
   }
 }
 
+function mapPublicPayment(payment: Record<string, unknown>, publicProjectId: string) {
+  return {
+    projectId: publicProjectId,
+    amount: Number(payment.amount || 0),
+    paymentType: payment.payment_type || '',
+    paymentDate: payment.payment_date || '',
+    paymentMethod: payment.payment_method || payment.method || '',
+    status: payment.status || '',
+    createdAt: payment.created_at || '',
+  }
+}
+
 Deno.serve(async (request) => {
   if (request.method === 'OPTIONS') return new Response('ok', { headers: corsHeaders })
   if (request.method !== 'POST') return jsonResponse({ error: 'Method not allowed.' }, 405)
@@ -216,6 +228,7 @@ Deno.serve(async (request) => {
   const contract = mapContract(contractResult.data)
   const publicProjectId = project.public_portal_token
   const projectStatus = projectStatusLabels[String(project.status || '')] || project.status || ''
+  const publicPayments = (paymentResult.data || []).map((payment) => mapPublicPayment(payment, publicProjectId))
 
   return jsonResponse({
     project: {
@@ -242,14 +255,7 @@ Deno.serve(async (request) => {
       portal: {
         estimate: estimate || {},
         contract: contract || {},
-        payments: (paymentResult.data || []).map((payment) => ({
-          amount: Number(payment.amount || 0),
-          paymentType: payment.payment_type || '',
-          paymentDate: payment.payment_date || '',
-          paymentMethod: payment.payment_method || payment.method || '',
-          status: payment.status || '',
-          createdAt: payment.created_at || '',
-        })),
+        payments: publicPayments,
         events: (eventResult.data || []).map((event) => ({
           title: event.title || '',
           eventType: event.event_type || event.type || '',
@@ -277,14 +283,7 @@ Deno.serve(async (request) => {
     },
     estimate,
     contract,
-    payments: (paymentResult.data || []).map((payment) => ({
-      amount: Number(payment.amount || 0),
-      paymentType: payment.payment_type || '',
-      paymentDate: payment.payment_date || '',
-      paymentMethod: payment.payment_method || payment.method || '',
-      status: payment.status || '',
-      createdAt: payment.created_at || '',
-    })),
+    payments: publicPayments,
     events: (eventResult.data || []).map((event) => ({
       title: event.title || '',
       eventType: event.event_type || event.type || '',
