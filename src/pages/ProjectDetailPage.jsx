@@ -7,12 +7,11 @@ import { InfoCard } from '../components/ui/InfoCard'
 import { DetailRow } from '../components/ui/DetailRow'
 import { StatusBadge } from '../components/ui/StatusBadge'
 import { currency, formatDisplayDate } from '../utils/formatters'
-import { getPortalData } from '../utils/portal'
+import { getPortalData, normalizePortalShareUrl, resolvePortalRouteId } from '../utils/portal'
 import { tStatus } from '../translations'
 import { LeadFormModal } from '../components/leads/LeadFormModal'
 import { ConfirmRecordModal } from '../components/common/ConfirmRecordModal'
 import { SendToCustomerModal } from '../components/common/SendToCustomerModal'
-import { normalizePortalShareUrl } from '../utils/portal'
 import { RecordPaymentModal } from '../components/common/RecordPaymentModal'
 import { PhotoUploadModal } from '../components/common/PhotoUploadModal'
 import { useToast } from '../components/common/ToastProvider'
@@ -1562,7 +1561,7 @@ function ProjectDetailPageContent({ lead, companySettings, clients = [], schedul
           <InfoCard title={t('customerPortal')} bodyClassName="space-y-3">
             <p className="text-sm leading-6 text-slate-600">{t('clientPortalCardHelp')}</p>
             <div className="grid gap-2">
-              <button type="button" onClick={onOpenPortal} className="inline-flex min-h-11 w-full items-center justify-center gap-2 rounded-2xl bg-blue-600 px-4 py-2.5 text-sm font-bold text-white transition hover:bg-blue-700 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-blue-500 focus-visible:ring-offset-2">
+              <button type="button" onClick={() => onOpenPortal?.(resolvePortalRouteId(currentLead) || currentLead.id)} className="inline-flex min-h-11 w-full items-center justify-center gap-2 rounded-2xl bg-blue-600 px-4 py-2.5 text-sm font-bold text-white transition hover:bg-blue-700 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-blue-500 focus-visible:ring-offset-2">
                 {t('openCustomerPortal')} <ExternalLink className="h-4 w-4" aria-hidden="true" />
               </button>
               <div className="grid grid-cols-2 gap-2">

@@ -280,6 +280,9 @@ export function PortalSummary({
   isLoadingPhotos = false,
   photosLoadFailed = false,
   company = {},
+  showPayments = true,
+  showPhotos = true,
+  showDocuments = true,
   t = (key) => key,
 }) {
   const { showToast } = useToast()
@@ -454,7 +457,7 @@ export function PortalSummary({
   return (
     <>
       <div className="grid gap-5 lg:grid-cols-2">
-        <InfoCard title={<SectionTitle icon={Wallet} tone="emerald">{t('paymentHistory')}</SectionTitle>}>
+        {showPayments ? <InfoCard title={<SectionTitle icon={Wallet} tone="emerald">{t('paymentHistory')}</SectionTitle>}>
           <>
             <DetailRow label={t('projectValue')} value={formatCurrencyValue(paymentSummary?.projectValue ?? project?.value ?? 0, currency.format(0))} />
             <DetailRow label={t('amountPaid')} value={formatCurrencyValue(paymentSummary?.totalPaid ?? 0, currency.format(0))} />
@@ -465,7 +468,7 @@ export function PortalSummary({
               <CalloutEmptyState icon={CircleAlert} message={t('portalPaymentHistoryEmptyState')} />
             ) : null}
           </>
-        </InfoCard>
+        </InfoCard> : null}
 
         <InfoCard title={<SectionTitle icon={CalendarDays} tone="purple">{t('upcomingVisits')}</SectionTitle>}>
           {hasUpcomingEvents ? (
@@ -489,7 +492,7 @@ export function PortalSummary({
           )}
         </InfoCard>
 
-        <div className="lg:col-span-2">
+        {showDocuments ? <div className="lg:col-span-2">
           <InfoCard title={<SectionTitle icon={FileText} tone="orange">{t('documents')}</SectionTitle>}>
             <div className="space-y-4">
               {hasEstimate ? (
@@ -536,9 +539,9 @@ export function PortalSummary({
               )}
             </div>
           </InfoCard>
-        </div>
+        </div> : null}
 
-        <div className="lg:col-span-2">
+        {showPhotos ? <div className="lg:col-span-2">
           <InfoCard title={<SectionTitle icon={Images} tone="purple">{t('projectPhotos')}</SectionTitle>}>
             {isLoadingPhotos ? (
               <EmptyState message={t('loading')} />
@@ -572,7 +575,7 @@ export function PortalSummary({
               <CenteredEmptyState icon={Images} message={t('noProjectPhotosUploadedYet')} tone="purple" />
             )}
           </InfoCard>
-        </div>
+        </div> : null}
       </div>
 
       {hasEstimate ? (

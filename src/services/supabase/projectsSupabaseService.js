@@ -1,5 +1,6 @@
 import { USE_SUPABASE, USE_SUPABASE_PROJECTS } from '../../config/backendConfig'
 import { supabaseClient } from '../../lib/supabaseClient'
+import { buildPortalShareUrl } from '../../utils/portal'
 
 const TABLE_NAME = 'projects'
 
@@ -126,11 +127,14 @@ export function mapProjectRowToUiProject(row) {
   const description = row?.description || ''
   const address = row?.address || ''
   const status = row?.status || 'scheduled'
+  const portalId = row?.public_portal_token || ''
 
   return {
     id: row?.id || undefined,
     projectId: row?.id || undefined,
     project_id: row?.id || undefined,
+    portalId,
+    clientPortalId: portalId,
     contractorId: row?.contractor_id || undefined,
     clientId: row?.client_id || null,
     leadId: row?.lead_id || null,
@@ -169,7 +173,9 @@ export function mapProjectRowToUiProject(row) {
     invoices: [],
     payments: [],
     portal: {
-      shareUrl: '',
+      portalId,
+      clientPortalId: portalId,
+      shareUrl: portalId ? buildPortalShareUrl(portalId) : '',
       contractAmount: contractValue || value,
       depositRequired: 0,
       amountPaid: paid,

@@ -223,6 +223,7 @@ create table projects (
   completed_at timestamptz,
   notes text,
   sample_data_key text,
+  public_portal_token text not null default replace(gen_random_uuid()::text, '-', ''),
   created_at timestamptz not null default now(),
   updated_at timestamptz not null default now(),
   archived_at timestamptz
@@ -430,6 +431,7 @@ create index idx_contractor_members_contractor_id on contractor_members(contract
 create index idx_clients_contractor_id on clients(contractor_id);
 create index idx_leads_contractor_id on leads(contractor_id);
 create index idx_projects_contractor_id on projects(contractor_id);
+create unique index projects_public_portal_token_idx on projects(public_portal_token);
 create index idx_estimates_contractor_id on estimates(contractor_id);
 create index idx_contracts_contractor_id on contracts(contractor_id);
 create index idx_invoices_contractor_id on invoices(contractor_id);

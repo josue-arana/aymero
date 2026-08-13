@@ -1,4 +1,4 @@
-import { useEffect, useMemo, useState } from 'react'
+import { useEffect, useMemo, useRef, useState } from 'react'
 import { ArrowLeft, MapPin, Phone } from 'lucide-react'
 import { useParams } from 'react-router-dom'
 import { PortalSummary } from '../components/portal/PortalSummary'
@@ -73,15 +73,17 @@ function ClientPortalPageContainer({ children }) {
   )
 }
 
-function CustomerPortalNotFound({ onBack, t }) {
+function CustomerPortalNotFound({ onBack, canGoBack = false, isUnavailable = false, t }) {
   return (
     <ClientPortalPageContainer>
       <section className="rounded-3xl border border-slate-200 bg-white p-8 text-center shadow-sm">
-        <h1 className="text-2xl font-bold text-slate-950">{t('clientPortalNotFound')}</h1>
-        <p className="mx-auto mt-3 max-w-xl text-sm leading-6 text-slate-500">{t('clientPortalNotFoundHelp')}</p>
-        <button onClick={onBack} className="mt-6 rounded-2xl bg-slate-950 px-5 py-3 text-sm font-bold text-white hover:bg-slate-800">
-          {t('back')}
-        </button>
+        <h1 className="text-2xl font-bold text-slate-950">{t(isUnavailable ? 'clientPortalUnavailable' : 'clientPortalNotFound')}</h1>
+        <p className="mx-auto mt-3 max-w-xl text-sm leading-6 text-slate-500">{t(isUnavailable ? 'clientPortalUnavailableHelp' : 'clientPortalNotFoundHelp')}</p>
+        {canGoBack ? (
+          <button type="button" onClick={onBack} className="mt-6 rounded-2xl bg-slate-950 px-5 py-3 text-sm font-bold text-white hover:bg-slate-800 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-blue-500 focus-visible:ring-offset-2">
+            {t('back')}
+          </button>
+        ) : null}
       </section>
     </ClientPortalPageContainer>
   )
@@ -111,6 +113,10 @@ export function CustomerPortalPage({ projects = [], clients = [], onBack, t, lan
     isLoading,
     notFound,
     contractorId,
+    publicCompanySettings,
+    publicPortalPhotos,
+    portalVisibility,
+    portalLoadError,
   } = usePortalProjectData({
     portalId: resolvedPortalId,
     projects,
@@ -119,6 +125,19 @@ export function CustomerPortalPage({ projects = [], clients = [], onBack, t, lan
   const [projectPhotos, setProjectPhotos] = useState([])
   const [isLoadingPhotos, setIsLoadingPhotos] = useState(false)
   const [photosLoadFailed, setPhotosLoadFailed] = useState(false)
+  const hasAppliedPublicLanguage = useRef(false)
+  const resolvedCompanySettings = publicCompanySettings || companySettings
+  const showPayments = portalVisibility?.showPayments ?? resolvedCompanySettings?.portal?.showPayments ?? true
+  const showPhotos = portalVisibility?.showPhotos ?? resolvedCompanySettings?.portal?.showPhotos ?? true
+  const showDocuments = portalVisibility?.showDocuments ?? resolvedCompanySettings?.portal?.showDocuments ?? true
+
+  useEffect(() => {
+    const publicLanguage = publicCompanySettings?.portal?.defaultLanguage
+    if (hasAppliedPublicLanguage.current || !publicLanguage) return
+
+    hasAppliedPublicLanguage.current = true
+    if (publicLanguage !== language) setLanguage(publicLanguage)
+  }, [language, publicCompanySettings?.portal?.defaultLanguage, setLanguage])
 
   const resolvedProjectId = useMemo(
     () => resolveLinkedProjectId(project, resolvedPortalId),
@@ -141,6 +160,20 @@ export function CustomerPortalPage({ projects = [], clients = [], onBack, t, lan
     let isCancelled = false
 
     async function loadProjectPhotos() {
+      if (!showPhotos) {
+        setProjectPhotos([])
+        setPhotosLoadFailed(false)
+        setIsLoadingPhotos(false)
+        return
+      }
+
+      if (project?.publicPortalData) {
+        setProjectPhotos(dedupePortalPhotos(publicPortalPhotos, resolvedProjectId, '', resolvedClientId))
+        setPhotosLoadFailed(false)
+        setIsLoadingPhotos(false)
+        return
+      }
+
       if (!resolvedProjectId || !resolvedContractorId) {
         setProjectPhotos(fallbackProjectPhotos)
         setPhotosLoadFailed(false)
@@ -201,14 +234,15 @@ export function CustomerPortalPage({ projects = [], clients = [], onBack, t, lan
     return () => {
       isCancelled = true
     }
-  }, [fallbackProjectPhotos, resolvedClientId, resolvedContractorId, resolvedProjectId])
+  }, [fallbackProjectPhotos, project?.publicPortalData, publicPortalPhotos, resolvedClientId, resolvedContractorId, resolvedProjectId, showPhotos])
 
   if (isLoading) {
     return <CustomerPortalLoading t={t} />
   }
 
   if (notFound) {
-    return <CustomerPortalNotFound onBack={() => onBack?.(resolvedPortalId)} t={t} />
+    const canGoBack = typeof document !== 'undefined' && Boolean(document.referrer)
+    return <CustomerPortalNotFound onBack={() => onBack?.(resolvedPortalId)} canGoBack={canGoBack} isUnavailable={Boolean(portalLoadError && portalLoadError.code !== 'PORTAL_NOT_FOUND')} t={t} />
   }
 
   const clientName = client?.displayName || client?.name || project?.client || project?.clientName || t('notAdded')
@@ -243,9 +277,9 @@ export function CustomerPortalPage({ projects = [], clients = [], onBack, t, lan
               <div className="flex flex-col gap-8 lg:flex-row lg:items-end lg:justify-between">
                 <div className="max-w-3xl">
                   <div className="mb-5 flex items-center gap-3">
-                    {companySettings?.company?.logo ? <img src={companySettings.company.logo} alt="" className="h-14 w-14 rounded-2xl object-cover ring-1 ring-white/20" /> : <div className="flex h-14 w-14 items-center justify-center rounded-2xl bg-white/10 text-sm font-bold text-white ring-1 ring-white/20">{t('brandInitials')}</div>}
+                    {resolvedCompanySettings?.company?.logo ? <img src={resolvedCompanySettings.company.logo} alt="" className="h-14 w-14 rounded-2xl object-cover ring-1 ring-white/20" /> : <div className="flex h-14 w-14 items-center justify-center rounded-2xl bg-white/10 text-sm font-bold text-white ring-1 ring-white/20">{t('brandInitials')}</div>}
                     <div className="min-w-0">
-                      <p className="truncate text-sm font-bold text-white">{companySettings?.company?.name || t('brandName')}</p>
+                      <p className="truncate text-sm font-bold text-white">{resolvedCompanySettings?.company?.name || t('brandName')}</p>
                       <p className="text-xs font-semibold uppercase tracking-[0.24em] text-blue-200">{t('customerPortal')}</p>
                     </div>
                   </div>
@@ -307,7 +341,10 @@ export function CustomerPortalPage({ projects = [], clients = [], onBack, t, lan
           projectPhotos={projectPhotos}
           isLoadingPhotos={isLoadingPhotos}
           photosLoadFailed={photosLoadFailed}
-          company={companySettings?.company}
+          company={resolvedCompanySettings?.company}
+          showPayments={showPayments}
+          showPhotos={showPhotos}
+          showDocuments={showDocuments}
           t={t}
         />
       </div>
