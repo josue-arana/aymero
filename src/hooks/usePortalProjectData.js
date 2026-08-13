@@ -167,6 +167,13 @@ function readProjectPaymentFallbacks(project = {}) {
   ])
 }
 
+function normalizePublicPaymentRecords(payments = [], publicProjectId = '') {
+  return dedupePayments(payments.map((payment) => ({
+    ...payment,
+    projectId: payment?.projectId || payment?.project_id || publicProjectId,
+  })))
+}
+
 function readProjectEventFallbacks(project = {}) {
   return sortProjectEvents(dedupeProjectEvents([
     ...(Array.isArray(project?.scheduleEvents) ? project.scheduleEvents : []),
@@ -236,6 +243,11 @@ export function usePortalProjectData({ portalId = '', projects = [], clients = [
       try {
         const response = await publicPortalService.getByToken(portalId, { signal: abortController.signal })
         const payload = response?.data || null
+        const publicProjectId = payload?.project?.projectId || payload?.project?.id || portalId
+        const publicPayments = normalizePublicPaymentRecords(
+          Array.isArray(payload?.payments) ? payload.payments : payload?.project?.portal?.payments || [],
+          publicProjectId,
+        )
         const resolvedProject = payload?.project
           ? {
               ...payload.project,
@@ -245,7 +257,7 @@ export function usePortalProjectData({ portalId = '', projects = [], clients = [
                 client: payload.client || {},
                 estimate: payload.estimate || {},
                 contract: payload.contract || {},
-                payments: Array.isArray(payload.payments) ? payload.payments : [],
+                payments: publicPayments,
                 events: Array.isArray(payload.events) ? payload.events : [],
                 photos: Array.isArray(payload.photos) ? payload.photos : [],
               },
@@ -257,7 +269,7 @@ export function usePortalProjectData({ portalId = '', projects = [], clients = [
           setClient(payload?.client || findClientRecord(clients, resolvedProject))
           setEstimate(normalizeEstimateRecord(payload?.estimate || resolvedProject?.portal?.estimate))
           setContract(normalizeContractRecord(payload?.contract || resolvedProject?.portal?.contract))
-          setPaymentRecords(dedupePayments(payload?.payments || readProjectPaymentFallbacks(resolvedProject)))
+          setPaymentRecords(publicPayments.length ? publicPayments : readProjectPaymentFallbacks(resolvedProject))
           setEventRecords(sortProjectEvents(dedupeProjectEvents(payload?.events || readProjectEventFallbacks(resolvedProject))))
           setPublicPortalPhotos(Array.isArray(payload?.photos) ? payload.photos : [])
           setPublicCompanySettings(payload?.companySettings || null)
