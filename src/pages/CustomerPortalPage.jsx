@@ -8,7 +8,6 @@ import heroBackground from '../assets/portal/blue-bg.png'
 import dataProvider from '../services/dataProvider'
 import { currency } from '../utils/formatters'
 import { dedupeById, resolveLinkedProjectId } from '../utils/projectIdentity'
-import { tStatus } from '../translations'
 
 function normalizePortalPhoto(photo = {}, fallbackProjectId = '', fallbackContractorId = '', fallbackClientId = null) {
   const previewUrl = photo.previewUrl || photo.url || ''
@@ -254,9 +253,9 @@ export function CustomerPortalPage({ projects = [], clients = [], onBack, t, lan
   const projectTitle = project?.projectTitle || project?.projectType || t('notAdded')
   const projectAddress = project?.address || project?.location || ''
   const projectValue = Number(paymentSummary?.projectValue ?? project?.value ?? project?.contractValue ?? project?.estimatedValue)
-  const hasProjectValue = Number.isFinite(projectValue) && projectValue > 0
+  const amountPaid = Number(paymentSummary?.totalPaid ?? 0)
+  const balanceDue = Number(paymentSummary?.outstandingBalance ?? 0)
   const projectPhone = client?.phone || project?.phone || ''
-  const projectStatus = project?.projectStatus || project?.status || ''
   const isPublicTokenPortal = project?.publicPortalData === true
 
   return (
@@ -281,18 +280,18 @@ export function CustomerPortalPage({ projects = [], clients = [], onBack, t, lan
             }}
           >
             <div className="absolute inset-0 bg-gradient-to-r from-slate-950/45 via-slate-950/20 to-transparent" />
-            <div className="relative p-6 sm:p-8 lg:p-10">
-              <div className="flex flex-col gap-8 lg:flex-row lg:items-end lg:justify-between">
-                <div className="max-w-3xl">
-                  <div className="mb-5 flex items-center gap-3">
-                    {resolvedCompanySettings?.company?.logo ? <img src={resolvedCompanySettings.company.logo} alt="" className="h-14 w-14 rounded-2xl object-cover ring-1 ring-white/20" /> : <div className="flex h-14 w-14 items-center justify-center rounded-2xl bg-white/10 text-sm font-bold text-white ring-1 ring-white/20">{t('brandInitials')}</div>}
+            <div className="relative p-6 sm:p-7 lg:p-8">
+              <div className="flex flex-col gap-6 lg:flex-row lg:items-end lg:justify-between">
+                <div className="min-w-0 max-w-3xl flex-1">
+                  <div className="mb-4 flex items-center gap-3">
+                    {resolvedCompanySettings?.company?.logo ? <img src={resolvedCompanySettings.company.logo} alt="" className="h-12 w-12 rounded-2xl object-cover ring-1 ring-white/20" /> : <div className="flex h-12 w-12 items-center justify-center rounded-2xl bg-white/10 text-sm font-bold text-white ring-1 ring-white/20">{t('brandInitials')}</div>}
                     <div className="min-w-0">
                       <p className="truncate text-sm font-bold text-white">{resolvedCompanySettings?.company?.name || t('brandName')}</p>
                       <p className="text-xs font-semibold uppercase tracking-[0.24em] text-blue-200">{t('customerPortal')}</p>
                     </div>
                   </div>
 
-                  <h1 className="text-3xl font-bold tracking-tight sm:text-4xl lg:text-5xl">{projectTitle}</h1>
+                  <h1 className="text-3xl font-bold tracking-tight sm:text-4xl">{projectTitle}</h1>
 
                   <div className="mt-4 space-y-2 text-sm text-slate-200 sm:text-base">
                     <p className="font-semibold text-white">{clientName}</p>
@@ -311,29 +310,20 @@ export function CustomerPortalPage({ projects = [], clients = [], onBack, t, lan
                   </div>
                 </div>
 
-                {(projectStatus || hasProjectValue) ? (
-                  <div className="flex justify-start lg:justify-end">
-                    <div className="flex flex-wrap items-end gap-4 text-white lg:justify-end">
-                      {projectStatus ? (
-                        <div>
-                          <p className="text-[11px] font-semibold uppercase tracking-[0.24em] text-blue-100">{t('status')}</p>
-                          <span className="mt-2 inline-flex rounded-full border border-white/15 bg-white/10 px-3 py-1.5 text-sm font-semibold text-white backdrop-blur-sm">
-                            {tStatus(t, projectStatus)}
-                          </span>
-                        </div>
-                      ) : null}
-                      {projectStatus && hasProjectValue ? (
-                        <span className="pb-1 text-xl font-light text-white/50" aria-hidden="true">|</span>
-                      ) : null}
-                      {hasProjectValue ? (
-                        <div className="pb-0.5">
-                          <p className="text-[11px] font-semibold uppercase tracking-[0.24em] text-blue-100">{t('projectValue')}</p>
-                          <p className="mt-2 text-2xl font-bold text-white">{currency.format(projectValue)}</p>
-                        </div>
-                      ) : null}
-                    </div>
+                <dl className="client-portal-hero__metrics">
+                  <div className="client-portal-hero__metric">
+                    <dt>{t('projectValue')}</dt>
+                    <dd>{currency.format(Number.isFinite(projectValue) ? projectValue : 0)}</dd>
                   </div>
-                ) : null}
+                  <div className="client-portal-hero__metric">
+                    <dt>{t('amountPaid')}</dt>
+                    <dd>{currency.format(Number.isFinite(amountPaid) ? amountPaid : 0)}</dd>
+                  </div>
+                  <div className="client-portal-hero__metric">
+                    <dt>{t('balanceDue')}</dt>
+                    <dd>{currency.format(Number.isFinite(balanceDue) ? balanceDue : 0)}</dd>
+                  </div>
+                </dl>
               </div>
             </div>
           </div>

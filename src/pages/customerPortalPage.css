@@ -20,6 +20,49 @@
   gap: 20px;
 }
 
+.client-portal-hero__metrics {
+  display: grid;
+  width: 100%;
+  max-width: 34rem;
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+  overflow: hidden;
+  border: 1px solid rgb(255 255 255 / 15%);
+  border-radius: 1rem;
+  background: rgb(255 255 255 / 10%);
+  color: white;
+  backdrop-filter: blur(8px);
+}
+
+.client-portal-hero__metric {
+  min-width: 0;
+  padding: 12px 8px;
+  text-align: left;
+}
+
+.client-portal-hero__metric + .client-portal-hero__metric {
+  border-left: 1px solid rgb(255 255 255 / 15%);
+}
+
+.client-portal-hero__metric dt {
+  color: rgb(219 234 254);
+  font-size: 0.625rem;
+  font-weight: 600;
+  line-height: 0.875rem;
+  letter-spacing: 0.12em;
+  text-transform: uppercase;
+}
+
+.client-portal-hero__metric dd {
+  margin-top: 6px;
+  overflow: hidden;
+  color: white;
+  font-size: clamp(0.9375rem, 4vw, 1.5rem);
+  font-weight: 700;
+  line-height: 1.25;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
 .client-portal-page--loading {
   display: flex;
   min-height: 100vh;
@@ -92,6 +135,10 @@
   .client-portal-page {
     padding-right: max(20px, env(safe-area-inset-right));
     padding-left: max(20px, env(safe-area-inset-left));
+  }
+
+  .client-portal-hero__metric {
+    padding: 14px 16px;
   }
 }
 
