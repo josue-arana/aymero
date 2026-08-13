@@ -1,13 +1,13 @@
 import { useEffect, useMemo, useRef, useState } from 'react'
 import { useLocation, useNavigate, useParams } from 'react-router-dom'
-import { Archive, ArrowLeft, Trash2, Undo2 } from 'lucide-react'
+import { Archive, ArrowLeft, ChevronDown, MapPin, Trash2, Undo2, UserRound } from 'lucide-react'
 import { SelectField } from '../components/ui/SelectField'
 import { InfoCard } from '../components/ui/InfoCard'
 import { EstimatePdfTemplate } from '../components/estimates/EstimatePdfTemplate'
 import { EstimateFormattedText } from '../components/estimates/EstimateFormattedText'
 import { LightweightFormattedTextarea } from '../components/estimates/LightweightFormattedTextarea'
 import { PaginatedEstimatePreview } from '../components/estimates/PaginatedEstimatePreview'
-import { currency } from '../utils/formatters'
+import { currency, formatDisplayDate } from '../utils/formatters'
 import { getPortalData } from '../utils/portal'
 import { archivePanelButtonClasses } from '../utils/buttonStyles'
 import { ConfirmRecordModal } from '../components/common/ConfirmRecordModal'
@@ -21,7 +21,7 @@ import { getProjectsContractorId } from '../services/system/projectsRuntimeServi
 import { readLinkedEstimateDraft, writeLinkedEstimateDrafts } from '../utils/estimateLinks'
 import { formatEstimateDisplayNumber, generateEstimateNumber } from '../utils/estimateNumber'
 import { printDocumentElement } from '../utils/printDocument'
-import { createTranslator } from '../translations'
+import { createTranslator, tStatus } from '../translations'
 import { findLeadByProjectLookup } from '../utils/projectIdentity'
 import { findRelatedClient } from '../utils/clients'
 import {
@@ -120,6 +120,25 @@ function sanitizeAmountInput(value) {
   return `${wholePart}.${decimalPart}`
 }
 
+function formatReliableDate(value) {
+  if (!value) return ''
+
+  const parsedDate = value instanceof Date ? value : new Date(value)
+  if (Number.isNaN(parsedDate.getTime())) return ''
+
+  return formatDisplayDate(parsedDate)
+}
+
+function isArchivedProject(project = {}) {
+  return Boolean(
+    project?.archivedAt
+    || project?.archived_at
+    || project?.isArchived
+    || project?.archived
+    || String(project?.status || '').toLowerCase() === 'archived'
+  )
+}
+
 function buildDefaultLineItems(leadValue, materialsIncluded, t) {
   return [
     { name: t('laborAndProjectSetup'), amount: Math.round(Number(leadValue || 0) * 0.35), materialsIncluded },
@@ -155,7 +174,7 @@ function buildEstimateDraftState({ savedEstimate = {}, lead, companySettings, t 
   }
 }
 
-export function EstimateBuilderPage({ lead, clientRecord = null, t, appLanguage = 'en', companySettings, isArchived = false, projectAvailable = true, onBack, backLabel, onSaveEstimate, onSendEstimate, onConvert, onSyncContract, onOpenContract, onArchiveEstimate, onRestoreEstimate, onDeleteEstimate }) {
+export function EstimateBuilderPage({ lead, clientRecord = null, t, appLanguage = 'en', companySettings, isArchived = false, projectAvailable = true, isOrphanedProject = false, onBack, backLabel, onSaveEstimate, onSendEstimate, onConvert, onSyncContract, onOpenContract, onArchiveEstimate, onRestoreEstimate, onDeleteEstimate }) {
   const { showToast } = useToast()
   const pdfTemplateRef = useRef(null)
   const draftDirtyRef = useRef(false)
@@ -163,6 +182,9 @@ export function EstimateBuilderPage({ lead, clientRecord = null, t, appLanguage 
   const lastInitializedOwnerKeyRef = useRef('')
   const portal = getPortalData(lead)
   const savedEstimate = lead.portal?.estimate || portal.estimate || {}
+  const hasExistingEstimate = Boolean(savedEstimate?.id || savedEstimate?.number || savedEstimate?.estimateNumber)
+  const settingsInteractionRef = useRef(false)
+  const builderOpenedAtRef = useRef(new Date())
   const draftEstimateOutputLanguage = useMemo(() => resolveClientFacingLanguage({
     documentLanguage: savedEstimate?.estimateLanguage,
     client: clientRecord,
@@ -181,6 +203,7 @@ export function EstimateBuilderPage({ lead, clientRecord = null, t, appLanguage 
   const [paymentTerms, setPaymentTerms] = useState(initialDraftState.paymentTerms)
   const [estimateLanguage, setEstimateLanguage] = useState(initialDraftState.estimateLanguage)
   const [pricingMode, setPricingMode] = useState(initialDraftState.pricingMode)
+  const [isSettingsOpen, setIsSettingsOpen] = useState(!hasExistingEstimate)
   const [confirmAction, setConfirmAction] = useState(null)
   const [showSendModal, setShowSendModal] = useState(false)
   const [showPreviewModal, setShowPreviewModal] = useState(false)
@@ -258,6 +281,12 @@ export function EstimateBuilderPage({ lead, clientRecord = null, t, appLanguage 
     draftDirtyRef.current = false
   }, [companySettings, draftEstimateT, draftOwnerKey, draftSourceKey, lead, savedEstimate])
 
+  useEffect(() => {
+    if (hasExistingEstimate && !settingsInteractionRef.current) {
+      setIsSettingsOpen(false)
+    }
+  }, [hasExistingEstimate])
+
   const lineTotal = lineItems.reduce((sum, item) => sum + Number(item.amount || 0), 0)
   const isDetailedPricing = pricingMode === detailedPricingMode
   const estimateTotal = Number(isDetailedPricing ? lineTotal : total || 0)
@@ -302,6 +331,15 @@ export function EstimateBuilderPage({ lead, clientRecord = null, t, appLanguage 
     ),
     [lead?.portal?.estimate?.createdAt, lead?.portal?.estimate?.created_at, lead?.portal?.estimate?.dateCreated, savedEstimate.createdAt, savedEstimate.created_at, savedEstimate.dateCreated]
   )
+  const estimateCreatedDate = formatReliableDate(
+    savedEstimate.dateCreated
+    || savedEstimate.createdAt
+    || savedEstimate.created_at
+    || builderOpenedAtRef.current
+  )
+  const estimateUpdatedDate = formatReliableDate(savedEstimate.updatedAt || savedEstimate.updated_at)
+  const estimateStatus = tStatus(t, isArchived ? 'Archived' : (savedEstimate.status || 'Draft'))
+  const jobLocation = lead?.address || lead?.location || ''
   const estimateDocumentModel = useMemo(() => normalizeEstimateDocument({
     pricingMode,
     scope,
@@ -564,33 +602,113 @@ export function EstimateBuilderPage({ lead, clientRecord = null, t, appLanguage 
   }
 
   return (
-    <div className="mx-auto max-w-6xl max-w-full space-y-6 overflow-x-hidden">
+    <div className="mx-auto w-full max-w-6xl space-y-6 overflow-x-hidden">
       <button onClick={onBack} className="inline-flex items-center gap-2 text-sm font-semibold text-slate-600 hover:text-slate-950"><ArrowLeft className="h-4 w-4" /> {backLabel}</button>
-      <section className="rounded-3xl bg-gradient-to-br from-slate-950 to-slate-800 p-5 text-white shadow-xl sm:p-6">
-        <p className="text-sm font-semibold uppercase tracking-[0.25em] text-blue-200">{t('estimateBuilder')}</p>
-        <h1 className="mt-2 break-words text-3xl font-bold">{lead.projectTitle || lead.projectType}</h1>
-        <p className="mt-2 text-sm text-slate-300">{t('estimateBuilderHelp')}</p>
-        {isArchived && <span className="mt-3 inline-flex rounded-full bg-amber-100 px-3 py-1 text-xs font-bold text-amber-800">{t('archived')}</span>}
+      <section className="rounded-3xl bg-gradient-to-br from-slate-950 to-slate-800 p-5 text-white shadow-xl sm:p-6 lg:p-7">
+        <div className="grid min-w-0 gap-6 lg:grid-cols-[minmax(0,1fr)_minmax(320px,0.72fr)] lg:items-end">
+          <div className="min-w-0">
+            <p className="text-sm font-semibold uppercase tracking-[0.25em] text-blue-200">{t('estimateBuilder')}</p>
+            <h1 className="mt-3 break-words text-3xl font-bold leading-tight sm:text-4xl">{lead.projectTitle || lead.projectType}</h1>
+            <div className="mt-4 flex flex-col gap-2 text-sm text-slate-300 sm:flex-row sm:flex-wrap sm:gap-x-5">
+              {lead?.client || clientRecord?.name ? (
+                <p className="inline-flex min-w-0 items-center gap-2"><UserRound className="h-4 w-4 shrink-0 text-blue-200" /><span className="break-words">{lead?.client || clientRecord?.name}</span></p>
+              ) : null}
+              {jobLocation ? (
+                <p className="inline-flex min-w-0 items-center gap-2"><MapPin className="h-4 w-4 shrink-0 text-blue-200" /><span className="break-words">{jobLocation}</span></p>
+              ) : null}
+            </div>
+            {isArchived && <span className="mt-4 inline-flex rounded-full bg-amber-100 px-3 py-1 text-xs font-bold text-amber-800">{t('archived')}</span>}
+          </div>
+          <dl className="grid grid-cols-2 gap-px overflow-hidden rounded-2xl bg-white/10 ring-1 ring-white/10">
+            <div className="min-w-0 bg-white/[0.04] p-4">
+              <dt className="text-[0.68rem] font-bold uppercase tracking-[0.16em] text-slate-400">{t('estimateStatus')}</dt>
+              <dd className="mt-1 break-words text-sm font-bold text-white">{estimateStatus}</dd>
+            </div>
+            <div className="min-w-0 bg-white/[0.04] p-4">
+              <dt className="text-[0.68rem] font-bold uppercase tracking-[0.16em] text-slate-400">{t('estimatedTotal')}</dt>
+              <dd className="mt-1 break-words text-lg font-bold text-white">{currency.format(estimateTotal)}</dd>
+            </div>
+            <div className={`min-w-0 bg-white/[0.04] p-4 ${estimateUpdatedDate ? '' : 'col-span-2'}`}>
+              <dt className="text-[0.68rem] font-bold uppercase tracking-[0.16em] text-slate-400">{t('dateCreated')}</dt>
+              <dd className="mt-1 break-words text-sm font-semibold text-slate-100">{estimateCreatedDate}</dd>
+            </div>
+            {estimateUpdatedDate ? (
+              <div className="min-w-0 bg-white/[0.04] p-4">
+                <dt className="text-[0.68rem] font-bold uppercase tracking-[0.16em] text-slate-400">{t('lastUpdated')}</dt>
+                <dd className="mt-1 break-words text-sm font-semibold text-slate-100">{estimateUpdatedDate}</dd>
+              </div>
+            ) : null}
+          </dl>
+        </div>
       </section>
 
-      {!projectAvailable ? (
+      {isOrphanedProject ? (
         <div role="status" className="rounded-2xl border border-amber-200 bg-amber-50 px-4 py-3 text-sm font-bold text-amber-800">
-          {t('projectNoLongerAvailable')}
+          {t('estimateProjectNoLongerLinked')}
         </div>
       ) : null}
 
       <div className="grid gap-5 lg:grid-cols-[1fr_360px]">
         <section className="min-w-0 space-y-5">
-          <InfoCard title={t('estimateLanguage')}>
-            <div className="space-y-3">
-              <p className="text-sm leading-6 text-slate-500">{t('estimateLanguageHelp')}</p>
-              <SelectField value={estimateLanguage} onChange={(event) => { markDraftDirty(); setEstimateLanguage(event.target.value) }} className="bg-slate-50">
-                <option value="">{t('matchAppLanguage')}</option>
-                <option value="en">{t('english')}</option>
-                <option value="es">{t('spanish')}</option>
-              </SelectField>
-            </div>
-          </InfoCard>
+          <article className="min-w-0 overflow-hidden rounded-3xl border border-slate-200 bg-white shadow-sm">
+            <button
+              type="button"
+              aria-expanded={isSettingsOpen}
+              aria-controls="estimate-settings-panel"
+              onClick={() => {
+                settingsInteractionRef.current = true
+                setIsSettingsOpen((current) => !current)
+              }}
+              className="flex min-h-16 w-full items-center justify-between gap-4 px-5 py-4 text-left hover:bg-slate-50 focus:outline-none focus-visible:ring-4 focus-visible:ring-inset focus-visible:ring-blue-100"
+            >
+              <span>
+                <span className="block text-lg font-bold text-slate-950">{t('estimateSettings')}</span>
+                <span className="mt-1 block text-sm text-slate-500">{t('estimateSettingsHelp')}</span>
+              </span>
+              <ChevronDown className={`h-5 w-5 shrink-0 text-slate-500 transition-transform ${isSettingsOpen ? 'rotate-180' : ''}`} />
+            </button>
+            {isSettingsOpen ? (
+              <div id="estimate-settings-panel" className="grid gap-5 border-t border-slate-200 px-5 py-5 sm:grid-cols-2">
+                <div className="min-w-0 space-y-3">
+                  <label className="block text-sm font-bold text-slate-800">{t('estimateLanguage')}</label>
+                  <p className="text-sm leading-6 text-slate-500">{t('estimateLanguageHelp')}</p>
+                  <SelectField value={estimateLanguage} onChange={(event) => { markDraftDirty(); setEstimateLanguage(event.target.value) }} className="bg-slate-50">
+                    <option value="">{t('matchAppLanguage')}</option>
+                    <option value="en">{t('english')}</option>
+                    <option value="es">{t('spanish')}</option>
+                  </SelectField>
+                </div>
+                <div className="min-w-0 space-y-3">
+                  <label className="block text-sm font-bold text-slate-800">{t('paymentTerms')}</label>
+                  {isEditing ? (
+                    isKnownPaymentTermValue(paymentTerms) ? (
+                      <SelectField value={paymentTerms} onChange={(event) => { markDraftDirty(); setPaymentTerms(event.target.value) }} className="bg-slate-50">
+                        {paymentTermOptions.map(([value, label]) => <option key={value} value={value}>{label}</option>)}
+                      </SelectField>
+                    ) : (
+                      <textarea value={paymentTerms} onChange={(event) => { markDraftDirty(); setPaymentTerms(event.target.value) }} rows={4} className="w-full rounded-2xl border border-slate-200 bg-slate-50 p-4 text-sm leading-6 outline-none focus:border-blue-500 focus:ring-4 focus:ring-blue-100" />
+                    )
+                  ) : (
+                    <div className="rounded-2xl bg-slate-50 p-4 text-sm leading-6 text-slate-700 whitespace-pre-line">{getPaymentTermLabel(paymentTerms, estimateT)}</div>
+                  )}
+                </div>
+                {!isDetailedPricing ? (
+                  <div className="min-w-0 space-y-3 sm:col-span-2">
+                    <p className="text-sm font-bold text-slate-800">{t('materialsIncluded')}</p>
+                    {isEditing ? (
+                      <button onClick={() => { markDraftDirty(); setMaterialsIncluded((current) => !current) }} className={`w-full rounded-2xl px-4 py-4 text-left text-sm font-bold ${materialsIncluded ? 'bg-emerald-50 text-emerald-700 ring-1 ring-emerald-100' : 'bg-slate-50 text-slate-700 ring-1 ring-slate-200'}`}>
+                        {materialsIncluded ? `${t('materialsIncluded')}: ${t('yes')}` : `${t('materialsIncluded')}: ${t('no')}`}
+                      </button>
+                    ) : (
+                      <div className={`w-full rounded-2xl px-4 py-4 text-left text-sm font-bold ${materialsIncluded ? 'bg-emerald-50 text-emerald-700 ring-1 ring-emerald-100' : 'bg-slate-50 text-slate-700 ring-1 ring-slate-200'}`}>
+                        {materialsIncluded ? `${t('materialsIncluded')}: ${t('yes')}` : `${t('materialsIncluded')}: ${t('no')}`}
+                      </div>
+                    )}
+                  </div>
+                ) : null}
+              </div>
+            ) : null}
+          </article>
           <InfoCard title={t('scopeOfWork')}>
             {isEditing ? (
               <LightweightFormattedTextarea
@@ -715,52 +833,30 @@ export function EstimateBuilderPage({ lead, clientRecord = null, t, appLanguage 
                 </>
               ) : (
                 <>
+                  <div className="inline-flex rounded-full bg-blue-50 px-3 py-1 text-xs font-bold uppercase tracking-[0.14em] text-blue-700 ring-1 ring-blue-100">
+                    {t('simpleTotal')}
+                  </div>
                   {isEditing ? (
-                    <div>
+                    <div className="rounded-2xl border border-slate-200 bg-gradient-to-br from-slate-50 to-white p-4 shadow-sm sm:p-5">
                       <label className="mb-2 block text-sm font-bold text-slate-700">{t('totalPrice')}</label>
-                      <div className="rounded-2xl border border-slate-200 bg-slate-50 px-4 py-4 shadow-sm ring-1 ring-slate-100">
-                        <div className="flex items-center justify-between gap-3">
-                          <input type="text" inputMode="decimal" value={totalInput} onChange={(event) => handleSimpleTotalInput(event.target.value)} onBlur={handleSimpleTotalBlur} className="min-w-0 flex-1 bg-transparent text-lg font-bold text-slate-900 outline-none focus:outline-none" />
-                          <div className="shrink-0 rounded-xl bg-white px-3 py-2 text-right text-sm font-bold text-slate-900 ring-1 ring-slate-200">
-                            {currency.format(estimateTotal)}
-                          </div>
-                        </div>
+                      <div className="flex min-h-14 items-center rounded-2xl border border-slate-200 bg-white px-4 focus-within:border-blue-500 focus-within:ring-4 focus-within:ring-blue-100">
+                        <span className="mr-2 text-lg font-bold text-slate-400">$</span>
+                        <input aria-label={t('totalPrice')} type="text" inputMode="decimal" value={totalInput} onChange={(event) => handleSimpleTotalInput(event.target.value)} onBlur={handleSimpleTotalBlur} className="min-w-0 flex-1 bg-transparent text-2xl font-bold text-slate-950 outline-none focus:outline-none" />
+                      </div>
+                      <div className="mt-4 flex items-end justify-between gap-4 border-t border-slate-200 pt-4">
+                        <span className="text-xs font-bold uppercase tracking-[0.14em] text-slate-400">{t('estimatedTotal')}</span>
+                        <span className="break-words text-right text-2xl font-bold text-slate-950 sm:text-3xl">{currency.format(estimateTotal)}</span>
                       </div>
                     </div>
                   ) : (
-                    <div className="rounded-2xl bg-slate-50 px-4 py-4 text-lg font-bold text-slate-900">{currency.format(estimateTotal)}</div>
+                    <div className="rounded-2xl bg-slate-50 px-5 py-5">
+                      <p className="text-xs font-bold uppercase tracking-[0.14em] text-slate-400">{t('estimatedTotal')}</p>
+                      <p className="mt-2 break-words text-3xl font-bold text-slate-950">{currency.format(estimateTotal)}</p>
+                    </div>
                   )}
                 </>
               )}
             </div>
-          </InfoCard>
-
-          {!isDetailedPricing ? (
-          <InfoCard title={t('materialsIncluded')}>
-            {isEditing ? (
-              <button onClick={() => { markDraftDirty(); setMaterialsIncluded((current) => !current) }} className={`w-full rounded-2xl px-4 py-4 text-left text-sm font-bold ${materialsIncluded ? 'bg-emerald-50 text-emerald-700 ring-1 ring-emerald-100' : 'bg-slate-50 text-slate-700 ring-1 ring-slate-200'}`}>
-                {materialsIncluded ? `${t('materialsIncluded')}: ${t('yes')}` : `${t('materialsIncluded')}: ${t('no')}`}
-              </button>
-            ) : (
-              <div className={`w-full rounded-2xl px-4 py-4 text-left text-sm font-bold ${materialsIncluded ? 'bg-emerald-50 text-emerald-700 ring-1 ring-emerald-100' : 'bg-slate-50 text-slate-700 ring-1 ring-slate-200'}`}>
-                {materialsIncluded ? `${t('materialsIncluded')}: ${t('yes')}` : `${t('materialsIncluded')}: ${t('no')}`}
-              </div>
-            )}
-          </InfoCard>
-          ) : null}
-
-          <InfoCard title={t('paymentTerms')}>
-            {isEditing ? (
-              isKnownPaymentTermValue(paymentTerms) ? (
-                <SelectField value={paymentTerms} onChange={(event) => { markDraftDirty(); setPaymentTerms(event.target.value) }} className="bg-slate-50">
-                  {paymentTermOptions.map(([value, label]) => <option key={value} value={value}>{label}</option>)}
-                </SelectField>
-              ) : (
-                <textarea value={paymentTerms} onChange={(event) => { markDraftDirty(); setPaymentTerms(event.target.value) }} rows={4} className="w-full rounded-2xl border border-slate-200 bg-slate-50 p-4 text-sm leading-6 outline-none focus:border-blue-500 focus:ring-4 focus:ring-blue-100" />
-              )
-            ) : (
-              <div className="rounded-2xl bg-slate-50 p-4 text-sm leading-6 text-slate-700 whitespace-pre-line">{getPaymentTermLabel(paymentTerms, estimateT)}</div>
-            )}
           </InfoCard>
         </section>
 
@@ -855,6 +951,7 @@ export function EstimateBuilderRoute({ companySettings, leads, clients = [], est
   const [loadedEstimate, setLoadedEstimate] = useState(cachedDirectEstimate)
   const [directLoadState, setDirectLoadState] = useState({ loading: isDirectEstimateRoute, error: '' })
   const [projectAvailable, setProjectAvailable] = useState(!isDirectEstimateRoute)
+  const [isOrphanedProject, setIsOrphanedProject] = useState(false)
   const resolvedEstimate = loadedEstimate || cachedDirectEstimate
   const linkedLead = resolvedEstimate
     ? findLeadByProjectLookup(
@@ -929,6 +1026,7 @@ export function EstimateBuilderRoute({ companySettings, leads, clients = [], est
 
         if (!directEstimate) {
           setProjectAvailable(false)
+          setIsOrphanedProject(false)
           setDirectLoadState({ loading: false, error: t('estimateNotFound') })
           return
         }
@@ -936,11 +1034,19 @@ export function EstimateBuilderRoute({ companySettings, leads, clients = [], est
         const relatedProjectId = directEstimate.projectId || directEstimate.project_id || null
         if (!relatedProjectId) {
           setProjectAvailable(false)
+          setIsOrphanedProject(false)
         } else if (USE_SUPABASE || USE_SUPABASE_ESTIMATES) {
           const projectResponse = await dataProvider.projects.getById(relatedProjectId, { contractorId })
-          if (!isCancelled) setProjectAvailable(Boolean(!projectResponse?.error && projectResponse?.data?.id))
+          if (!isCancelled) {
+            const hasActiveProject = Boolean(!projectResponse?.error && projectResponse?.data?.id && !isArchivedProject(projectResponse.data))
+            setProjectAvailable(hasActiveProject)
+            setIsOrphanedProject(Boolean(!projectResponse?.error && !hasActiveProject))
+          }
         } else {
-          setProjectAvailable(Boolean(findLeadByProjectLookup(leads, relatedProjectId)))
+          const relatedProject = findLeadByProjectLookup(leads, relatedProjectId)
+          const hasActiveProject = Boolean(relatedProject && !isArchivedProject(relatedProject))
+          setProjectAvailable(hasActiveProject)
+          setIsOrphanedProject(!hasActiveProject)
         }
 
         if (!isCancelled) setDirectLoadState({ loading: false, error: '' })
@@ -1063,6 +1169,7 @@ export function EstimateBuilderRoute({ companySettings, leads, clients = [], est
       backLabel={backLabel}
       isArchived={Boolean(resolvedEstimate?.archivedAt || resolvedEstimate?.archived_at || archivedIds.includes(lead.id))}
       projectAvailable={isDirectEstimateRoute ? projectAvailable : true}
+      isOrphanedProject={isDirectEstimateRoute ? isOrphanedProject : false}
       onSaveEstimate={async (estimate) => {
         const result = await onSaveEstimate?.(lead.id, estimate)
         if (result) {
