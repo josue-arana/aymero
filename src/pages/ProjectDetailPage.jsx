@@ -7,9 +7,9 @@ import { InfoCard } from '../components/ui/InfoCard'
 import { DetailRow } from '../components/ui/DetailRow'
 import { StatusBadge } from '../components/ui/StatusBadge'
 import { currency, formatDisplayDate } from '../utils/formatters'
-import { getPortalData, normalizePortalShareUrl, resolvePortalRouteId } from '../utils/portal'
+import { getPortalData, normalizePortalShareUrl } from '../utils/portal'
 import { tStatus } from '../translations'
-import { LeadFormModal } from '../components/leads/LeadFormModal'
+import { JobFormModal } from '../components/jobs/JobFormModal'
 import { ConfirmRecordModal } from '../components/common/ConfirmRecordModal'
 import { SendToCustomerModal } from '../components/common/SendToCustomerModal'
 import { RecordPaymentModal } from '../components/common/RecordPaymentModal'
@@ -1076,7 +1076,7 @@ function ProjectDetailPageContent({ lead, companySettings, clients = [], schedul
     { label: t('recordPayment'), icon: DollarSign, action: () => { setEditingPayment(null); setShowPaymentModal(true) }, primary: true, disabled: !canRecordPayment },
     { label: t('scheduleJob'), icon: CalendarDays, action: onScheduleEvent },
     { label: t('uploadPhotos'), icon: Camera, action: () => setShowPhotoModal(true) },
-    hasLeadLink ? { label: t('edit'), icon: Edit3, action: () => setIsEditOpen(true) } : null,
+    { label: t('edit'), icon: Edit3, action: () => setIsEditOpen(true) },
   ].filter(Boolean)
   const moreMenuItems = [
     hasEstimate
@@ -1159,6 +1159,44 @@ function ProjectDetailPageContent({ lead, companySettings, clients = [], schedul
   function closePaymentModal() {
     setShowPaymentModal(false)
     setEditingPayment(null)
+  }
+
+  async function saveProjectEdits(updatedProject) {
+    try {
+      const projectUpdates = {
+        ...currentLead,
+        ...updatedProject,
+        estimatedValue: updatedProject.value,
+        clientId: updatedProject.clientId || currentLead.clientId || currentLead.client_id || null,
+        leadId: currentLead.leadId || currentLead.lead_id || null,
+        status: currentLead.status,
+        projectStatus: currentLead.projectStatus,
+        completedAt: currentLead.completedAt || currentLead.completed_at || null,
+      }
+      const response = await dataProvider.projects.update(currentLead.id, projectUpdates, { contractorId })
+
+      if (response?.error) {
+        showToast(response.error.message || t('projectUpdateFailed'), 'error')
+        return
+      }
+
+      setProject((existingProject) => ({
+        ...(existingProject || currentLead),
+        ...(response?.data || {}),
+        ...updatedProject,
+        estimatedValue: updatedProject.value,
+        client: updatedProject.client || existingProject?.client || currentLead.client,
+        clientName: updatedProject.client || existingProject?.clientName || currentLead.clientName,
+        clientId: updatedProject.clientId || existingProject?.clientId || currentLead.clientId || currentLead.client_id || null,
+      }))
+      setIsEditOpen(false)
+      showToast(t('projectUpdated'), 'success')
+    } catch (error) {
+      showToast(error?.message || t('projectUpdateFailed'), 'error')
+      logProjectDetailDevError('[dev] ProjectDetailPage failed to update project.', error, {
+        projectId: currentLead.id,
+      })
+    }
   }
 
   async function saveProjectPayment(payment) {
@@ -1438,8 +1476,8 @@ function ProjectDetailPageContent({ lead, companySettings, clients = [], schedul
         <span className="min-w-0 truncate text-slate-950" aria-current="page">{projectTitle}</span>
       </nav>
 
-      <section data-project-workspace-hero="true" className="relative overflow-hidden rounded-3xl border border-slate-800 bg-slate-950 p-5 text-white shadow-xl shadow-slate-950/15 sm:p-7 lg:p-8">
-        <div className="pointer-events-none absolute inset-0" aria-hidden="true">
+      <section data-project-workspace-hero="true" className="relative z-10 overflow-visible rounded-3xl border border-slate-800 bg-slate-950 p-5 text-white shadow-xl shadow-slate-950/15 sm:p-7 lg:p-8">
+        <div className="pointer-events-none absolute inset-0 overflow-hidden rounded-3xl" aria-hidden="true">
           <img src={projectWorkspaceHeroBackground} alt="" className="h-full w-full object-cover object-center opacity-70" />
           <div className="absolute inset-0 bg-[linear-gradient(105deg,rgba(2,6,23,0.98)_0%,rgba(15,23,42,0.92)_54%,rgba(15,23,42,0.55)_100%)]" />
         </div>
@@ -1567,9 +1605,9 @@ function ProjectDetailPageContent({ lead, companySettings, clients = [], schedul
           <InfoCard title={t('customerPortal')} bodyClassName="space-y-3">
             <p className="text-sm leading-6 text-slate-600">{t('clientPortalCardHelp')}</p>
             <div className="grid gap-2">
-              <button type="button" onClick={() => onOpenPortal?.(resolvePortalRouteId(currentLead) || currentLead.id)} className="inline-flex min-h-11 w-full items-center justify-center gap-2 rounded-2xl bg-blue-600 px-4 py-2.5 text-sm font-bold text-white transition hover:bg-blue-700 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-blue-500 focus-visible:ring-offset-2">
+              <a href={portalShareUrl} target="_blank" rel="noopener noreferrer" className="inline-flex min-h-11 w-full items-center justify-center gap-2 rounded-2xl bg-blue-600 px-4 py-2.5 text-sm font-bold text-white transition hover:bg-blue-700 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-blue-500 focus-visible:ring-offset-2">
                 {t('openCustomerPortal')} <ExternalLink className="h-4 w-4" aria-hidden="true" />
-              </button>
+              </a>
               <div className="grid grid-cols-2 gap-2">
                 <button type="button" onClick={copyPortalLink} disabled={!portalShareUrl} className="inline-flex min-h-11 w-full items-center justify-center gap-2 rounded-2xl border border-slate-200 bg-white px-3 py-2.5 text-sm font-bold text-slate-800 transition hover:bg-slate-50 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-blue-500 focus-visible:ring-offset-2 disabled:cursor-not-allowed disabled:opacity-60">
                   <Copy className="h-4 w-4 shrink-0" aria-hidden="true" /> {t('copyLink')}
@@ -1920,14 +1958,14 @@ function ProjectDetailPageContent({ lead, companySettings, clients = [], schedul
       </section>
       </div>
 
-      <LeadFormModal
+      <JobFormModal
         isOpen={isEditOpen}
         mode="edit"
-        lead={currentLead}
+        project={currentLead}
         clients={clients}
-        defaultClientLanguage={language}
+        initialClientId={currentLead.clientId || currentLead.client_id || ''}
         onClose={() => setIsEditOpen(false)}
-        onSave={(updatedLead) => { if (linkedLeadId) onUpdateLead(linkedLeadId, updatedLead); setIsEditOpen(false) }}
+        onSave={saveProjectEdits}
         t={t}
       />
       <RecordPaymentModal

@@ -46,7 +46,7 @@ function normalizeValue(value) {
   return Number.isFinite(parsed) ? parsed : 0
 }
 
-export function JobFormModal({ isOpen, clients = [], initialClientId = '', initialClient = null, onClose, onSave, t }) {
+export function JobFormModal({ isOpen, mode = 'create', project = null, clients = [], initialClientId = '', initialClient = null, onClose, onSave, t }) {
   const [form, setForm] = useState(emptyJob)
   const [clientMode, setClientMode] = useState('existing')
   const [selectedClientId, setSelectedClientId] = useState('')
@@ -58,7 +58,9 @@ export function JobFormModal({ isOpen, clients = [], initialClientId = '', initi
   useEffect(() => {
     if (!isOpen) return
 
-    const matchedClient = sortedClients.find((client) => client.id === initialClientId)
+    const editingProject = mode === 'edit' ? project : null
+    const projectClientId = editingProject?.clientId || editingProject?.client_id || initialClientId
+    const matchedClient = sortedClients.find((client) => client.id === projectClientId)
       || initialClient
       || null
     const hasMatchedExistingClient = matchedClient && sortedClients.some((client) => client.id === matchedClient.id)
@@ -75,14 +77,25 @@ export function JobFormModal({ isOpen, clients = [], initialClientId = '', initi
     setSelectedClientId(nextSelectedClientId)
     setIsSubmitting(false)
     submitGuardRef.current = false
-    setForm({
+    setForm(editingProject ? {
+      ...emptyJob,
+      client: editingProject.client || editingProject.clientName || matchedClient?.name || '',
+      address: editingProject.address || editingProject.location || matchedClient?.address || '',
+      location: editingProject.location || editingProject.address || matchedClient?.address || '',
+      projectTitle: editingProject.projectTitle || editingProject.title || '',
+      projectType: editingProject.projectType || editingProject.jobType || '',
+      projectStatus: editingProject.projectStatus || editingProject.status || emptyJob.projectStatus,
+      startDate: editingProject.startDate || editingProject.start_date || '',
+      value: editingProject.value ?? editingProject.estimatedValue ?? editingProject.contractValue ?? '',
+      notes: editingProject.notes || editingProject.nextStep || '',
+    } : {
       ...emptyJob,
       client: matchedClient?.name || '',
       address: matchedClient?.address || '',
       location: matchedClient?.address || '',
       startDate: todayIso(),
     })
-  }, [initialClient, initialClientId, isOpen, sortedClients])
+  }, [initialClient, initialClientId, isOpen, mode, project, sortedClients])
 
   useEffect(() => {
     if (!isOpen || clientMode !== 'existing' || !selectedClientId) return
@@ -168,8 +181,7 @@ export function JobFormModal({ isOpen, clients = [], initialClientId = '', initi
         location: form.location.trim() || address,
         projectTitle,
         projectType,
-        projectStatus: form.projectStatus,
-        status: 'Won',
+        ...(mode === 'create' ? { projectStatus: form.projectStatus, status: 'Won' } : {}),
         startDate: form.startDate || todayIso(),
         value: normalizeValue(form.value),
         notes: form.notes.trim(),
@@ -187,8 +199,8 @@ export function JobFormModal({ isOpen, clients = [], initialClientId = '', initi
       <div className="mb-5 flex items-start justify-between gap-4">
         <div>
           <p className="text-sm font-bold uppercase tracking-[0.2em] text-blue-600">{t('projectJob')}</p>
-          <h2 className="mt-1 text-2xl font-bold text-slate-950">{t('createJob')}</h2>
-          <p className="mt-1 text-sm text-slate-500">{t('jobFormHelp')}</p>
+          <h2 className="mt-1 text-2xl font-bold text-slate-950">{t(mode === 'edit' ? 'editProject' : 'createJob')}</h2>
+          <p className="mt-1 text-sm text-slate-500">{t(mode === 'edit' ? 'editProjectHelp' : 'jobFormHelp')}</p>
         </div>
         <button disabled={isSubmitting} onClick={onClose} className="rounded-2xl border border-slate-200 p-2 text-slate-500 hover:bg-slate-50 disabled:cursor-not-allowed disabled:opacity-60" aria-label={t('close')}>
           <X className="h-5 w-5" />
@@ -224,12 +236,12 @@ export function JobFormModal({ isOpen, clients = [], initialClientId = '', initi
               {projectTypes.map((type) => <option key={type} value={type}>{t(type)}</option>)}
             </SelectField>
           </div>
-          <div>
+          {mode === 'create' ? <div>
             <label className="mb-2 block text-sm font-bold text-slate-700">{t('status')}</label>
             <SelectField value={form.projectStatus} onChange={(event) => updateField('projectStatus', event.target.value)}>
               {jobStatuses.map((status) => <option key={status} value={status}>{tStatus(t, status)}</option>)}
             </SelectField>
-          </div>
+          </div> : null}
           <TextField label={t('startDate')} value={form.startDate} onChange={(value) => updateField('startDate', value)} type="date" />
           <TextField label={t('estimatedValue')} value={form.value} onChange={(value) => updateField('value', value)} type="number" />
           <TextField label={t('locationAddress')} value={form.address} onChange={(value) => updateField('address', value)} />
@@ -249,7 +261,7 @@ export function JobFormModal({ isOpen, clients = [], initialClientId = '', initi
 
         <div className="flex flex-col-reverse gap-3 sm:flex-row sm:justify-end">
           <button type="button" disabled={isSubmitting} onClick={onClose} className="rounded-2xl border border-slate-200 px-5 py-3 text-sm font-bold text-slate-700 hover:bg-slate-50 disabled:cursor-not-allowed disabled:opacity-60">{t('cancel')}</button>
-          <button type="submit" disabled={isSubmitting} className="rounded-2xl bg-blue-600 px-5 py-3 text-sm font-bold text-white hover:bg-blue-700 disabled:cursor-not-allowed disabled:bg-blue-400">{isSubmitting ? t('saving') : t('createJob')}</button>
+          <button type="submit" disabled={isSubmitting} className="rounded-2xl bg-blue-600 px-5 py-3 text-sm font-bold text-white hover:bg-blue-700 disabled:cursor-not-allowed disabled:bg-blue-400">{isSubmitting ? t('saving') : t(mode === 'edit' ? 'saveChanges' : 'createJob')}</button>
         </div>
       </form>
     </ModalShell>
