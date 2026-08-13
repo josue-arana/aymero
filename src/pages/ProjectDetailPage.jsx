@@ -29,6 +29,7 @@ import { PROJECT_PHOTO_MAX_FILE_SIZE_BYTES, revokeProjectPhotoPreviewUrl, valida
 import { calculateProjectPaymentSummary, collectProjectInvoiceIds, dedupePayments, mergeProjectTimeline, normalizePaymentRecord } from '../utils/projectPayments'
 import { dedupeById, resolveLinkedProjectId } from '../utils/projectIdentity'
 import { getRecordDetailsTitleKey } from '../utils/recordDetailsTitle'
+import { deriveProjectStatus } from '../utils/projectLifecycle'
 import projectWorkspaceHeroBackground from '../assets/page-heroes/jobs-bg.png'
 
 function logProjectDetailDevError(message, error, meta) {
@@ -1141,7 +1142,13 @@ function ProjectDetailPageContent({ lead, companySettings, clients = [], schedul
   const projectSignedDate = resolvedContract?.signedDate
     ? formatProjectDetailDate(resolvedContract.signedDate, resolvedContract.signedDate)
     : ''
-  const projectStatus = currentLead.projectStatus || currentLead.status
+  const projectStatus = deriveProjectStatus({
+    project: currentLead,
+    contract: resolvedContract,
+    payments: paymentSummary.payments,
+    events: activeScheduleEvents,
+    isArchived: projectIsArchived,
+  })
   const projectValue = Number(currentLead.value)
   const portalShareUrl = normalizePortalShareUrl(portal.shareUrl)
   const hasProjectValue = currentLead.value !== null
@@ -1468,7 +1475,6 @@ function ProjectDetailPageContent({ lead, companySettings, clients = [], schedul
                 <dt className="text-[0.68rem] font-bold uppercase tracking-[0.16em] text-slate-400">{t('status')}</dt>
                 <dd className="mt-2 flex flex-wrap items-center gap-2">
                   <StatusBadge status={projectStatus} t={t} />
-                  {projectIsArchived ? <span className="inline-flex rounded-full bg-amber-100 px-2.5 py-1 text-xs font-bold text-amber-800 ring-1 ring-amber-200">{t('archived')}</span> : null}
                 </dd>
               </div>
             ) : null}
@@ -1550,7 +1556,7 @@ function ProjectDetailPageContent({ lead, companySettings, clients = [], schedul
         {isAnalyticsMode && (
           <div className="order-7 min-w-0 md:col-span-2 [&>article]:h-full xl:col-span-6">
             <InfoCard title={recordDetailsTitle}>
-              <DetailRow label={t('status')} value={tStatus(t, currentLead.projectStatus || currentLead.status)} />
+              <DetailRow label={t('status')} value={tStatus(t, projectStatus)} />
               <DetailRow label={t('priority')} value={currentLead.priority} />
               <DetailRow label={t('source')} value={currentLead.source || t('notAdded')} />
               <DetailRow label={t('projectType')} value={currentLead.projectType || currentLead.projectTitle || t('unknownProject')} />

@@ -23,6 +23,7 @@ import { hasContractData } from '../utils/contractLinks'
 import { calculateProjectPaymentSummary, dedupePayments } from '../utils/projectPayments'
 import { getContractForProject, getEstimateForProject, getProjectsForClient, resolveLinkedProjectId } from '../utils/projectIdentity'
 import { ActionMenu } from '../components/common/ActionMenu'
+import { deriveProjectStatus } from '../utils/projectLifecycle'
 
 const unavailableClientContactValues = new Set(['(410) 555-0100', 'Address not added'])
 
@@ -108,7 +109,20 @@ function getLatestProjectInvoice(project = {}) {
   ))[0] || null
 }
 
-function getContextualProjectStatus(project = {}, estimate = null, contract = null) {
+function getContextualProjectStatus(project = {}, estimate = null, contract = null, payments = []) {
+  if (project?.isProjectRecord) {
+    return deriveProjectStatus({
+      project,
+      contract,
+      payments,
+      events: [
+        ...(Array.isArray(project?.events) ? project.events : []),
+        ...(Array.isArray(project?.schedule) ? project.schedule : []),
+        ...(Array.isArray(project?.scheduleEvents) ? project.scheduleEvents : []),
+      ],
+    })
+  }
+
   const invoice = getLatestProjectInvoice(project)
   const baseStatus = contract?.status || estimate?.status || invoice?.status || project?.latestStatus || project?.projectStatus || project?.status || ''
 
@@ -559,7 +573,7 @@ function renderMobileAccountSummary() {
   }
 
   function renderMobileProjectsList(cards = projectCards) {
-    return cards.length ? cards.map(({ project, thumbnail, projectAddress, displayDate, contract, estimate, projectValue, remainingBalance, remainingBalanceAmount }) => (
+    return cards.length ? cards.map(({ project, thumbnail, projectAddress, displayDate, contract, estimate, projectPayments, projectValue, remainingBalance, remainingBalanceAmount }) => (
       <article key={project.id} onClick={() => (project.isProjectRecord ? onOpenProject(project.id) : onOpenLead?.(project.id))} className="flex items-center gap-3 rounded-3xl border border-slate-200 bg-white p-4 shadow-sm">
         {thumbnail ? (
           <div className="h-24 w-24 shrink-0 overflow-hidden rounded-2xl bg-slate-100">
@@ -569,7 +583,7 @@ function renderMobileAccountSummary() {
         <div className="min-w-0 flex-1">
           <div className="flex flex-wrap items-center gap-2">
             <h3 className="truncate text-lg font-bold text-slate-950">{project.projectTitle || project.projectType}</h3>
-            {(hasContractData(contract) || hasEstimateData(estimate) || project.latestStatus || project.projectStatus || project.status || getLatestProjectInvoice(project)?.status) ? <StatusBadge status={getContextualProjectStatus(project, estimate, contract)} t={t} /> : null}
+            {(project.isProjectRecord || hasContractData(contract) || hasEstimateData(estimate) || project.latestStatus || project.projectStatus || project.status || getLatestProjectInvoice(project)?.status) ? <StatusBadge status={getContextualProjectStatus(project, estimate, contract, projectPayments)} t={t} /> : null}
           </div>
           {projectAddress ? <p className="mt-1 line-clamp-2 text-sm text-slate-500">{projectAddress}</p> : null}
           {displayDate ? <p className="mt-1 text-sm text-slate-600">{displayDate}</p> : null}
@@ -918,7 +932,7 @@ function renderMobileAccountSummary() {
             }
             bodyClassName="space-y-3"
           >
-            {projectCards.length ? projectCards.map(({ project, displayDate, projectValue, remainingBalance, remainingBalanceAmount, thumbnail, projectAddress, contract, estimate }) => (
+            {projectCards.length ? projectCards.map(({ project, displayDate, projectValue, remainingBalance, remainingBalanceAmount, thumbnail, projectAddress, contract, estimate, projectPayments }) => (
               <article key={project.id} className="flex items-center gap-4 rounded-3xl border border-slate-200 p-4 transition hover:border-slate-300 hover:bg-slate-50/60">
                 {thumbnail ? (
                   <div className="h-20 w-24 shrink-0 overflow-hidden rounded-2xl bg-slate-100">
@@ -928,7 +942,7 @@ function renderMobileAccountSummary() {
                 <div className="min-w-0 flex-1">
                   <div className="flex flex-wrap items-center gap-2">
                     <h3 className="truncate text-lg font-bold text-slate-950">{project.projectTitle || project.projectType}</h3>
-                    {(hasContractData(contract) || hasEstimateData(estimate) || project.latestStatus || project.projectStatus || project.status || getLatestProjectInvoice(project)?.status) ? <StatusBadge status={getContextualProjectStatus(project, estimate, contract)} t={t} /> : null}
+                    {(project.isProjectRecord || hasContractData(contract) || hasEstimateData(estimate) || project.latestStatus || project.projectStatus || project.status || getLatestProjectInvoice(project)?.status) ? <StatusBadge status={getContextualProjectStatus(project, estimate, contract, projectPayments)} t={t} /> : null}
                   </div>
                   {projectAddress ? <p className="mt-1 truncate text-sm text-slate-500">{projectAddress}</p> : null}
                   <div className="mt-3 grid gap-2 text-sm text-slate-600 sm:grid-cols-3">

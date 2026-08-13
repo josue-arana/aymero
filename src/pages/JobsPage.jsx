@@ -18,42 +18,15 @@ import dataProvider from '../services/dataProvider'
 import jobsHeroBackground from '../assets/page-heroes/jobs-bg.png'
 import { buildHeroBackgroundStyle } from '../utils/heroBackground'
 import { useToast } from '../components/common/ToastProvider'
-
-const supabaseStatusToDisplayMap = {
-  scheduled: 'Scheduled',
-  in_progress: 'In Progress',
-  waiting_on_client: 'Waiting on Client',
-  waiting_on_materials: 'Waiting on Materials',
-  ready_for_final_walkthrough: 'Ready for Final Walkthrough',
-  completed: 'Completed',
-  paid: 'Paid',
-}
-
-const displayStatusToSupabaseMap = {
-  Scheduled: 'scheduled',
-  'In Progress': 'in_progress',
-  'Waiting on Client': 'waiting_on_client',
-  'Waiting on Materials': 'waiting_on_materials',
-  'Ready for Final Walkthrough': 'ready_for_final_walkthrough',
-  Completed: 'completed',
-  Paid: 'paid',
-}
-
-function toDisplayJobStatus(status) {
-  if (!status) return 'Scheduled'
-  return supabaseStatusToDisplayMap[status] || status
-}
-
-function toSupabaseJobStatus(status) {
-  if (!status) return ''
-  return displayStatusToSupabaseMap[status] || String(status).toLowerCase().replace(/\s+/g, '_')
-}
+import { deriveProjectStatus } from '../utils/projectLifecycle'
 
 export function JobsPage({ leads, clients = [], archivedIds = [], sampleWorkspace, onViewJob, onViewLead, onCreateJob, onArchiveJob, onRestoreJob, onDeleteJob, t }) {
   const [selectedFilter, setSelectedFilter] = useState('All')
   const [confirmAction, setConfirmAction] = useState(null)
   const [projects, setProjects] = useState([])
   const [projectPayments, setProjectPayments] = useState([])
+  const [projectContracts, setProjectContracts] = useState([])
+  const [projectEvents, setProjectEvents] = useState([])
   const [isLoadingProjects, setIsLoadingProjects] = useState(false)
   const [activeJobActionId, setActiveJobActionId] = useState('')
   const jobActionGuardRef = useRef(false)
@@ -61,7 +34,7 @@ export function JobsPage({ leads, clients = [], archivedIds = [], sampleWorkspac
   const { showToast } = useToast()
   const { isAnalyticsMode } = useAnalyticsMode()
   const contractorId = getProjectsContractorId({ contractor, company, session })
-  const jobFilters = ['All', 'Archived', 'Scheduled', 'In Progress', 'Waiting on Client', 'Waiting on Materials', 'Ready for Final Walkthrough', 'Completed', 'Paid']
+  const jobFilters = ['All', 'Archived', 'Contract Draft', 'Signed', 'In Progress', 'Completed']
   const isArchivedJob = (job) => Boolean(job?.isArchived || job?.archivedAt || archivedIds.includes(job?.id))
   const clientNameById = useMemo(() => new Map(
     clients.map((client) => [client.id, client.displayName || client.name || ''])
@@ -73,6 +46,8 @@ export function JobsPage({ leads, clients = [], archivedIds = [], sampleWorkspac
     if (!USE_SUPABASE_PROJECTS) {
       setProjects([])
       setProjectPayments([])
+      setProjectContracts([])
+      setProjectEvents([])
       return undefined
     }
 
@@ -80,17 +55,23 @@ export function JobsPage({ leads, clients = [], archivedIds = [], sampleWorkspac
       setIsLoadingProjects(true)
 
       try {
-        const [projectsResponse, paymentsResponse] = await Promise.all([
+        const [projectsResponse, paymentsResponse, contractsResponse, eventsResponse] = await Promise.all([
           dataProvider.projects.list({ contractorId, includeArchived: true }),
           dataProvider.payments.list({ contractorId, includeArchived: true }),
+          dataProvider.contracts.list({ contractorId, includeArchived: true }),
+          dataProvider.events.list({ contractorId, includeArchived: true }),
         ])
 
         if (isCancelled) return
 
         const nextProjects = Array.isArray(projectsResponse?.data) ? projectsResponse.data : []
         const nextPayments = Array.isArray(paymentsResponse?.data) ? paymentsResponse.data : []
+        const nextContracts = Array.isArray(contractsResponse?.data) ? contractsResponse.data : []
+        const nextEvents = Array.isArray(eventsResponse?.data) ? eventsResponse.data : []
         setProjects(nextProjects)
         setProjectPayments(nextPayments)
+        setProjectContracts(nextContracts)
+        setProjectEvents(nextEvents)
       } finally {
         if (!isCancelled) {
           setIsLoadingProjects(false)
@@ -112,7 +93,9 @@ export function JobsPage({ leads, clients = [], archivedIds = [], sampleWorkspac
       .filter((lead) => (
         USE_SUPABASE_PROJECTS
           ? Boolean(lead?.id)
-          : ['Won', 'Signed'].includes(lead.status) || ['Signed', 'Scheduled', 'In Progress', 'Waiting on Client', 'Waiting on Materials', 'Ready for Final Walkthrough', 'Completed', 'Paid'].includes(lead.projectStatus)
+          : Boolean(lead.projectId || lead.project_id)
+            || ['Won', 'Signed'].includes(lead.status)
+            || ['Signed', 'Scheduled', 'In Progress', 'Waiting on Client', 'Waiting on Materials', 'Ready for Final Walkthrough', 'Completed', 'Paid'].includes(lead.projectStatus)
       ))
       .map((lead) => {
         const relatedLead = leads.find((item) => (
@@ -122,24 +105,54 @@ export function JobsPage({ leads, clients = [], archivedIds = [], sampleWorkspac
           || item.project_id === lead?.id
         ))
         const portal = getPortalData(lead)
+        const resolvedProjectId = USE_SUPABASE_PROJECTS ? lead.id : (lead.projectId || lead.project_id || lead.id)
         const projectValue = Number(lead.projectValue ?? portal.contractAmount ?? lead.value ?? lead.estimatedValue ?? lead.contractValue ?? 0) || 0
-        const linkedPaymentTotal = USE_SUPABASE_PROJECTS
-          ? projectPayments
-            .filter((payment) => (
+        const linkedPayments = USE_SUPABASE_PROJECTS
+          ? projectPayments.filter((payment) => (
               !payment.archivedAt
               && !payment.archived_at
-              && (payment.projectId === lead.id || payment.project_id === lead.id)
+              && (payment.projectId === resolvedProjectId || payment.project_id === resolvedProjectId)
             ))
+          : [
+              ...(Array.isArray(lead.payments) ? lead.payments : []),
+              ...(Array.isArray(lead.portal?.payments) ? lead.portal.payments : []),
+              ...(Array.isArray(lead.portal?.paymentHistory) ? lead.portal.paymentHistory : []),
+            ]
+        const linkedPaymentTotal = USE_SUPABASE_PROJECTS
+          ? linkedPayments
             .reduce((sum, payment) => sum + Number(payment.amount || 0), 0)
           : 0
         const amountPaid = Number(linkedPaymentTotal || lead.amountPaid || lead.paid || portal.amountPaid || 0) || 0
         const remainingBalance = USE_SUPABASE_PROJECTS
           ? Math.max(projectValue - amountPaid, 0)
           : Number(lead.remainingBalance ?? lead.remaining ?? Math.max(projectValue - amountPaid, 0)) || 0
-        const normalizedStatus = USE_SUPABASE_PROJECTS
-          ? toDisplayJobStatus(lead.status)
-          : (lead.projectStatus || (lead.status === 'Won' ? 'Scheduled' : 'In Progress'))
-        const derivedStatus = remainingBalance === 0 && ['Completed', 'Paid'].includes(normalizedStatus) ? 'Paid' : normalizedStatus
+        const linkedContracts = USE_SUPABASE_PROJECTS
+          ? projectContracts.filter((contract) => contract.projectId === resolvedProjectId || contract.project_id === resolvedProjectId)
+          : [
+              ...(Array.isArray(lead.contracts) ? lead.contracts : []),
+              ...(lead.portal?.contract ? [lead.portal.contract] : []),
+            ]
+        const linkedEvents = USE_SUPABASE_PROJECTS
+          ? projectEvents.filter((event) => (
+              event.projectId === resolvedProjectId
+              || event.project_id === resolvedProjectId
+              || (!event.projectId && !event.project_id && relatedLead?.id && (event.leadId === relatedLead.id || event.lead_id === relatedLead.id))
+            ))
+          : [
+              ...(Array.isArray(lead.events) ? lead.events : []),
+              ...(Array.isArray(lead.schedule) ? lead.schedule : []),
+              ...(Array.isArray(lead.scheduleEvents) ? lead.scheduleEvents : []),
+            ]
+        const derivedStatus = deriveProjectStatus({
+          project: lead,
+          contracts: [
+            ...linkedContracts,
+            ...(relatedLead?.portal?.contract ? [relatedLead.portal.contract] : []),
+          ],
+          payments: linkedPayments,
+          events: linkedEvents,
+          isArchived: isArchivedJob(lead),
+        })
         const clientName = lead.client
           || lead.clientName
           || lead.customerName
@@ -172,29 +185,25 @@ export function JobsPage({ leads, clients = [], archivedIds = [], sampleWorkspac
           nextStep: lead.nextStep || lead.notes || t('projectStatus'),
         }
       })
-  }, [clientNameById, leads, projectPayments, projects, t])
+  }, [archivedIds, clientNameById, leads, projectContracts, projectEvents, projectPayments, projects, t])
 
   const activeJobsList = jobs.filter((job) => !isArchivedJob(job))
   const filteredJobs = selectedFilter === 'All'
     ? activeJobsList
     : selectedFilter === 'Archived'
       ? jobs.filter((job) => isArchivedJob(job))
-      : activeJobsList.filter((job) => (
-        USE_SUPABASE_PROJECTS
-          ? toSupabaseJobStatus(job.status) === toSupabaseJobStatus(selectedFilter)
-          : job.jobStatus === selectedFilter
-      ))
+      : activeJobsList.filter((job) => job.jobStatus === selectedFilter)
 
-  const activeJobs = activeJobsList.filter((job) => !['Completed', 'Paid'].includes(job.jobStatus)).length
+  const activeJobs = activeJobsList.filter((job) => job.jobStatus !== 'Completed').length
   const inProgressJobs = activeJobsList.filter((job) => job.jobStatus === 'In Progress').length
-  const waitingJobs = activeJobsList.filter((job) => ['Waiting on Client', 'Waiting on Materials'].includes(job.jobStatus)).length
-  const completedThisMonth = activeJobsList.filter((job) => ['Completed', 'Paid'].includes(job.jobStatus)).length
+  const signedJobs = activeJobsList.filter((job) => job.jobStatus === 'Signed').length
+  const completedThisMonth = activeJobsList.filter((job) => job.jobStatus === 'Completed').length
   const outstandingBalance = activeJobsList.reduce((sum, job) => sum + job.remainingBalance, 0)
 
   const summaryCards = [
     { label: t('activeJobs'), value: activeJobs, helper: t('activeJobsHelper'), icon: BriefcaseBusiness },
     { label: t('inProgress'), value: inProgressJobs, helper: t('inProgressHelper'), icon: Zap },
-    { label: t('waiting'), value: waitingJobs, helper: t('waitingHelper'), icon: CalendarDays },
+    { label: t('signed'), value: signedJobs, helper: t('signedProjectsHelper'), icon: CalendarDays },
     { label: t('completedThisMonth'), value: completedThisMonth, helper: t('completedThisMonthHelper'), icon: CheckCircle2 },
     { label: t('outstandingBalance'), value: currency.format(outstandingBalance), helper: t('outstandingBalanceHelper'), icon: DollarSign },
   ]

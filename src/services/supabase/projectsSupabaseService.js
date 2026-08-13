@@ -192,6 +192,8 @@ export function mapProjectRowToUiProject(row) {
       payments: [],
     },
     targetCompletion: row?.target_end_date || '',
+    completedAt: row?.completed_at || null,
+    completed_at: row?.completed_at || null,
     archivedAt,
     archived_at: archivedAt,
     isArchived: Boolean(archivedAt),

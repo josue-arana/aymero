@@ -11,6 +11,8 @@ export function StatusBadge({ status, t = (key) => key }) {
     Complete: 'bg-emerald-50 text-emerald-700 ring-emerald-100',
     Paid: 'bg-slate-100 text-slate-700 ring-slate-200',
     Signed: 'bg-indigo-50 text-indigo-700 ring-indigo-100',
+    'Contract Draft': 'bg-slate-100 text-slate-700 ring-slate-200',
+    Archived: 'bg-amber-50 text-amber-800 ring-amber-200',
     Draft: 'bg-slate-100 text-slate-700 ring-slate-200',
     Sent: 'bg-blue-50 text-blue-700 ring-blue-100',
     'Estimate Sent': 'bg-blue-50 text-blue-700 ring-blue-100',
