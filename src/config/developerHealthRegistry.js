@@ -1,6 +1,14 @@
 export const technicalDebtRegistry = {
   todoItems: [],
   comingSoonPages: [
-    { id: 'paymentsPage', label: 'Payments page uses ComingSoonPage' },
+    {
+      id: 'paymentsPage',
+      titleKey: 'technicalDebtPaymentsPageTitle',
+      descriptionKey: 'technicalDebtPaymentsPageDescription',
+      severity: 'medium',
+      affectedAreaKey: 'payments',
+      nextActionKey: 'technicalDebtPaymentsPageNextAction',
+      sourceHint: 'developerHealthRegistry.comingSoonPages',
+    },
   ],
 }

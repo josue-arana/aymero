@@ -26,6 +26,104 @@ function StatusBadge({ status }) {
   )
 }
 
+function translateDiagnosticValue(t, value) {
+  if (value === null || value === undefined || value === '') return ''
+  if (typeof value === 'object' && !Array.isArray(value) && value.key) {
+    return t(value.key, value.params || {})
+  }
+  return String(value)
+}
+
+function DiagnosticValue({ value, t }) {
+  if (Array.isArray(value)) {
+    if (!value.length) return <span>{t('none')}</span>
+    return (
+      <ul className="mt-1 flex min-w-0 flex-wrap gap-1.5">
+        {value.map((item, index) => (
+          <li key={`${translateDiagnosticValue(t, item)}-${index}`} className="max-w-full rounded-lg bg-white px-2 py-1 font-mono text-xs font-semibold text-slate-700 ring-1 ring-slate-200 [overflow-wrap:anywhere]">
+            {translateDiagnosticValue(t, item)}
+          </li>
+        ))}
+      </ul>
+    )
+  }
+
+  return <span className="[overflow-wrap:anywhere]">{translateDiagnosticValue(t, value)}</span>
+}
+
+function DiagnosticField({ label, value, t }) {
+  if (value === null || value === undefined || value === '') return null
+
+  return (
+    <div className="min-w-0">
+      <p className="text-[11px] font-bold uppercase tracking-[0.14em] text-slate-500">{label}</p>
+      <div className="mt-1 min-w-0 text-sm font-semibold text-slate-700">
+        <DiagnosticValue value={value} t={t} />
+      </div>
+    </div>
+  )
+}
+
+function HealthCheckCard({ check, t }) {
+  const isHealthy = check.status === 'PASS'
+  const summary = translateDiagnosticValue(t, check.summary)
+
+  return (
+    <article className={`min-w-0 rounded-2xl border p-4 ${isHealthy ? 'border-slate-200 bg-slate-50' : check.status === 'FAIL' ? 'border-rose-200 bg-rose-50/60' : 'border-amber-200 bg-amber-50/60'}`}>
+      <div className="flex min-w-0 items-start justify-between gap-3">
+        <div className="min-w-0">
+          <p className="break-words font-bold text-slate-950">{t(check.labelKey)}</p>
+          {summary ? <p className="mt-2 break-words text-sm leading-6 text-slate-600 [overflow-wrap:anywhere]">{summary}</p> : null}
+        </div>
+        <StatusBadge status={check.status} />
+      </div>
+
+      {!isHealthy ? (
+        <details className="group mt-3 min-w-0 rounded-xl border border-slate-200 bg-white/80">
+          <summary className="cursor-pointer list-none px-3 py-2.5 text-sm font-bold text-slate-700 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-blue-500">
+            <span className="inline-flex items-center gap-2">
+              <span>{t('viewDiagnosticDetails')}</span>
+              <span aria-hidden="true" className="text-xs text-slate-400 transition group-open:rotate-180">▼</span>
+            </span>
+          </summary>
+          <div className="min-w-0 space-y-4 border-t border-slate-200 p-3">
+            {check.diagnosticIncomplete ? (
+              <p className="rounded-xl border border-rose-200 bg-rose-50 px-3 py-2 text-sm font-bold text-rose-800">{t('diagnosticImplementationIncomplete')}</p>
+            ) : null}
+            <div className="grid min-w-0 gap-4 sm:grid-cols-2">
+              <DiagnosticField label={t('expected')} value={check.expected} t={t} />
+              <DiagnosticField label={t('actual')} value={check.actual} t={t} />
+            </div>
+            {check.details?.length ? (
+              <DiagnosticField label={t('diagnosticDetails')} value={check.details} t={t} />
+            ) : null}
+            {check.affectedItems?.length ? (
+              <div className="min-w-0">
+                <p className="text-[11px] font-bold uppercase tracking-[0.14em] text-slate-500">{t('affectedItems')}</p>
+                <div className="mt-2 space-y-2">
+                  {check.affectedItems.map((item) => (
+                    <div key={item.id} className="min-w-0 rounded-xl border border-slate-200 bg-slate-50 p-3">
+                      <p className="break-words text-sm font-bold text-slate-950 [overflow-wrap:anywhere]">{item.labelKey ? t(item.labelKey) : item.label || item.id}</p>
+                      {item.issueKey ? <p className="mt-1 break-words text-sm text-slate-600 [overflow-wrap:anywhere]">{t(item.issueKey)}</p> : null}
+                      <div className="mt-3 grid min-w-0 gap-3 sm:grid-cols-2">
+                        <DiagnosticField label={t('expected')} value={item.expected} t={t} />
+                        <DiagnosticField label={t('actual')} value={item.actual} t={t} />
+                      </div>
+                      {item.values?.length ? <div className="mt-3"><DiagnosticField label={t('diagnosticFindings')} value={item.values} t={t} /></div> : null}
+                      {item.sourceHint ? <p className="mt-3 break-words font-mono text-xs font-semibold text-slate-500 [overflow-wrap:anywhere]">{t('sourceHint')}: {item.sourceHint}</p> : null}
+                    </div>
+                  ))}
+                </div>
+              </div>
+            ) : null}
+            {check.sourceHint ? <p className="break-words font-mono text-xs font-semibold text-slate-500 [overflow-wrap:anywhere]">{t('sourceHint')}: {check.sourceHint}</p> : null}
+          </div>
+        </details>
+      ) : null}
+    </article>
+  )
+}
+
 function SummaryCard({ label, value, helper }) {
   return (
     <div className="rounded-3xl border border-slate-200 bg-white p-5 shadow-sm">
@@ -310,38 +408,7 @@ export function TranslationAuditPage({ t }) {
       <SectionCard title={t('applicationHealth')}>
         <div className="grid gap-3 lg:grid-cols-2">
           {snapshot.applicationHealth.map((check) => (
-            <article key={check.id} className="rounded-2xl border border-slate-200 bg-slate-50 p-4">
-              <div className="flex items-center justify-between gap-3">
-                <p className="font-bold text-slate-950">{t(check.labelKey)}</p>
-                <StatusBadge status={check.status} />
-              </div>
-              <p className="mt-2 text-sm text-slate-600">
-                {check.id === 'routing' && (snapshot.routeAudit.missing.length === 0 ? t('routingPassDetail') : t('routingFailDetail', { count: snapshot.routeAudit.missing.length }))}
-                {check.id === 'translations' && (snapshot.translationAudit.missingSpanish.length + snapshot.translationAudit.missingEnglish.length === 0 ? t('translationsPassDetail') : t('translationsFailDetail', { count: snapshot.translationAudit.missingSpanish.length + snapshot.translationAudit.missingEnglish.length }))}
-                {check.id === 'services' && (snapshot.serviceAudit?.missing?.length === 0 ? t('servicesPassDetail') : t('servicesFailDetail', { count: snapshot.serviceAudit?.missing?.length || 0 }))}
-                {check.id === 'featureFlags' && (snapshot.featureFlagAudit.undefinedFlags.length === 0 ? t('featureFlagsPassDetail') : t('featureFlagsFailDetail', { count: snapshot.featureFlagAudit.undefinedFlags.length }))}
-                {check.id === 'modals' && (snapshot.modalAudit.missing.length === 0 ? t('modalsPassDetail') : t('modalsFailDetail', { count: snapshot.modalAudit.missing.length }))}
-                {check.id === 'notifications' && t('notificationsPassDetail')}
-                {check.id === 'toastSystem' && t('toastSystemPassDetail')}
-                {check.id === 'archiveSystem' && t('archiveSystemPassDetail')}
-                {check.id === 'scrollRestoration' && t('scrollRestorationPassDetail')}
-              </p>
-              {check.id === 'services' && snapshot.serviceAudit?.missing?.length > 0 ? (
-                <div className="mt-3 rounded-2xl border border-rose-200 bg-rose-50 p-3">
-                  <p className="text-xs font-bold uppercase tracking-[0.2em] text-rose-700">{t('missingMethodsLabel')}</p>
-                  <div className="mt-2 space-y-2">
-                    {snapshot.serviceAudit.missing.map((service) => (
-                      <div key={service.id} className="rounded-xl bg-white px-3 py-2 text-sm text-slate-700">
-                        <p className="font-bold text-slate-950">{service.id}: {service.missingMethods.join(', ')}</p>
-                        <p className="mt-1 text-xs font-semibold text-slate-500">
-                          {t('expectedMethodsLabel')}: {service.expectedMethods.join(', ')}
-                        </p>
-                      </div>
-                    ))}
-                  </div>
-                </div>
-              ) : null}
-            </article>
+            <HealthCheckCard key={check.id} check={check} t={t} />
           ))}
         </div>
       </SectionCard>
@@ -769,6 +836,34 @@ export function TranslationAuditPage({ t }) {
           <SummaryCard label={t('comingSoonPages')} value={snapshot.technicalDebtAudit.counts.comingSoonPages} />
           <SummaryCard label={t('deadButtons')} value={snapshot.technicalDebtAudit.counts.deadButtons} />
         </div>
+        {snapshot.technicalDebtAudit.items.length ? (
+          <div className="mt-5 grid min-w-0 gap-3 lg:grid-cols-2">
+            {snapshot.technicalDebtAudit.items.map((item) => (
+              <article key={item.id} className="min-w-0 rounded-2xl border border-slate-200 bg-slate-50 p-4">
+                <div className="flex min-w-0 items-start justify-between gap-3">
+                  <h3 className="min-w-0 break-words font-bold text-slate-950 [overflow-wrap:anywhere]">{item.titleKey ? t(item.titleKey) : item.title}</h3>
+                  <span className={`shrink-0 rounded-full px-2.5 py-1 text-xs font-bold ${item.severity === 'high' ? 'bg-rose-100 text-rose-800' : item.severity === 'low' ? 'bg-slate-200 text-slate-700' : 'bg-amber-100 text-amber-800'}`}>
+                    {t(`severity.${item.severity}`)}
+                  </span>
+                </div>
+                <p className="mt-2 break-words text-sm leading-6 text-slate-600 [overflow-wrap:anywhere]">{item.descriptionKey ? t(item.descriptionKey) : item.description}</p>
+                <dl className="mt-4 grid min-w-0 gap-3 sm:grid-cols-2">
+                  <div className="min-w-0">
+                    <dt className="text-[11px] font-bold uppercase tracking-[0.14em] text-slate-500">{t('affectedArea')}</dt>
+                    <dd className="mt-1 break-words text-sm font-semibold text-slate-700 [overflow-wrap:anywhere]">{item.affectedAreaKey ? t(item.affectedAreaKey) : item.affectedArea}</dd>
+                  </div>
+                  <div className="min-w-0">
+                    <dt className="text-[11px] font-bold uppercase tracking-[0.14em] text-slate-500">{t('suggestedNextAction')}</dt>
+                    <dd className="mt-1 break-words text-sm font-semibold text-slate-700 [overflow-wrap:anywhere]">{item.nextActionKey ? t(item.nextActionKey) : item.nextAction}</dd>
+                  </div>
+                </dl>
+                {item.sourceHint ? <p className="mt-4 break-words font-mono text-xs font-semibold text-slate-500 [overflow-wrap:anywhere]">{t('sourceHint')}: {item.sourceHint}</p> : null}
+              </article>
+            ))}
+          </div>
+        ) : (
+          <p className="mt-5 rounded-2xl bg-emerald-50 p-4 text-sm font-semibold text-emerald-800">{t('noTechnicalDebtItems')}</p>
+        )}
       </SectionCard>
     </div>
   )
