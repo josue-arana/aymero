@@ -4080,6 +4080,9 @@ function buildWorkspaceJobRecord(job, clientRecord = null) {
       onOpenProject={openProject}
       onOpenInvoice={(invoiceId) => navigate(`/invoices/${invoiceId}`)}
       onCreateLeadClick={() => setIsDashboardLeadModalOpen(true)}
+      onCreateJob={() => openJobModal()}
+      onRecordPayment={() => navigate(appRoutes.invoices)}
+      onScheduleVisit={() => openScheduleModal()}
       successMessage={dashboardSuccessMessage}
       showOnboardingReminder={companySettings?.onboarding?.completed === false}
       onResumeOnboarding={() => {
