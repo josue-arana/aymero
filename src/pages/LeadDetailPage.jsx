@@ -265,11 +265,9 @@ export function LeadDetailPage({
     .map((part) => part.trim())
     .filter(Boolean)
     .join('\n')
-  const leadMetadata = [
-    { id: 'stage', label: t('currentStage'), value: currentStageDisplay },
+  const leadInformation = [
     currentLead?.source ? { id: 'source', label: t('leadSource'), value: currentLead.source } : null,
     createdDateDisplay ? { id: 'created', label: t('dateCreated'), value: createdDateDisplay } : null,
-    leadHasEstimate ? { id: 'value', label: t('estimatedValue'), value: estimatedValueDisplay } : null,
   ].filter(Boolean)
   const relatedProject = relatedProjectRecord || (relatedProjectId
     ? {
@@ -757,60 +755,63 @@ export function LeadDetailPage({
       <LeadProgress currentStage={currentStage} t={t} />
 
       <section className="grid min-w-0 gap-5 lg:grid-cols-[minmax(0,2fr)_minmax(280px,1fr)] lg:items-start lg:gap-6">
-        <div className="min-w-0 space-y-5">
-      <section className={`rounded-3xl border p-4 shadow-sm sm:p-5 ${isConvertedToJob ? 'border-emerald-200 bg-gradient-to-br from-white to-emerald-50/60' : 'border-slate-200 bg-white'}`}>
-        <h2 className="text-lg font-bold text-slate-950 sm:text-xl">{t('nextRecommendedAction')}</h2>
-        <div className="mt-3 grid min-w-0 gap-3 sm:grid-cols-2 xl:grid-cols-[minmax(150px,0.65fr)_minmax(240px,1.35fr)_auto] xl:items-center">
-          <div className={`min-w-0 rounded-2xl px-3.5 py-3 ${isConvertedToJob ? 'bg-emerald-50 ring-1 ring-emerald-100' : 'bg-slate-50'}`}>
-            <p className="text-[11px] font-bold uppercase tracking-[0.16em] text-slate-500">{t('currentStage')}</p>
-            <p className="mt-1 flex items-center gap-2 text-sm font-bold text-slate-950">
-              {isConvertedToJob && <CheckCircle2 className="h-4 w-4 shrink-0 text-emerald-600" aria-hidden="true" />}
-              <span className="break-words">{currentStageDisplay}</span>
-            </p>
+        <section className={`min-w-0 rounded-3xl border p-4 shadow-md shadow-slate-200/50 sm:p-5 lg:col-start-1 lg:row-start-1 ${isConvertedToJob ? 'border-emerald-200 bg-gradient-to-br from-white to-emerald-50/60' : 'border-blue-100 bg-gradient-to-br from-white via-white to-blue-50/60'}`}>
+          <h2 className="text-lg font-bold text-slate-950 sm:text-xl">{t('nextRecommendedAction')}</h2>
+          <div className="mt-3 grid min-w-0 gap-3 sm:grid-cols-2 xl:grid-cols-[minmax(150px,0.65fr)_minmax(240px,1.35fr)_auto] xl:items-center">
+            <div className={`min-w-0 rounded-2xl px-3.5 py-3 ${isConvertedToJob ? 'bg-emerald-50 ring-1 ring-emerald-100' : 'bg-slate-50'}`}>
+              <p className="text-[11px] font-bold uppercase tracking-[0.16em] text-slate-500">{t('currentStage')}</p>
+              <p className="mt-1 flex items-center gap-2 text-sm font-bold text-slate-950">
+                {isConvertedToJob && <CheckCircle2 className="h-4 w-4 shrink-0 text-emerald-600" aria-hidden="true" />}
+                <span className="break-words">{currentStageDisplay}</span>
+              </p>
+            </div>
+            <div className={`min-w-0 rounded-2xl px-3.5 py-3 ${isConvertedToJob ? 'bg-emerald-50 ring-1 ring-emerald-100' : 'bg-blue-50'}`}>
+              <p className={`text-[11px] font-bold uppercase tracking-[0.16em] ${isConvertedToJob ? 'text-emerald-700' : 'text-blue-600'}`}>{t(isConvertedToJob ? 'status' : 'nextStep')}</p>
+              <p className="mt-1 text-sm leading-5 text-slate-700">{nextStepDisplay}</p>
+            </div>
+            <button disabled={isLeadActionSubmitting} onClick={handlePrimaryAction} className="flex min-h-12 w-full items-center justify-center gap-2 rounded-2xl bg-blue-600 px-5 py-3 text-sm font-bold text-white shadow-sm shadow-blue-600/20 transition hover:bg-blue-700 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-blue-500 focus-visible:ring-offset-2 disabled:cursor-not-allowed disabled:bg-blue-400 sm:col-span-2 xl:col-span-1 xl:w-auto xl:min-w-44">
+              {primaryActionIcon}
+              {isLeadActionSubmitting ? t('saving') : primaryActionLabel}
+            </button>
           </div>
-          <div className={`min-w-0 rounded-2xl px-3.5 py-3 ${isConvertedToJob ? 'bg-emerald-50 ring-1 ring-emerald-100' : 'bg-blue-50'}`}>
-            <p className={`text-[11px] font-bold uppercase tracking-[0.16em] ${isConvertedToJob ? 'text-emerald-700' : 'text-blue-600'}`}>{t(isConvertedToJob ? 'status' : 'nextStep')}</p>
-            <p className="mt-1 text-sm leading-5 text-slate-700">{nextStepDisplay}</p>
+          <div className="mt-4 flex flex-col gap-3 border-t border-slate-100 pt-3 sm:flex-row sm:items-center">
+            <button disabled={isLeadActionSubmitting} onClick={() => setIsEditOpen(true)} className="flex min-h-10 items-center justify-center gap-2 rounded-xl border border-slate-200 bg-slate-50 px-3.5 py-2 text-sm font-bold text-slate-800 transition hover:bg-white hover:shadow-sm focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-blue-500 focus-visible:ring-offset-2 disabled:cursor-not-allowed disabled:opacity-60">
+              <Edit3 className="h-4 w-4" /> {t('editLead')}
+            </button>
+            <ActionMenu
+              label={t('more')}
+              ariaLabel={t('more')}
+              items={moreMenuItems}
+              buttonDisabled={isLeadActionSubmitting}
+              containerClassName="w-full sm:w-auto"
+              buttonClassName="inline-flex min-h-10 w-full items-center justify-center gap-2 rounded-xl border border-slate-200 bg-white px-3.5 py-2 text-sm font-bold text-slate-800 transition hover:bg-slate-50 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-blue-500 focus-visible:ring-offset-2 sm:w-auto"
+              menuClassName="max-w-[calc(100vw-2rem)]"
+            />
           </div>
-          <button disabled={isLeadActionSubmitting} onClick={handlePrimaryAction} className="flex min-h-12 w-full items-center justify-center gap-2 rounded-2xl bg-blue-600 px-5 py-3 text-sm font-bold text-white shadow-sm shadow-blue-600/20 transition hover:bg-blue-700 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-blue-500 focus-visible:ring-offset-2 disabled:cursor-not-allowed disabled:bg-blue-400 sm:col-span-2 xl:col-span-1 xl:w-auto xl:min-w-44">
-            {primaryActionIcon}
-            {isLeadActionSubmitting ? t('saving') : primaryActionLabel}
-          </button>
-        </div>
-        <div className="mt-4 flex flex-col gap-3 border-t border-slate-100 pt-3 sm:flex-row sm:items-center">
-          <button disabled={isLeadActionSubmitting} onClick={() => setIsEditOpen(true)} className="flex min-h-10 items-center justify-center gap-2 rounded-xl border border-slate-200 bg-slate-50 px-3.5 py-2 text-sm font-bold text-slate-800 transition hover:bg-white hover:shadow-sm focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-blue-500 focus-visible:ring-offset-2 disabled:cursor-not-allowed disabled:opacity-60">
-            <Edit3 className="h-4 w-4" /> {t('editLead')}
-          </button>
-          <ActionMenu
-            label={t('more')}
-            ariaLabel={t('more')}
-            items={moreMenuItems}
-            buttonDisabled={isLeadActionSubmitting}
-            containerClassName="w-full sm:w-auto"
-            buttonClassName="inline-flex min-h-10 w-full items-center justify-center gap-2 rounded-xl border border-slate-200 bg-white px-3.5 py-2 text-sm font-bold text-slate-800 transition hover:bg-slate-50 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-blue-500 focus-visible:ring-offset-2 sm:w-auto"
-            menuClassName="max-w-[calc(100vw-2rem)]"
-          />
-        </div>
-        {isArchived && (
-          <button disabled={isLeadActionSubmitting} onClick={() => setConfirmAction({ mode: 'delete' })} className="mt-3 inline-flex w-full items-center justify-center gap-2 rounded-2xl border border-red-200 bg-red-50 px-4 py-3 text-sm font-bold text-red-700 hover:bg-red-100 disabled:cursor-not-allowed disabled:opacity-60 sm:w-auto">
-            <Trash2 className="h-4 w-4" /> {t('deletePermanently')}
-          </button>
-        )}
-      </section>
+          {isArchived && (
+            <button disabled={isLeadActionSubmitting} onClick={() => setConfirmAction({ mode: 'delete' })} className="mt-3 inline-flex w-full items-center justify-center gap-2 rounded-2xl border border-red-200 bg-red-50 px-4 py-3 text-sm font-bold text-red-700 hover:bg-red-100 disabled:cursor-not-allowed disabled:opacity-60 sm:w-auto">
+              <Trash2 className="h-4 w-4" /> {t('deletePermanently')}
+            </button>
+          )}
+        </section>
 
-      <section className="rounded-3xl border border-slate-200 bg-white p-4 shadow-sm sm:p-5">
+        {(leadHasEstimate || relatedProject) ? (
+          <div className="min-w-0 lg:col-start-2 lg:row-start-1">
+            <RelatedLeadRecordsCard
+              estimate={leadHasEstimate ? currentEstimate : null}
+              estimateTotal={leadHasEstimate ? Number(currentLead?.value || 0) : null}
+              project={relatedProject}
+              onOpenEstimate={leadHasEstimate ? openRelatedEstimate : null}
+              onOpenProject={relatedProjectId ? openJobWorkspace : null}
+              t={t}
+            />
+          </div>
+        ) : null}
+
+      <section className="min-w-0 rounded-3xl border border-slate-200 bg-white p-4 shadow-sm sm:p-5 lg:col-start-1 lg:row-start-2">
         <h2 className="text-lg font-bold text-slate-950 sm:text-xl">{t('leadDetails')}</h2>
 
-        <dl className="mt-4 grid grid-cols-[repeat(auto-fit,minmax(140px,1fr))] gap-x-4 gap-y-4 rounded-2xl bg-slate-50 px-4 py-3">
-          {leadMetadata.map((item) => (
-            <div key={item.id} className="min-w-0">
-              <dt className="text-[11px] font-bold uppercase tracking-[0.14em] text-slate-500">{item.label}</dt>
-              <dd className="mt-1 break-words text-sm font-bold leading-5 text-slate-900">{item.value}</dd>
-            </div>
-          ))}
-        </dl>
-
-        <div className={`mt-5 grid gap-6 border-t border-slate-100 pt-5 ${jobLocationDisplay ? 'md:grid-cols-2' : ''}`}>
+        <div className={`mt-5 grid gap-6 ${jobLocationDisplay ? 'md:grid-cols-2' : ''}`}>
           <section aria-labelledby="lead-contact-title">
             <h3 id="lead-contact-title" className="text-xs font-bold uppercase tracking-[0.16em] text-slate-500">{t('contact')}</h3>
             <dl className="mt-3 space-y-2.5">
@@ -843,6 +844,20 @@ export function LeadDetailPage({
               <address className="mt-3 whitespace-pre-line break-words text-sm font-semibold not-italic leading-6 text-slate-900">{jobLocationDisplay}</address>
             </section>
           )}
+
+          {leadInformation.length ? (
+            <section className={`border-t border-slate-100 pt-5 ${jobLocationDisplay ? 'md:col-span-2' : ''}`} aria-labelledby="lead-information-title">
+              <h3 id="lead-information-title" className="text-xs font-bold uppercase tracking-[0.16em] text-slate-500">{t('leadInformation')}</h3>
+              <dl className="mt-3 grid gap-4 sm:grid-cols-2">
+                {leadInformation.map((item) => (
+                  <div key={item.id} className="min-w-0 rounded-2xl bg-slate-50 px-4 py-3">
+                    <dt className="text-[11px] font-bold uppercase tracking-[0.14em] text-slate-500">{item.label}</dt>
+                    <dd className="mt-1 break-words text-sm font-bold leading-5 text-slate-900">{item.value}</dd>
+                  </div>
+                ))}
+              </dl>
+            </section>
+          ) : null}
         </div>
 
         <section className="mt-5 border-t border-slate-100 pt-4" aria-labelledby="lead-notes-title">
@@ -852,19 +867,10 @@ export function LeadDetailPage({
           </p>
         </section>
       </section>
-        </div>
 
-        <aside className="min-w-0 space-y-5">
-          <RelatedLeadRecordsCard
-            estimate={leadHasEstimate ? currentEstimate : null}
-            estimateTotal={leadHasEstimate ? Number(currentLead?.value || 0) : null}
-            project={relatedProject}
-            onOpenEstimate={leadHasEstimate ? openRelatedEstimate : null}
-            onOpenProject={relatedProjectId ? openJobWorkspace : null}
-            t={t}
-          />
+        <div className="min-w-0 lg:col-start-2 lg:row-start-2">
           <LeadActivityCard events={leadActivityEvents} t={t} />
-        </aside>
+        </div>
       </section>
 
       <LeadFormModal
@@ -918,7 +924,7 @@ function LeadActivityEvent({ event, isLast }) {
   const EventIcon = presentation.icon
 
   return (
-    <li className="relative flex min-w-0 gap-3 pb-5 last:pb-0">
+    <li className="relative flex min-w-0 gap-3 pb-4 last:pb-0">
       {!isLast ? <span className="absolute bottom-0 left-[17px] top-9 w-px bg-slate-200" aria-hidden="true" /> : null}
       <span className={`relative z-10 inline-flex h-9 w-9 shrink-0 items-center justify-center rounded-full ring-1 ${presentation.classes}`}>
         <EventIcon className="h-4 w-4" aria-hidden="true" />
@@ -955,28 +961,20 @@ function LeadActivityCard({ events, t }) {
   )
 }
 
-function RelatedRecordSection({ eyebrow, title, metadata, actionLabel, onAction }) {
-  const visibleMetadata = metadata.filter((item) => item?.value !== undefined && item?.value !== null && String(item.value).trim())
-
+function RelatedRecordSection({ eyebrow, title, amount = '', status = '', actionLabel, onAction }) {
   return (
-    <section className="min-w-0">
-      <p className="text-[11px] font-bold uppercase tracking-[0.16em] text-slate-500">{eyebrow}</p>
-      <h3 className="mt-1 break-words text-sm font-bold text-slate-950 [overflow-wrap:anywhere]">{title}</h3>
-      {visibleMetadata.length ? (
-        <dl className="mt-3 space-y-2">
-          {visibleMetadata.map((item) => (
-            <div key={item.label} className="flex min-w-0 items-start justify-between gap-3">
-              <dt className="shrink-0 text-xs font-semibold text-slate-500">{item.label}</dt>
-              <dd className="min-w-0 break-words text-right text-xs font-bold text-slate-800 [overflow-wrap:anywhere]">{item.value}</dd>
-            </div>
-          ))}
-        </dl>
-      ) : null}
+    <section className="min-w-0 rounded-2xl border border-slate-200 bg-slate-50/70 p-4">
+      <div className="min-w-0">
+        <p className="text-[11px] font-bold uppercase tracking-[0.16em] text-slate-500">{eyebrow}</p>
+        <h3 className="mt-1 break-words text-sm font-bold text-slate-950 [overflow-wrap:anywhere]">{title}</h3>
+      </div>
+      {amount ? <p className="mt-3 break-words text-xl font-bold text-slate-950">{amount}</p> : null}
+      {status ? <span className="mt-2 inline-flex max-w-full break-words rounded-full bg-white px-2.5 py-1 text-left text-[11px] font-bold text-slate-600 ring-1 ring-slate-200">{status}</span> : null}
       {onAction ? (
         <button
           type="button"
           onClick={onAction}
-          className="mt-3 inline-flex min-h-10 w-full items-center justify-center rounded-xl border border-slate-200 bg-white px-3 py-2 text-sm font-bold text-blue-700 transition hover:bg-slate-50 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-blue-500 focus-visible:ring-offset-2"
+          className="mt-4 inline-flex min-h-10 w-full items-center justify-center rounded-xl border border-slate-200 bg-white px-3 py-2 text-sm font-bold text-blue-700 transition hover:bg-blue-50 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-blue-500 focus-visible:ring-offset-2"
         >
           {actionLabel}
         </button>
@@ -999,24 +997,20 @@ function RelatedLeadRecordsCard({ estimate, estimateTotal, project, onOpenEstima
       <div className="mt-4 space-y-4">
         {estimate ? (
           <RelatedRecordSection
-            eyebrow={t('relatedEstimate')}
+            eyebrow={t('estimate')}
             title={estimateTitle}
-            metadata={[
-              estimateStatus ? { label: t('status'), value: estimateStatus } : null,
-              estimateTotal !== null ? { label: t('total'), value: currency.format(estimateTotal) } : null,
-            ].filter(Boolean)}
+            amount={estimateTotal !== null ? currency.format(estimateTotal) : ''}
+            status={estimateStatus}
             actionLabel={t('openEstimate')}
             onAction={onOpenEstimate}
           />
         ) : null}
         {project ? (
-          <div className={estimate ? 'border-t border-slate-100 pt-4' : ''}>
+          <div>
             <RelatedRecordSection
-              eyebrow={t('relatedProject')}
+              eyebrow={t('project')}
               title={projectTitle}
-              metadata={[
-                projectStatus ? { label: t('status'), value: tStatus(t, projectStatus) } : null,
-              ].filter(Boolean)}
+              status={projectStatus ? tStatus(t, projectStatus) : ''}
               actionLabel={t('openProject')}
               onAction={onOpenProject}
             />
