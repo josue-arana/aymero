@@ -4,13 +4,13 @@ export const es = {
   "userInitials": "JA",
   "userName": "Josue Arana",
   "appName": "Aymero",
-  "smallContractorCrm": "CRM by Aymero",
+  "smallContractorCrm": "CRM de Aymero",
   "brandSlogan": "Ayudándote a crecer.",
   "loginBrandAlt": "Aymero - Ayudándote a crecer",
   "language": "Idioma",
   "english": "Inglés",
   "spanish": "Español",
-  "languageNameEnglish": "English",
+  "languageNameEnglish": "Inglés",
   "languageNameSpanish": "Español",
   "searchPlaceholder": "Buscar clientes, estimados, trabajos...",
   "quickAdd": "Agregar",
@@ -49,6 +49,14 @@ export const es = {
   "leadPipelineDashboard": "Panel de prospectos",
   "welcomeBack": "Bienvenido de nuevo, {{name}}",
   "dashboardHeroText": "Administra oportunidades de remodelación, decks, techos y pintura desde la primera llamada hasta el trabajo firmado.",
+  "dashboardWorkspaceHelp": "Esto es lo que está pasando hoy en tu negocio.",
+  "pendingEstimates": "Estimados pendientes",
+  "upcomingVisitsToday": "Visitas programadas para hoy",
+  "todaysAgenda": "Agenda de hoy",
+  "financialSnapshot": "Resumen financiero",
+  "recentProjects": "Proyectos recientes",
+  "recentProjectsHelp": "Abre trabajos activos y revisa su posición financiera más reciente.",
+  "noRecentProjects": "Todavía no hay proyectos recientes.",
   "addLead": "Agregar prospecto",
   "metricNewLeads": "Nuevos prospectos",
   "metricNewLeadsHelper": "+12% esta semana",
@@ -1321,6 +1329,85 @@ export const es = {
   "toastSystemPassDetail": "El proveedor y hook de toast están disponibles.",
   "archiveSystemPassDetail": "Las rutas para archivar, restaurar y eliminar permanentemente están disponibles.",
   "scrollRestorationPassDetail": "La restauración de scroll está montada en el shell de la app.",
+  "translationsWarningDetail": "{{count}} valores de traducción necesitan revisión.",
+  "modalsWarningDetail": "{{count}} problemas de preparación de modales necesitan revisión.",
+  "notificationsFailDetail": "El componente del centro de notificaciones no está disponible.",
+  "toastSystemFailDetail": "El proveedor o hook de toast no está disponible.",
+  "archiveSystemFailDetail": "A {{count}} entidades les falta una o más capacidades de archivo.",
+  "scrollRestorationFailDetail": "La restauración de scroll no está montada en el shell de la app.",
+  "viewDiagnosticDetails": "Ver detalles del diagnóstico",
+  "diagnosticDetails": "Detalles",
+  "diagnosticFindings": "Hallazgos",
+  "affectedItems": "Elementos afectados",
+  "expected": "Esperado",
+  "actual": "Encontrado",
+  "sourceHint": "Fuente",
+  "none": "Ninguno",
+  "diagnosticDetailsMissing": "Esta verificación de salud no proporcionó detalles del diagnóstico.",
+  "diagnosticImplementationIncomplete": "La implementación de esta verificación está incompleta y debe proporcionar diagnósticos accionables.",
+  "diagnosticExpectedRegisteredRoutes": "Las {{count}} rutas auditadas registradas",
+  "diagnosticActualMissingRoutes": "Faltan {{count}} rutas",
+  "diagnosticRouteNotRegistered": "La ruta auditada no está registrada.",
+  "diagnosticExpectedTranslationParity": "Entradas coincidentes y no vacías en los diccionarios de inglés y español",
+  "diagnosticTranslationIssueCount": "Se encontraron {{count}} problemas de traducción",
+  "untranslatedSpanishKeys": "Claves sin traducir al español",
+  "diagnosticActualServicesMissingMethods": "A {{count}} servicios les faltan métodos requeridos",
+  "diagnosticServiceMethodsMissing": "Faltan métodos requeridos del servicio.",
+  "diagnosticExpectedBooleanFeatureFlags": "Cada feature flag auditado definido como booleano",
+  "diagnosticActualUndefinedFeatureFlags": "{{count}} feature flags no están definidos",
+  "diagnosticFeatureFlagUndefined": "El feature flag no está definido como booleano.",
+  "diagnosticExpectedModalCoverage": "Cada modal auditado registrado y listo para móvil",
+  "diagnosticActualModalIssues": "Se encontraron {{count}} problemas de modales",
+  "diagnosticModalNotRegistered": "El modal no está registrado para cobertura de auditoría.",
+  "diagnosticModalNotMobileReady": "El modal no está marcado como listo para móvil.",
+  "diagnosticNotFound": "No encontrado",
+  "diagnosticComponentMissing": "Falta el componente requerido.",
+  "diagnosticProviderOrHookMissing": "Falta el proveedor o hook requerido.",
+  "diagnosticActualArchiveEntitiesFailing": "{{count}} entidades tienen cobertura de archivo incompleta",
+  "diagnosticArchiveCapabilitiesMissing": "La cobertura de capacidades de archivo está incompleta.",
+  "diagnosticArchiveMissing.service method": "{{capability}}: falta el método del servicio",
+  "diagnosticArchiveMissing.UI action": "{{capability}}: falta la acción de interfaz",
+  "diagnosticArchiveMissing.implemented handler": "{{capability}}: falta el controlador implementado",
+  "severity.high": "Alta",
+  "severity.medium": "Media",
+  "severity.low": "Baja",
+  "affectedArea": "Área afectada",
+  "suggestedNextAction": "Siguiente acción sugerida",
+  "noTechnicalDebtItems": "No se encontraron elementos de deuda técnica.",
+  "technicalDebtPaymentsPageTitle": "La página de Pagos estará disponible próximamente",
+  "technicalDebtPaymentsPageDescription": "El destino de navegación de Pagos está registrado como una experiencia próximamente.",
+  "technicalDebtPaymentsPageNextAction": "Completa el flujo registrado de la página Pagos antes de habilitarla.",
+  "technicalDebtPaymentsPageWhy": "Un espacio de trabajo dedicado a pagos facilitaría la conciliación y la gestión del historial fuera de cada proyecto.",
+  "technicalDebtDependencyPaymentWorkspace": "Alcance aprobado para el espacio de trabajo de pagos",
+  "technicalDebtDependencyPaymentPermissions": "Permisos y filtros de pagos limitados al contratista",
+  "technicalDebtSprintPaymentsWorkspace": "Espacio de trabajo y conciliación de pagos",
+  "technicalDebtPortalMessagingTitle": "Mensajería al contratista desde el Portal del Cliente",
+  "technicalDebtPortalMessagingDescription": "El Portal del Cliente todavía no ofrece un flujo directo para enviar mensajes al contratista.",
+  "technicalDebtPortalMessagingNextAction": "Define el flujo de entrega, consentimiento y notificaciones antes de agregar una acción para el cliente.",
+  "technicalDebtPortalMessagingWhy": "La mensajería directa podría reducir la fricción del cliente, pero requiere un modelo confiable de entrega y privacidad.",
+  "technicalDebtDependencyMessagingProvider": "Proveedor aprobado de correo, SMS o mensajería dentro de la aplicación",
+  "technicalDebtDependencyConsentRules": "Reglas de consentimiento, privacidad y notificaciones del cliente",
+  "technicalDebtSprintClientCommunication": "Comunicación con clientes y notificaciones",
+  "technicalDebtAreaClientPortal": "Portal del Cliente",
+  "technicalDebtClassification": "Clasificación",
+  "technicalDebtClassification.backlog": "Pendiente",
+  "whyItMatters": "Por qué importa",
+  "suggestedPriority": "Prioridad sugerida",
+  "dependencies": "Dependencias",
+  "recommendedFutureSprint": "Sprint futuro recomendado",
+  "technicalDebtPendingButtonDescription": "Esta acción registrada tiene una implementación pendiente.",
+  "technicalDebtPendingButtonNextAction": "Conecta la acción a su flujo existente y marca la entrada del registro como implementada.",
+  "technicalDebtMissingButtonDescription": "Esta acción registrada no tiene una implementación funcional.",
+  "technicalDebtMissingButtonNextAction": "Agrega o restaura el controlador de la acción y luego actualiza su estado en el registro.",
+  "technicalDebtMissingRouteDescription": "Una ruta auditada no está presente en el registro de rutas de la aplicación.",
+  "technicalDebtMissingRouteNextAction": "Registra la ruta o elimina la entrada obsoleta de la auditoría.",
+  "technicalDebtMissingSpanishDescription": "Esta clave de traducción en inglés no tiene equivalente en español.",
+  "technicalDebtMissingEnglishDescription": "Esta clave de traducción en español no tiene equivalente en inglés.",
+  "technicalDebtTranslationNextAction": "Agrega el valor localizado faltante y vuelve a ejecutar la auditoría de traducciones.",
+  "technicalDebtMissingModalDescription": "Este modal auditado no está registrado.",
+  "technicalDebtMissingModalNextAction": "Registra el modal o elimina el requisito obsoleto de la auditoría.",
+  "technicalDebtMobileModalDescription": "Este modal auditado no está marcado como listo para móvil.",
+  "technicalDebtMobileModalNextAction": "Valida el modal en anchos móviles y actualiza sus metadatos de preparación.",
   "buttonAudit": "Auditoría de botones",
   "buttonsImplemented": "Botones implementados",
   "buttonsPending": "Botones pendientes",
@@ -1551,7 +1638,7 @@ export const es = {
   "profileSource": "Origen del perfil",
   "profileSourceAuthMetadata": "Metadata del auth",
   "profileSourceContractorMembers": "Membresía del contratista",
-  "profileSourceFallback": "Fallback",
+  "profileSourceFallback": "Alternativa",
   "profileSourceMock": "Mock",
   "onboardingRequired": "Onboarding requerido",
   "onboardingCompleted": "Onboarding completado",
@@ -1738,4 +1825,35 @@ export const es = {
   ,"deleteProjectConfirmBody": "Esto elimina permanentemente el trabajo después de que Aymero confirme que ningún registro relacionado depende de él. Esta acción no se puede deshacer."
   ,"projectDeleteBlocked": "Este trabajo tiene registros relacionados y todavía no se puede eliminar. Elimina o reasigna esos registros primero."
   ,"projectDeleteFailed": "No pudimos eliminar este trabajo. Inténtalo de nuevo."
+  ,"healthTab.overview": "Resumen"
+  ,"healthTab.backend": "Backend"
+  ,"healthTab.authentication": "Autenticación"
+  ,"healthTab.routes": "Rutas"
+  ,"healthTab.buttons": "Botones"
+  ,"healthTab.translations": "Traducciones"
+  ,"healthTab.modals": "Modales"
+  ,"healthTab.featureFlags": "Indicadores de funciones"
+  ,"healthTab.release": "Lanzamiento"
+  ,"healthTab.technicalDebt": "Deuda técnica"
+  ,"healthSearchLabel": "Buscar en Salud del desarrollador"
+  ,"healthSearchPlaceholder": "Buscar contratos, rutas, indicadores, servicios, claves…"
+  ,"healthSearchResults": "Resultados de búsqueda"
+  ,"healthSearchNoResults": "Ningún diagnóstico coincide con esta búsqueda."
+  ,"healthWorkspaceNavigation": "Espacios de Salud del desarrollador"
+  ,"healthUncategorized": "Otros"
+  ,"healthFailuresPresent": "{{count}} verificación fallida requiere atención."
+  ,"healthWarningsPresent": "{{count}} advertencia no bloqueante permanece visible en Salud de la aplicación."
+  ,"healthReleasePendingCount": "{{count}} verificación de lanzamiento pendiente"
+  ,"healthRegistryEntries": "{{count}} acciones registradas"
+  ,"backendReadiness": "Preparación del backend"
+  ,"authenticationReadiness": "Preparación de autenticación"
+  ,"releaseReadiness": "Preparación para lanzamiento"
+  ,"technicalDebtItems": "Deuda técnica"
+  ,"backlogItems": "Pendientes futuros"
+  ,"noBacklogItems": "No se encontraron elementos futuros intencionales."
+  ,"overallApplicationHealth": "Salud general de la aplicación"
+  ,"primaryReleaseBlocker": "Bloqueador principal del lanzamiento"
+  ,"productionDomainPendingHelp": "El dominio de producción sigue pendiente en la lista actual de preparación para lanzamiento."
+  ,"productionCapabilityFlags": "Indicadores de capacidades de producción"
+  ,"productionCapabilityFlagsHelp": "Las capacidades desactivadas muestran su configuración actual y no se consideran automáticamente bloqueadores del lanzamiento."
 }

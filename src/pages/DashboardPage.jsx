@@ -1,11 +1,14 @@
 import { useMemo, useState } from 'react'
-import { AlertTriangle, CalendarDays, Check, CheckCircle2, ChevronRight, Plus, Sparkles, X } from 'lucide-react'
+import { AlertTriangle, BriefcaseBusiness, CalendarDays, CalendarPlus, Check, CheckCircle2, ChevronRight, CreditCard, Sparkles, UserRoundPlus, X } from 'lucide-react'
 import { MetricCard } from '../components/ui/MetricCard'
+import { StatusBadge } from '../components/ui/StatusBadge'
 import { PipelineBoard } from '../components/pipeline/PipelineBoard'
 import { useAnalyticsMode } from '../contexts/SimpleModeContext'
 import { tStatus } from '../translations'
 import { currency, formatDisplayDate } from '../utils/formatters'
 import { getLeadNextStepKey, getLeadPipelineStage, leadPipelineStageOrder, leadPipelineStages } from '../utils/leadPipeline'
+import { getPortalData } from '../utils/portal'
+import { deriveProjectStatus } from '../utils/projectLifecycle'
 import heroBackground from '../assets/portal/blue-bg.png'
 
 function buildDateKey(value = new Date()) {
@@ -57,7 +60,7 @@ function remainingInvoiceBalance(invoice = {}) {
 
 function DashboardSection({ title, icon: Icon, emptyText, items = [], renderItem }) {
   return (
-    <section className="flex max-h-[24rem] flex-col overflow-hidden rounded-[1.75rem] border border-slate-200 bg-white p-4 shadow-sm sm:p-5 md:max-h-[26rem] xl:h-[31rem]">
+    <section className="flex max-h-[24rem] flex-col overflow-hidden rounded-[1.75rem] border border-slate-200 bg-white p-4 shadow-sm sm:p-5 md:max-h-[26rem]">
       <div className="mb-4 flex items-center justify-between gap-3">
         <div className="flex items-center gap-3">
           <span className="flex h-11 w-11 items-center justify-center rounded-2xl bg-cyan-50 text-cyan-700">
@@ -108,6 +111,120 @@ function DashboardActionItem({ item }) {
   )
 }
 
+function QuickAction({ icon: Icon, label, meta = '', onClick }) {
+  return (
+    <button
+      type="button"
+      onClick={onClick}
+      className="group flex min-h-20 min-w-0 items-center gap-3 rounded-2xl border border-slate-200 bg-white p-4 text-left shadow-sm transition hover:-translate-y-0.5 hover:border-blue-200 hover:shadow-md focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-blue-500 focus-visible:ring-offset-2"
+    >
+      <span className="flex h-11 w-11 shrink-0 items-center justify-center rounded-2xl bg-blue-50 text-blue-700 transition group-hover:bg-blue-600 group-hover:text-white">
+        <Icon className="h-5 w-5" aria-hidden="true" />
+      </span>
+      <span className="min-w-0">
+        <span className="block break-words text-sm font-bold text-slate-900">{label}</span>
+        {meta ? <span className="mt-1 block break-words text-xs text-slate-500">{meta}</span> : null}
+      </span>
+    </button>
+  )
+}
+
+function AgendaCard({ title, items, emptyText, t }) {
+  return (
+    <section className="min-w-0 rounded-[1.75rem] border border-slate-200 bg-white p-4 shadow-sm sm:p-5" aria-labelledby="dashboard-agenda-title">
+      <div className="flex items-center justify-between gap-3">
+        <div className="flex min-w-0 items-center gap-3">
+          <span className="flex h-11 w-11 shrink-0 items-center justify-center rounded-2xl bg-blue-50 text-blue-700">
+            <CalendarDays className="h-5 w-5" aria-hidden="true" />
+          </span>
+          <h2 id="dashboard-agenda-title" className="break-words text-lg font-bold text-slate-950 sm:text-xl">{title}</h2>
+        </div>
+        <span className="inline-flex min-w-10 items-center justify-center rounded-full bg-slate-100 px-3 py-1 text-sm font-bold text-slate-600">{items.length}</span>
+      </div>
+
+      {items.length ? (
+        <div className="mt-5 divide-y divide-slate-100 overflow-hidden rounded-2xl border border-slate-200">
+          {items.map((item) => (
+            <article key={item.id} className="grid min-w-0 gap-3 bg-white p-4 sm:grid-cols-[90px_minmax(0,1.2fr)_minmax(0,1fr)_auto] sm:items-center">
+              <div className="min-w-0">
+                <p className="text-[11px] font-bold uppercase tracking-[0.14em] text-slate-400">{t('time')}</p>
+                <p className="mt-1 break-words text-sm font-bold text-slate-950">{item.time || t('notAdded')}</p>
+              </div>
+              <div className="min-w-0">
+                <p className="text-[11px] font-bold uppercase tracking-[0.14em] text-slate-400">{t('event')}</p>
+                <p className="mt-1 break-words text-sm font-bold text-slate-950">{item.title}</p>
+                {item.customer ? <p className="mt-1 break-words text-xs text-slate-500">{item.customer}</p> : null}
+              </div>
+              <div className="min-w-0">
+                <p className="text-[11px] font-bold uppercase tracking-[0.14em] text-slate-400">{t('location')}</p>
+                <p className="mt-1 break-words text-sm text-slate-700">{item.location || t('notAdded')}</p>
+              </div>
+              {item.onClick ? (
+                <button type="button" onClick={item.onClick} className="inline-flex min-h-10 items-center justify-center rounded-xl border border-slate-200 bg-slate-50 px-3 py-2 text-sm font-bold text-blue-700 transition hover:bg-blue-50 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-blue-500 focus-visible:ring-offset-2">
+                  {item.actionLabel}
+                </button>
+              ) : null}
+            </article>
+          ))}
+        </div>
+      ) : (
+        <div className="mt-5 rounded-2xl border border-dashed border-slate-200 bg-slate-50 px-5 py-8 text-center">
+          <CalendarDays className="mx-auto h-6 w-6 text-slate-300" aria-hidden="true" />
+          <p className="mt-3 text-sm font-semibold text-slate-500">{emptyText}</p>
+        </div>
+      )}
+    </section>
+  )
+}
+
+function RecentProjectsCard({ projects, onOpenProject, t }) {
+  return (
+    <section className="min-w-0 rounded-[1.75rem] border border-slate-200 bg-white p-4 shadow-sm sm:p-5" aria-labelledby="recent-projects-title">
+      <div className="flex items-center justify-between gap-3">
+        <div>
+          <h2 id="recent-projects-title" className="text-lg font-bold text-slate-950 sm:text-xl">{t('recentProjects')}</h2>
+          <p className="mt-1 text-sm text-slate-500">{t('recentProjectsHelp')}</p>
+        </div>
+        <span className="inline-flex min-w-10 items-center justify-center rounded-full bg-slate-100 px-3 py-1 text-sm font-bold text-slate-600">{projects.length}</span>
+      </div>
+
+      {projects.length ? (
+        <div className="mt-5 grid gap-4 md:grid-cols-2">
+          {projects.map((project) => (
+            <article key={project.id} className="min-w-0 rounded-2xl border border-slate-200 bg-slate-50/70 p-4">
+              <div className="flex min-w-0 flex-col items-start gap-2 sm:flex-row sm:justify-between">
+                <div className="min-w-0">
+                  <h3 className="break-words text-base font-bold text-slate-950">{project.title}</h3>
+                  <p className="mt-1 break-words text-sm text-slate-500">{project.client}</p>
+                </div>
+                <StatusBadge status={project.status} t={t} />
+              </div>
+              <dl className="mt-4 grid grid-cols-2 gap-3 border-t border-slate-200 pt-4">
+                <div className="min-w-0">
+                  <dt className="text-[11px] font-bold uppercase tracking-[0.14em] text-slate-400">{t('total')}</dt>
+                  <dd className="mt-1 break-words text-sm font-bold text-slate-900">{currency.format(project.total)}</dd>
+                </div>
+                <div className="min-w-0">
+                  <dt className="text-[11px] font-bold uppercase tracking-[0.14em] text-slate-400">{t('balance')}</dt>
+                  <dd className="mt-1 break-words text-sm font-bold text-slate-900">{currency.format(project.balance)}</dd>
+                </div>
+              </dl>
+              <button type="button" onClick={() => onOpenProject?.(project.id)} className="mt-4 inline-flex min-h-10 w-full items-center justify-center rounded-xl bg-slate-950 px-4 py-2 text-sm font-bold text-white transition hover:bg-slate-800 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-blue-500 focus-visible:ring-offset-2">
+                {t('viewProject')}
+              </button>
+            </article>
+          ))}
+        </div>
+      ) : (
+        <div className="mt-5 rounded-2xl border border-dashed border-slate-200 bg-slate-50 px-5 py-8 text-center">
+          <BriefcaseBusiness className="mx-auto h-6 w-6 text-slate-300" aria-hidden="true" />
+          <p className="mt-3 text-sm font-semibold text-slate-500">{t('noRecentProjects')}</p>
+        </div>
+      )}
+    </section>
+  )
+}
+
 const sampleGuideItems = [
   { key: 'lead', labelKey: 'sampleGuideReviewLead' },
   { key: 'estimate', labelKey: 'sampleGuideOpenEstimate' },
@@ -126,7 +243,7 @@ function SampleWorkspaceGuide({ guide, onOpenItem, onDismiss, onCreateLead, t })
   const progress = Math.round((completedCount / sampleGuideItems.length) * 100)
 
   return (
-    <section className="mb-6 rounded-3xl border border-cyan-200 bg-gradient-to-br from-white via-cyan-50/70 to-blue-50 p-5 shadow-sm sm:p-6" aria-labelledby="sample-workspace-guide-title">
+    <section className="rounded-3xl border border-cyan-200 bg-gradient-to-br from-white via-cyan-50/70 to-blue-50 p-5 shadow-sm sm:p-6" aria-labelledby="sample-workspace-guide-title">
       <div className="flex items-start justify-between gap-4">
         <div className="flex min-w-0 items-start gap-3">
           <span className="flex h-11 w-11 shrink-0 items-center justify-center rounded-2xl bg-cyan-600 text-white"><Sparkles className="h-5 w-5" /></span>
@@ -195,6 +312,9 @@ export function DashboardPage({
   onOpenProject,
   onOpenInvoice,
   onCreateLeadClick,
+  onCreateJob,
+  onRecordPayment,
+  onScheduleVisit,
   successMessage,
   showOnboardingReminder = false,
   onResumeOnboarding,
@@ -227,21 +347,13 @@ export function DashboardPage({
           || lead.project_id === event.project_id
         )) || null
         const hasProject = Boolean(linkedLead?.projectId || linkedLead?.project_id)
-        const descriptionParts = [
-          resolveClientName(linkedLead, event.clientName || ''),
-          resolveDisplayTitle(linkedLead, event.projectTitle || ''),
-        ].filter(Boolean)
-        const metaParts = [
-          resolveEventTime(event),
-          event.location || linkedLead?.address || linkedLead?.location || '',
-        ].filter(Boolean)
-
         return {
           id: event.id || `${event.leadId}-${event.date}-${event.title}`,
-          eyebrow: tStatus(t, event.type || t('scheduled')),
           title: event.title || event.type || t('calendar'),
-          description: descriptionParts.join(' · '),
-          meta: metaParts.join(' · '),
+          time: resolveEventTime(event),
+          customer: resolveClientName(linkedLead, event.clientName || ''),
+          location: event.location || linkedLead?.address || linkedLead?.location || '',
+          actionLabel: hasProject ? t('viewProject') : t('viewLead'),
           onClick: linkedLead
             ? () => (hasProject ? onOpenProject?.(linkedLead.id) : onLeadClick?.(linkedLead.id))
             : null,
@@ -449,37 +561,87 @@ export function DashboardPage({
       .slice(0, 6)
   }, [invoices, leads, leadsById, onLeadClick, onOpenInvoice, onOpenProject, scheduleEvents, t])
 
+  const dashboardSummary = useMemo(() => {
+    const activeJobsMetric = metrics.find((metric) => metric.label === t('metricJobsInProgress'))
+    const pendingEstimatesMetric = metrics.find((metric) => metric.label === t('metricActiveEstimates'))
+    const outstandingBalance = invoices.reduce((sum, invoice) => {
+      if (!['Sent', 'Overdue'].includes(invoice.status)) return sum
+      return sum + remainingInvoiceBalance(invoice)
+    }, 0)
+
+    return {
+      newLeads: metrics.find((metric) => metric.label === t('metricNewLeads'))?.value ?? 0,
+      activeJobs: activeJobsMetric?.value ?? 0,
+      pendingEstimates: pendingEstimatesMetric?.value ?? 0,
+      outstandingBalance,
+      visitsToday: todaysScheduleItems.length,
+    }
+  }, [invoices, metrics, t, todaysScheduleItems.length])
+
+  const financialSnapshotMetrics = useMemo(() => metrics.filter((metric) => (
+    metric.label === t('metricRevenuePipeline')
+  )), [metrics, t])
+
+  const recentProjects = useMemo(() => leads
+    .filter((lead) => Boolean(lead?.projectId || lead?.project_id))
+    .map((lead) => {
+      const portal = getPortalData(lead)
+      const linkedEvents = scheduleEvents.filter((event) => (
+        event?.leadId === lead.id
+        || event?.projectId === lead.projectId
+        || event?.project_id === lead.projectId
+        || event?.projectId === lead.project_id
+        || event?.project_id === lead.project_id
+      ))
+
+      return {
+        id: lead.id,
+        title: resolveDisplayTitle(lead, t('project')),
+        client: resolveClientName(lead, t('client')),
+        status: deriveProjectStatus({
+          project: lead,
+          contract: lead?.portal?.contract,
+          payments: lead?.portal?.payments || lead?.portal?.paymentHistory || [],
+          events: linkedEvents,
+        }),
+        total: Number(portal.contractAmount || lead.contractValue || lead.value || 0),
+        balance: Number(portal.outstandingBalance || 0),
+        timestamp: toTimestamp(lead.updatedAt || lead.updated_at || lead.createdAt || lead.created_at),
+      }
+    })
+    .sort((left, right) => right.timestamp - left.timestamp)
+    .slice(0, 4), [leads, scheduleEvents, t])
+
   return (
-    <>
-      <section className="mb-8 overflow-hidden rounded-[2rem] border border-slate-200 bg-white shadow-[0_24px_60px_rgba(15,23,42,0.18)]">
+    <div className="mx-auto w-full max-w-7xl space-y-6 overflow-x-hidden">
+      <section className="overflow-hidden rounded-[2rem] border border-slate-800 bg-slate-950 shadow-[0_24px_60px_rgba(15,23,42,0.18)]">
         <div
-          className="relative overflow-hidden bg-slate-950 p-6 text-white lg:p-8"
+          className="relative overflow-hidden bg-slate-950 p-5 text-white sm:p-7 lg:p-8"
           style={{
-            backgroundImage: `linear-gradient(135deg, rgba(2, 6, 23, 0.82), rgba(15, 23, 42, 0.35)), url(${heroBackground})`,
+            backgroundImage: `linear-gradient(135deg, rgba(2, 6, 23, 0.88), rgba(15, 23, 42, 0.45)), url(${heroBackground})`,
             backgroundSize: 'cover',
             backgroundPosition: 'center',
           }}
         >
-          <div className="absolute inset-0 bg-gradient-to-r from-slate-950/55 via-slate-950/20 to-transparent" />
-          <div className="relative flex flex-col gap-6 lg:flex-row lg:items-end lg:justify-between">
-            <div>
-              <p className="mb-3 text-sm font-semibold uppercase tracking-[0.24em] text-blue-200">{t('welcomeBack', { name: firstName })}</p>
-              <h1 className="text-3xl font-bold tracking-tight sm:text-4xl">{t('leadPipelineDashboard')}</h1>
-              <p className="mt-4 max-w-2xl text-sm leading-6 text-slate-300 sm:text-base">
-                {t('dashboardHeroText')}
-              </p>
+          <div className="absolute inset-0 bg-gradient-to-r from-slate-950/60 via-slate-950/25 to-transparent" />
+          <div className="relative grid min-w-0 gap-7 lg:grid-cols-[minmax(0,1.15fr)_minmax(340px,0.85fr)] lg:items-end lg:gap-10">
+            <div className="min-w-0">
+              <p className="text-xs font-bold uppercase tracking-[0.24em] text-blue-200 sm:text-sm">{t('dashboard')}</p>
+              <h1 className="mt-3 break-words text-3xl font-bold leading-tight tracking-tight sm:text-4xl lg:text-5xl">{t('welcomeBack', { name: firstName })}</h1>
+              <p className="mt-4 max-w-2xl text-sm leading-6 text-slate-300 sm:text-base">{t('dashboardWorkspaceHelp')}</p>
             </div>
-            <div className="flex items-end justify-between gap-4 lg:min-w-[280px] lg:justify-end">
-              <button onClick={onCreateLeadClick} className="inline-flex items-center justify-center gap-2 rounded-2xl bg-white px-4 py-3 text-sm font-semibold text-slate-950 shadow-sm transition hover:bg-blue-50">
-                <Plus className="h-4 w-4" /> {t('addLead')}
-              </button>
-            </div>
+            <dl className="grid min-w-0 grid-cols-2 gap-px overflow-hidden rounded-2xl border border-white/10 bg-white/10 backdrop-blur-sm">
+              <div className="min-w-0 bg-slate-950/35 p-4"><dt className="text-[0.68rem] font-bold uppercase tracking-[0.14em] text-slate-400">{t('activeJobs')}</dt><dd className="mt-2 break-words text-2xl font-bold text-white">{dashboardSummary.activeJobs}</dd></div>
+              <div className="min-w-0 bg-slate-950/35 p-4"><dt className="text-[0.68rem] font-bold uppercase tracking-[0.14em] text-slate-400">{t('pendingEstimates')}</dt><dd className="mt-2 break-words text-2xl font-bold text-white">{dashboardSummary.pendingEstimates}</dd></div>
+              <div className="min-w-0 bg-slate-950/35 p-4"><dt className="text-[0.68rem] font-bold uppercase tracking-[0.14em] text-slate-400">{t('outstandingBalance')}</dt><dd className="mt-2 break-words text-xl font-bold text-white">{currency.format(dashboardSummary.outstandingBalance)}</dd></div>
+              <div className="min-w-0 bg-slate-950/35 p-4"><dt className="text-[0.68rem] font-bold uppercase tracking-[0.14em] text-slate-400">{t('upcomingVisitsToday')}</dt><dd className="mt-2 break-words text-2xl font-bold text-white">{dashboardSummary.visitsToday}</dd></div>
+            </dl>
           </div>
         </div>
       </section>
 
       {showOnboardingReminder && !isReminderDismissed ? (
-        <section className="mb-6 flex flex-col gap-4 rounded-3xl border border-blue-200 bg-gradient-to-r from-blue-50 to-cyan-50 p-4 shadow-sm sm:flex-row sm:items-center sm:justify-between sm:p-5" aria-label={t('onboardingReminderTitle')}>
+        <section className="flex flex-col gap-4 rounded-3xl border border-blue-200 bg-gradient-to-r from-blue-50 to-cyan-50 p-4 shadow-sm sm:flex-row sm:items-center sm:justify-between sm:p-5" aria-label={t('onboardingReminderTitle')}>
           <div className="flex min-w-0 items-start gap-3">
             <span className="mt-0.5 flex h-10 w-10 shrink-0 items-center justify-center rounded-2xl bg-blue-600 text-white"><Sparkles className="h-5 w-5" /></span>
             <div>
@@ -503,27 +665,24 @@ export function DashboardPage({
       />
 
       {successMessage && (
-        <div className="mb-6 rounded-2xl border border-emerald-200 bg-emerald-50 px-4 py-3 text-sm font-bold text-emerald-700">
+        <div className="rounded-2xl border border-emerald-200 bg-emerald-50 px-4 py-3 text-sm font-bold text-emerald-700">
           {successMessage}
         </div>
       )}
 
-      {isAnalyticsMode && (
-        <section className="mb-8 grid gap-4 sm:grid-cols-2 xl:grid-cols-4">
-          {metrics.map((metric) => (
-            <MetricCard key={metric.label} {...metric} />
-          ))}
-        </section>
-      )}
+      <section aria-labelledby="dashboard-quick-actions-title">
+        <h2 id="dashboard-quick-actions-title" className="text-lg font-bold text-slate-950 sm:text-xl">{t('quickActions')}</h2>
+        <div className="mt-4 grid gap-3 sm:grid-cols-2 xl:grid-cols-4">
+          <QuickAction icon={UserRoundPlus} label={t('createLead')} meta={`${t('metricNewLeads')}: ${dashboardSummary.newLeads}`} onClick={onCreateLeadClick} />
+          <QuickAction icon={BriefcaseBusiness} label={t('createJob')} onClick={onCreateJob} />
+          <QuickAction icon={CreditCard} label={t('recordPayment')} onClick={onRecordPayment} />
+          <QuickAction icon={CalendarPlus} label={t('scheduleEvent')} onClick={onScheduleVisit} />
+        </div>
+      </section>
 
-      <section className={`mb-8 grid gap-6 ${isAnalyticsMode ? 'xl:grid-cols-3 xl:items-stretch' : 'xl:grid-cols-2 xl:items-stretch'}`}>
-        <DashboardSection
-          title={t('todaysSchedule')}
-          icon={CalendarDays}
-          emptyText={t('noEventsScheduledForToday')}
-          items={todaysScheduleItems}
-          renderItem={(item) => <DashboardActionItem key={item.id} item={item} />}
-        />
+      <AgendaCard title={t('todaysAgenda')} items={todaysScheduleItems} emptyText={t('noEventsScheduledForToday')} t={t} />
+
+      <section className={`grid gap-6 ${isAnalyticsMode ? 'xl:grid-cols-2 xl:items-start' : ''}`}>
         <DashboardSection
           title={t('needsAttention')}
           icon={AlertTriangle}
@@ -542,6 +701,17 @@ export function DashboardPage({
         )}
       </section>
 
+      {isAnalyticsMode && financialSnapshotMetrics.length ? (
+        <section aria-labelledby="financial-snapshot-title">
+          <h2 id="financial-snapshot-title" className="text-lg font-bold text-slate-950 sm:text-xl">{t('financialSnapshot')}</h2>
+          <div className="mt-4 grid gap-4 sm:grid-cols-2">
+            {financialSnapshotMetrics.map((metric) => <MetricCard key={metric.label} {...metric} />)}
+          </div>
+        </section>
+      ) : null}
+
+      <RecentProjectsCard projects={recentProjects} onOpenProject={onOpenProject} t={t} />
+
       <PipelineBoard
         leads={leads}
         statuses={leadPipelineStageOrder}
@@ -553,6 +723,6 @@ export function DashboardPage({
         onLeadClick={onLeadClick}
         t={t}
       />
-    </>
+    </div>
   )
 }

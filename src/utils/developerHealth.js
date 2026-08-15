@@ -32,7 +32,9 @@ import { auditTranslations } from '../translations'
 
 const requiredServiceMethods = ['list', 'getById', 'create', 'update', 'archive', 'restore', 'deletePermanently']
 
-const serviceRegistry = [
+// Only persisted entity services belong in this registry. Readiness and security
+// diagnostics are evaluated by their dedicated audits below.
+const entityServiceRegistry = [
   { id: 'leadsService', service: leadsService },
   { id: 'clientsService', service: clientsService },
   { id: 'projectsService', service: projectsService },
@@ -41,10 +43,106 @@ const serviceRegistry = [
   { id: 'invoicesService', service: invoicesService },
   { id: 'paymentsService', service: paymentsService },
   { id: 'eventsService', service: eventsService },
-    { id: 'isolationReadiness', service: null },
   { id: 'photosService', service: photosService },
   { id: 'settingsService', service: settingsService },
 ]
+
+const archiveCapabilities = [
+  {
+    id: 'leads',
+    label: 'Leads',
+    serviceId: 'leadsService',
+    service: leadsService,
+    buttons: { archive: 'leadsArchiveLead', restore: 'leadsRestoreLead', deletePermanently: 'leadsDeleteLead' },
+  },
+  {
+    id: 'clients',
+    label: 'Clients',
+    serviceId: 'clientsService',
+    service: clientsService,
+    buttons: { archive: 'clientsArchiveClient', restore: 'clientsRestoreClient', deletePermanently: 'clientsDeleteClient' },
+  },
+  {
+    id: 'projects',
+    label: 'Projects',
+    serviceId: 'projectsService',
+    service: projectsService,
+    buttons: { archive: 'projectArchive', restore: 'projectRestore', deletePermanently: 'projectDelete' },
+  },
+  {
+    id: 'estimates',
+    label: 'Estimates',
+    serviceId: 'estimatesService',
+    service: estimatesService,
+    buttons: { archive: 'estimateArchive', restore: 'estimateRestore', deletePermanently: 'estimateDelete' },
+  },
+  {
+    id: 'contracts',
+    label: 'Contracts',
+    serviceId: 'contractsService',
+    service: contractsService,
+    buttons: { archive: 'contractArchive', restore: 'contractRestore', deletePermanently: 'contractDelete' },
+  },
+  {
+    id: 'invoices',
+    label: 'Invoices',
+    serviceId: 'invoicesService',
+    service: invoicesService,
+    buttons: { archive: 'invoicesArchive', restore: 'invoicesRestore', deletePermanently: 'invoicesDelete' },
+  },
+]
+
+const diagnosticFallback = {
+  key: 'diagnosticDetailsMissing',
+}
+
+function message(key, params = {}) {
+  return { key, params }
+}
+
+function hasDiagnosticContent(result = {}) {
+  return Boolean(
+    result.expected
+    || result.actual
+    || result.details?.length
+    || result.affectedItems?.length
+  )
+}
+
+export function createHealthCheckResult({
+  id,
+  labelKey,
+  status = 'PASS',
+  summary = null,
+  details = [],
+  expected = null,
+  actual = null,
+  affectedItems = [],
+  sourceHint = '',
+} = {}) {
+  const normalizedStatus = ['PASS', 'WARNING', 'FAIL'].includes(status) ? status : 'WARNING'
+  const result = {
+    id,
+    labelKey,
+    status: normalizedStatus,
+    summary,
+    details: details.filter(Boolean),
+    expected,
+    actual,
+    affectedItems: affectedItems.filter(Boolean),
+    sourceHint,
+    diagnosticIncomplete: false,
+  }
+
+  if (normalizedStatus !== 'PASS' && !hasDiagnosticContent(result)) {
+    result.summary = result.summary || diagnosticFallback
+    result.details = [...result.details, diagnosticFallback]
+    result.diagnosticIncomplete = true
+    result.sourceHint = id ? `healthCheck:${id}` : 'healthCheck:unknown'
+  }
+
+  return result
+}
 
 function getStatus(level) {
   return level
@@ -105,11 +203,13 @@ export function buildTranslationAudit() {
 }
 
 export function buildServiceAudit() {
-  const services = serviceRegistry.map(({ id, service }) => {
+  const services = entityServiceRegistry.map(({ id, service }) => {
     const missingMethods = requiredServiceMethods.filter((method) => typeof service?.[method] !== 'function')
+    const availableMethods = requiredServiceMethods.filter((method) => typeof service?.[method] === 'function')
     return {
       id,
       expectedMethods: requiredServiceMethods,
+      availableMethods,
       missingMethods,
       healthy: missingMethods.length === 0,
     }
@@ -124,6 +224,55 @@ export function buildServiceAudit() {
     factoryReady,
     missing,
     status: summarizeStatus({ fail: missing.length + (factoryReady ? 0 : 1) }),
+  }
+}
+
+export function buildArchiveAudit() {
+  const capabilities = ['archive', 'restore', 'deletePermanently']
+  const buttonById = new Map(buttonRegistry.map((button) => [button.id, button]))
+  const entities = archiveCapabilities.map((entity) => {
+    const checks = capabilities.map((capability) => {
+      const buttonId = entity.buttons[capability]
+      const button = buttonById.get(buttonId)
+      const serviceAvailable = typeof entity.service?.[capability] === 'function'
+      const uiActionAvailable = Boolean(button)
+      const handlerCovered = Boolean(button?.implemented)
+      const missingParts = [
+        !serviceAvailable ? 'service method' : null,
+        !uiActionAvailable ? 'UI action' : null,
+        uiActionAvailable && !handlerCovered ? 'implemented handler' : null,
+      ].filter(Boolean)
+
+      return {
+        id: capability,
+        serviceAvailable,
+        uiActionAvailable,
+        handlerCovered,
+        buttonId,
+        missingParts,
+        ready: missingParts.length === 0,
+      }
+    })
+
+    return {
+      id: entity.id,
+      label: entity.label,
+      labelKey: entity.id,
+      serviceId: entity.serviceId,
+      expectedCapabilities: capabilities,
+      actualCapabilities: checks.filter((check) => check.ready).map((check) => check.id),
+      checks,
+      missingCapabilities: checks.filter((check) => !check.ready).map((check) => check.id),
+      healthy: checks.every((check) => check.ready),
+    }
+  })
+  const missing = entities.filter((entity) => !entity.healthy)
+
+  return {
+    capabilities,
+    entities,
+    missing,
+    status: summarizeStatus({ fail: missing.length }),
   }
 }
 
@@ -194,79 +343,248 @@ export function buildTechnicalDebtAudit() {
     modalIssues: modalAudit.missing.length + modalAudit.mobileIssues.length,
   }
 
+  const items = [
+    ...technicalDebtRegistry.todoItems.map((item) => ({
+      ...item,
+      category: 'todo',
+      severity: item.severity || 'medium',
+      sourceHint: item.sourceHint || 'developerHealthRegistry.todoItems',
+    })),
+    ...technicalDebtRegistry.comingSoonPages.map((item) => ({
+      ...item,
+      category: 'comingSoon',
+      severity: item.severity || 'medium',
+    })),
+    ...buttonAudit.pending.map((button) => ({
+      id: `pending-button-${button.id}`,
+      category: 'button',
+      titleKey: button.labelKey,
+      descriptionKey: 'technicalDebtPendingButtonDescription',
+      severity: 'medium',
+      affectedArea: button.area,
+      nextActionKey: 'technicalDebtPendingButtonNextAction',
+      sourceHint: `buttonRegistry:${button.id}`,
+    })),
+    ...buttonAudit.missing.map((button) => ({
+      id: `missing-button-${button.id}`,
+      category: 'button',
+      titleKey: button.labelKey,
+      descriptionKey: 'technicalDebtMissingButtonDescription',
+      severity: 'high',
+      affectedArea: button.area,
+      nextActionKey: 'technicalDebtMissingButtonNextAction',
+      sourceHint: `buttonRegistry:${button.id}`,
+    })),
+    ...routeAudit.missing.map((route) => ({
+      id: `missing-route-${route.id}`,
+      category: 'route',
+      titleKey: route.labelKey,
+      descriptionKey: 'technicalDebtMissingRouteDescription',
+      severity: 'high',
+      affectedArea: route.path,
+      nextActionKey: 'technicalDebtMissingRouteNextAction',
+      sourceHint: 'routeAuditRegistry',
+    })),
+    ...translationAudit.missingSpanish.map((key) => ({
+      id: `missing-spanish-${key}`,
+      category: 'translation',
+      title: key,
+      descriptionKey: 'technicalDebtMissingSpanishDescription',
+      severity: 'high',
+      affectedArea: 'translations/es',
+      nextActionKey: 'technicalDebtTranslationNextAction',
+      sourceHint: 'auditTranslations.missingSpanish',
+    })),
+    ...translationAudit.missingEnglish.map((key) => ({
+      id: `missing-english-${key}`,
+      category: 'translation',
+      title: key,
+      descriptionKey: 'technicalDebtMissingEnglishDescription',
+      severity: 'high',
+      affectedArea: 'translations/en',
+      nextActionKey: 'technicalDebtTranslationNextAction',
+      sourceHint: 'auditTranslations.missingEnglish',
+    })),
+    ...modalAudit.missing.map((modal) => ({
+      id: `missing-modal-${modal.id}`,
+      category: 'modal',
+      titleKey: modal.labelKey,
+      descriptionKey: 'technicalDebtMissingModalDescription',
+      severity: 'high',
+      affectedArea: modal.componentName,
+      nextActionKey: 'technicalDebtMissingModalNextAction',
+      sourceHint: `modalRegistry:${modal.id}`,
+    })),
+    ...modalAudit.mobileIssues.map((modal) => ({
+      id: `mobile-modal-${modal.id}`,
+      category: 'modal',
+      titleKey: modal.labelKey,
+      descriptionKey: 'technicalDebtMobileModalDescription',
+      severity: 'medium',
+      affectedArea: modal.componentName,
+      nextActionKey: 'technicalDebtMobileModalNextAction',
+      sourceHint: `modalRegistry:${modal.id}`,
+    })),
+  ]
+
   return {
     counts,
-    total: Object.values(counts).reduce((sum, count) => sum + count, 0),
+    items,
+    total: items.length,
   }
 }
 
 export function buildApplicationHealth() {
   const translationAudit = buildTranslationAudit()
   const serviceAudit = buildServiceAudit()
+  const archiveAudit = buildArchiveAudit()
   const featureFlagAudit = buildFeatureFlagAudit()
   const modalAudit = buildModalAudit()
   const routeAudit = buildRouteAudit()
 
-  const healthChecks = [
-    {
+  const translationAffectedItems = [
+    translationAudit.missingEnglish.length ? { id: 'missingEnglish', labelKey: 'missingEnglishKeys', values: translationAudit.missingEnglish } : null,
+    translationAudit.missingSpanish.length ? { id: 'missingSpanish', labelKey: 'missingSpanishKeys', values: translationAudit.missingSpanish } : null,
+    translationAudit.emptyValues.length ? { id: 'emptyValues', labelKey: 'emptyValues', values: translationAudit.emptyValues } : null,
+    translationAudit.untranslatedSpanish.length ? { id: 'untranslatedSpanish', labelKey: 'untranslatedSpanishKeys', values: translationAudit.untranslatedSpanish } : null,
+    translationAudit.duplicateKeys.length ? { id: 'duplicateKeys', labelKey: 'duplicateKeys', values: translationAudit.duplicateKeys } : null,
+  ].filter(Boolean)
+  const translationIssueCount = translationAffectedItems.reduce((sum, item) => sum + item.values.length, 0)
+
+  return [
+    createHealthCheckResult({
       id: 'routing',
       labelKey: 'routing',
       status: routeAudit.status,
-      detail: routeAudit.missing.length === 0 ? 'All audited routes are registered.' : `${routeAudit.missing.length} audited routes are missing.`,
-    },
-    {
+      summary: message(routeAudit.missing.length === 0 ? 'routingPassDetail' : 'routingFailDetail', { count: routeAudit.missing.length }),
+      expected: message('diagnosticExpectedRegisteredRoutes', { count: routeAudit.routes.length }),
+      actual: message('diagnosticActualMissingRoutes', { count: routeAudit.missing.length }),
+      affectedItems: routeAudit.missing.map((route) => ({
+        id: route.id,
+        labelKey: route.labelKey,
+        issueKey: 'diagnosticRouteNotRegistered',
+        actual: route.path,
+        sourceHint: 'routeAuditRegistry',
+      })),
+      sourceHint: 'routeAuditRegistry',
+    }),
+    createHealthCheckResult({
       id: 'translations',
       labelKey: 'translations',
       status: translationAudit.status,
-      detail: translationAudit.missingSpanish.length + translationAudit.missingEnglish.length === 0
-        ? 'English and Spanish dictionaries stay aligned.'
-        : `${translationAudit.missingSpanish.length + translationAudit.missingEnglish.length} translation gaps found.`,
-    },
-    {
+      summary: message(
+        translationAudit.status === 'PASS'
+          ? 'translationsPassDetail'
+          : translationAudit.status === 'WARNING'
+            ? 'translationsWarningDetail'
+            : 'translationsFailDetail',
+        { count: translationIssueCount }
+      ),
+      expected: message('diagnosticExpectedTranslationParity'),
+      actual: message('diagnosticTranslationIssueCount', { count: translationIssueCount }),
+      affectedItems: translationAffectedItems,
+      sourceHint: 'auditTranslations',
+    }),
+    createHealthCheckResult({
       id: 'services',
       labelKey: 'services',
       status: serviceAudit.status,
-      detail: serviceAudit.missing.length === 0 ? 'All service modules expose the expected CRUD contract.' : `${serviceAudit.missing.length} services are missing required methods.`,
-    },
-    {
+      summary: message(serviceAudit.missing.length === 0 ? 'servicesPassDetail' : 'servicesFailDetail', { count: serviceAudit.missing.length }),
+      expected: requiredServiceMethods,
+      actual: message('diagnosticActualServicesMissingMethods', { count: serviceAudit.missing.length }),
+      affectedItems: serviceAudit.missing.map((service) => ({
+        id: service.id,
+        label: service.id,
+        issueKey: 'diagnosticServiceMethodsMissing',
+        expected: service.expectedMethods,
+        actual: service.availableMethods,
+        values: service.missingMethods,
+        sourceHint: `entityServiceRegistry:${service.id}`,
+      })),
+      sourceHint: 'entityServiceRegistry',
+    }),
+    createHealthCheckResult({
       id: 'featureFlags',
       labelKey: 'featureFlags',
       status: featureFlagAudit.status,
-      detail: featureFlagAudit.undefinedFlags.length === 0 ? 'Future backend flags are defined in config.' : `${featureFlagAudit.undefinedFlags.length} feature flags are undefined.`,
-    },
-    {
+      summary: message(featureFlagAudit.undefinedFlags.length === 0 ? 'featureFlagsPassDetail' : 'featureFlagsFailDetail', { count: featureFlagAudit.undefinedFlags.length }),
+      expected: message('diagnosticExpectedBooleanFeatureFlags'),
+      actual: message('diagnosticActualUndefinedFeatureFlags', { count: featureFlagAudit.undefinedFlags.length }),
+      affectedItems: featureFlagAudit.undefinedFlags.map((flag) => ({
+        id: flag.key,
+        label: flag.key,
+        issueKey: 'diagnosticFeatureFlagUndefined',
+        sourceHint: 'featureFlags',
+      })),
+      sourceHint: 'featureFlags',
+    }),
+    createHealthCheckResult({
       id: 'modals',
       labelKey: 'modals',
       status: modalAudit.status,
-      detail: modalAudit.missing.length === 0 ? 'Core modals are registered for audit coverage.' : `${modalAudit.missing.length} required modals are missing.`,
-    },
-    {
+      summary: message(
+        modalAudit.status === 'PASS' ? 'modalsPassDetail' : modalAudit.status === 'WARNING' ? 'modalsWarningDetail' : 'modalsFailDetail',
+        { count: modalAudit.missing.length + modalAudit.mobileIssues.length }
+      ),
+      expected: message('diagnosticExpectedModalCoverage'),
+      actual: message('diagnosticActualModalIssues', { count: modalAudit.missing.length + modalAudit.mobileIssues.length }),
+      affectedItems: [
+        ...modalAudit.missing.map((modal) => ({ id: modal.id, labelKey: modal.labelKey, issueKey: 'diagnosticModalNotRegistered', sourceHint: `modalRegistry:${modal.id}` })),
+        ...modalAudit.mobileIssues.map((modal) => ({ id: `${modal.id}-mobile`, labelKey: modal.labelKey, issueKey: 'diagnosticModalNotMobileReady', sourceHint: `modalRegistry:${modal.id}` })),
+      ],
+      sourceHint: 'modalRegistry',
+    }),
+    createHealthCheckResult({
       id: 'notifications',
       labelKey: 'notifications',
       status: NotificationCenter ? 'PASS' : 'FAIL',
-      detail: NotificationCenter ? 'Notification center is available and registered.' : 'Notification center component is missing.',
-    },
-    {
+      summary: message(NotificationCenter ? 'notificationsPassDetail' : 'notificationsFailDetail'),
+      expected: 'NotificationCenter',
+      actual: NotificationCenter ? 'NotificationCenter' : message('diagnosticNotFound'),
+      affectedItems: NotificationCenter ? [] : [{ id: 'NotificationCenter', label: 'NotificationCenter', issueKey: 'diagnosticComponentMissing', sourceHint: 'applicationShell:NotificationCenter' }],
+      sourceHint: 'applicationShell:NotificationCenter',
+    }),
+    createHealthCheckResult({
       id: 'toastSystem',
       labelKey: 'toastSystem',
       status: ToastProvider && useToast ? 'PASS' : 'FAIL',
-      detail: ToastProvider && useToast ? 'Toast provider and hook are available.' : 'Toast provider or hook is missing.',
-    },
-    {
+      summary: message(ToastProvider && useToast ? 'toastSystemPassDetail' : 'toastSystemFailDetail'),
+      expected: ['ToastProvider', 'useToast'],
+      actual: [ToastProvider ? 'ToastProvider' : null, useToast ? 'useToast' : null].filter(Boolean),
+      affectedItems: ToastProvider && useToast ? [] : [{ id: 'toast-system', label: 'Toast system', issueKey: 'diagnosticProviderOrHookMissing', sourceHint: 'ToastProvider' }],
+      sourceHint: 'ToastProvider',
+    }),
+    createHealthCheckResult({
       id: 'archiveSystem',
       labelKey: 'archiveSystem',
-      status: serviceAudit.status,
-      detail: 'Archive, restore, and permanent delete methods exist in the service layer.',
-    },
-    {
+      status: archiveAudit.status,
+      summary: message(archiveAudit.missing.length === 0 ? 'archiveSystemPassDetail' : 'archiveSystemFailDetail', { count: archiveAudit.missing.length }),
+      expected: archiveAudit.capabilities,
+      actual: message('diagnosticActualArchiveEntitiesFailing', { count: archiveAudit.missing.length }),
+      affectedItems: archiveAudit.missing.map((entity) => ({
+        id: entity.id,
+        labelKey: entity.labelKey,
+        issueKey: 'diagnosticArchiveCapabilitiesMissing',
+        expected: entity.expectedCapabilities,
+        actual: entity.actualCapabilities,
+        values: entity.checks
+          .filter((check) => !check.ready)
+          .flatMap((check) => check.missingParts.map((missingPart) => message(`diagnosticArchiveMissing.${missingPart}`, { capability: check.id }))),
+        sourceHint: `${entity.serviceId}; buttonRegistry`,
+      })),
+      sourceHint: 'archiveCapabilities; buttonRegistry; entityServiceRegistry',
+    }),
+    createHealthCheckResult({
       id: 'scrollRestoration',
       labelKey: 'scrollRestoration',
       status: ScrollToTop ? 'PASS' : 'FAIL',
-      detail: ScrollToTop ? 'Scroll restoration component is mounted in the app shell.' : 'Scroll restoration component is missing.',
-    },
+      summary: message(ScrollToTop ? 'scrollRestorationPassDetail' : 'scrollRestorationFailDetail'),
+      expected: 'ScrollToTop',
+      actual: ScrollToTop ? 'ScrollToTop' : message('diagnosticNotFound'),
+      affectedItems: ScrollToTop ? [] : [{ id: 'ScrollToTop', label: 'ScrollToTop', issueKey: 'diagnosticComponentMissing', sourceHint: 'applicationShell:ScrollToTop' }],
+      sourceHint: 'applicationShell:ScrollToTop',
+    }),
   ]
-
-  return healthChecks
 }
 
 export function buildDeveloperHealthSnapshot() {
@@ -301,17 +619,34 @@ export function buildDeveloperHealthSnapshot() {
     // file. Mark database schema as present based on repository state (no runtime
     // network or file parsing performed here to avoid build-time parsing of SQL).
     const databaseSchemaExists = true
+    // Repository-backed readiness metadata keeps these static artifacts
+    // explicit and traceable without attempting filesystem access in-browser.
+    const rlsPoliciesDrafted = Boolean(technicalDebtRegistry.releaseReadinessEvidence?.rlsPoliciesDrafted?.complete)
+    const storagePlanCreated = Boolean(technicalDebtRegistry.releaseReadinessEvidence?.storagePlanCreated?.complete)
+    const entityBackendStatuses = [
+      getSettingsBackendStatus(),
+      getClientsBackendStatus(),
+      getLeadsBackendStatus(),
+      getProjectsBackendStatus(),
+      getEstimatesBackendStatus(),
+      getContractsBackendStatus(),
+      getInvoicesBackendStatus(),
+      getPaymentsBackendStatus(),
+      getEventsBackendStatus(),
+    ]
+    const realCrudConnected = serviceLayerComplete && entityBackendStatuses.every((entry) => entry.status === 'PASS' && entry.mode === 'supabase')
+    const photoUploadsConnected = getProjectsBackendStatus().mode === 'supabase' && typeof photosService.uploadProjectPhoto === 'function'
 
     const checklist = [
       { id: 'supabaseProjectCreated', labelKey: 'check.supabaseProjectCreated', status: 'Complete' },
       { id: 'envConfigured', labelKey: 'check.envConfigured', status: backendEnvironment.supabaseConfigured ? 'Complete' : 'Pending' },
       { id: 'authFoundationAdded', labelKey: 'check.authFoundationAdded', status: 'Complete' },
       { id: 'databaseSchemaCreated', labelKey: 'check.databaseSchemaCreated', status: databaseSchemaExists ? 'Complete' : 'Pending' },
-      { id: 'rlsPoliciesDrafted', labelKey: 'check.rlsPoliciesDrafted', status: 'Pending' },
+      { id: 'rlsPoliciesDrafted', labelKey: 'check.rlsPoliciesDrafted', status: rlsPoliciesDrafted ? 'Complete' : 'Pending' },
       { id: 'serviceLayerCreated', labelKey: 'check.serviceLayerCreated', status: serviceLayerComplete ? 'Complete' : 'Pending' },
-      { id: 'storagePlanCreated', labelKey: 'check.storagePlanCreated', status: 'Pending' },
-      { id: 'realCrudConnected', labelKey: 'check.realCrudConnected', status: 'Not Started' },
-      { id: 'photoUploadsConnected', labelKey: 'check.photoUploadsConnected', status: 'Not Started' },
+      { id: 'storagePlanCreated', labelKey: 'check.storagePlanCreated', status: storagePlanCreated ? 'Complete' : 'Pending' },
+      { id: 'realCrudConnected', labelKey: 'check.realCrudConnected', status: realCrudConnected ? 'Complete' : 'Pending' },
+      { id: 'photoUploadsConnected', labelKey: 'check.photoUploadsConnected', status: photoUploadsConnected ? 'Complete' : 'Pending' },
       { id: 'productionDomainReady', labelKey: 'check.productionDomainReady', status: 'Pending' },
     ]
 
@@ -323,6 +658,7 @@ export function buildDeveloperHealthSnapshot() {
     buttonAudit: buildButtonAudit(),
     routeAudit: buildRouteAudit(),
     serviceAudit: buildServiceAudit(),
+    archiveAudit: buildArchiveAudit(),
     translationAudit: buildTranslationAudit(),
     modalAudit: buildModalAudit(),
     featureFlagAudit: buildFeatureFlagAudit(),

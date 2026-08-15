@@ -3,6 +3,48 @@ import { es } from './es'
 
 export const translations = { en, es }
 
+// Values that intentionally remain identical across both dictionaries: brand
+// names, language autonyms, acronyms, technical identifiers, data templates,
+// and locale-neutral example values. Keeping this explicit prevents legitimate
+// shared values from masking genuinely untranslated Spanish copy.
+const intentionallySharedTranslationValues = new Set([
+  'brandInitials',
+  'brandName',
+  'appName',
+  'userInitials',
+  'userName',
+  'languageNameSpanish',
+  'no',
+  'total',
+  'pdf',
+  'Instagram',
+  'Google Business',
+  'subtotal',
+  'Zelle',
+  'ACH',
+  'Venmo',
+  'businessAddressPlaceholder',
+  'todayCustomerAmountLine',
+  'authEmailPlaceholder',
+  'contractorOnboardingPhonePlaceholder',
+  'contractorOnboardingAddressPlaceholder',
+  'backendEnvironmentUseSupabaseSettings',
+  'backendEnvironmentUseSupabaseClients',
+  'backendEnvironmentUseSupabaseLeads',
+  'backendEnvironmentUseSupabaseProjects',
+  'backendEnvironmentUseSupabaseEstimates',
+  'backendEnvironmentUseSupabaseContracts',
+  'backendEnvironmentUseSupabasePayments',
+  'backendEnvironmentUseSupabaseEvents',
+  'backendEnvironmentUseAuth',
+  'settingsLoadStatusError',
+  'profileSourceMock',
+  'membershipStatusError',
+  'membershipStatusMock',
+  'onboardingPhonePlaceholder',
+  'onboardingLicensePlaceholder',
+])
+
 export function createTranslator(language) {
   return (key, params = {}) => {
     const dictionary = translations[language] || translations.en
@@ -35,7 +77,7 @@ export function auditTranslations() {
   const spanishKeys = Object.keys(es)
   const missingSpanish = englishKeys.filter((key) => !(key in es))
   const missingEnglish = spanishKeys.filter((key) => !(key in en))
-  const untranslatedSpanish = spanishKeys.filter((key) => es[key] === en[key] && !['brandInitials', 'brandName', 'appName', 'userInitials'].includes(key))
+  const untranslatedSpanish = spanishKeys.filter((key) => es[key] === en[key] && !intentionallySharedTranslationValues.has(key))
   const emptyValues = [...new Set([...englishKeys, ...spanishKeys])].filter((key) => !en[key] || !es[key])
   const total = new Set([...englishKeys, ...spanishKeys]).size || 1
   return {

@@ -49,6 +49,14 @@ export const en = {
   "leadPipelineDashboard": "Lead Pipeline Dashboard",
   "welcomeBack": "Welcome back, {{name}}",
   "dashboardHeroText": "Track remodeling, deck, roofing, and painting opportunities from first call to signed job.",
+  "dashboardWorkspaceHelp": "Here's what's happening across your business today.",
+  "pendingEstimates": "Pending Estimates",
+  "upcomingVisitsToday": "Upcoming Visits Today",
+  "todaysAgenda": "Today's Agenda",
+  "financialSnapshot": "Financial Snapshot",
+  "recentProjects": "Recent Projects",
+  "recentProjectsHelp": "Open active project work and review the latest financial position.",
+  "noRecentProjects": "No recent projects yet.",
   "addLead": "Add Lead",
   "metricNewLeads": "New Leads",
   "metricNewLeadsHelper": "+12% this week",
@@ -1321,6 +1329,85 @@ export const en = {
   "toastSystemPassDetail": "Toast provider and hook are available.",
   "archiveSystemPassDetail": "Archive, restore, and permanent delete paths are available.",
   "scrollRestorationPassDetail": "Scroll restoration is mounted in the app shell.",
+  "translationsWarningDetail": "{{count}} translation values need review.",
+  "modalsWarningDetail": "{{count}} modal readiness issues need review.",
+  "notificationsFailDetail": "The notification center component is not available.",
+  "toastSystemFailDetail": "The toast provider or hook is not available.",
+  "archiveSystemFailDetail": "{{count}} entities are missing one or more archive capabilities.",
+  "scrollRestorationFailDetail": "Scroll restoration is not mounted in the app shell.",
+  "viewDiagnosticDetails": "View diagnostic details",
+  "diagnosticDetails": "Details",
+  "diagnosticFindings": "Findings",
+  "affectedItems": "Affected Items",
+  "expected": "Expected",
+  "actual": "Actual",
+  "sourceHint": "Source",
+  "none": "None",
+  "diagnosticDetailsMissing": "Diagnostic details were not provided by this health check.",
+  "diagnosticImplementationIncomplete": "This health-check implementation is incomplete and must provide actionable diagnostics.",
+  "diagnosticExpectedRegisteredRoutes": "All {{count}} audited routes registered",
+  "diagnosticActualMissingRoutes": "{{count}} routes missing",
+  "diagnosticRouteNotRegistered": "The audited route is not registered.",
+  "diagnosticExpectedTranslationParity": "Matching, non-empty English and Spanish dictionary entries",
+  "diagnosticTranslationIssueCount": "{{count}} translation issues found",
+  "untranslatedSpanishKeys": "Untranslated Spanish Keys",
+  "diagnosticActualServicesMissingMethods": "{{count}} services are missing required methods",
+  "diagnosticServiceMethodsMissing": "Required service methods are missing.",
+  "diagnosticExpectedBooleanFeatureFlags": "Every audited feature flag defined as a boolean",
+  "diagnosticActualUndefinedFeatureFlags": "{{count}} feature flags are undefined",
+  "diagnosticFeatureFlagUndefined": "The feature flag is not defined as a boolean.",
+  "diagnosticExpectedModalCoverage": "Every audited modal registered and mobile ready",
+  "diagnosticActualModalIssues": "{{count}} modal issues found",
+  "diagnosticModalNotRegistered": "The modal is not registered for audit coverage.",
+  "diagnosticModalNotMobileReady": "The modal is not marked mobile ready.",
+  "diagnosticNotFound": "Not found",
+  "diagnosticComponentMissing": "The required component is missing.",
+  "diagnosticProviderOrHookMissing": "The required provider or hook is missing.",
+  "diagnosticActualArchiveEntitiesFailing": "{{count}} entities have incomplete archive coverage",
+  "diagnosticArchiveCapabilitiesMissing": "Archive capability coverage is incomplete.",
+  "diagnosticArchiveMissing.service method": "{{capability}}: service method missing",
+  "diagnosticArchiveMissing.UI action": "{{capability}}: UI action missing",
+  "diagnosticArchiveMissing.implemented handler": "{{capability}}: implemented handler missing",
+  "severity.high": "High",
+  "severity.medium": "Medium",
+  "severity.low": "Low",
+  "affectedArea": "Affected Area",
+  "suggestedNextAction": "Suggested Next Action",
+  "noTechnicalDebtItems": "No technical-debt items found.",
+  "technicalDebtPaymentsPageTitle": "Payments page is coming soon",
+  "technicalDebtPaymentsPageDescription": "The Payments navigation target is registered as a coming-soon experience.",
+  "technicalDebtPaymentsPageNextAction": "Complete the registered Payments page workflow before enabling it.",
+  "technicalDebtPaymentsPageWhy": "A dedicated payment workspace would make reconciliation and payment history easier to manage outside individual projects.",
+  "technicalDebtDependencyPaymentWorkspace": "Approved payment-workspace scope",
+  "technicalDebtDependencyPaymentPermissions": "Contractor-scoped payment permissions and filters",
+  "technicalDebtSprintPaymentsWorkspace": "Payments workspace and reconciliation",
+  "technicalDebtPortalMessagingTitle": "Client Portal contractor messaging",
+  "technicalDebtPortalMessagingDescription": "The Client Portal does not yet provide a direct message-to-contractor workflow.",
+  "technicalDebtPortalMessagingNextAction": "Define the delivery, consent, and notification workflow before adding a client-facing action.",
+  "technicalDebtPortalMessagingWhy": "Direct messaging could reduce client friction, but it requires a reliable delivery and privacy model.",
+  "technicalDebtDependencyMessagingProvider": "Approved email, SMS, or in-app delivery provider",
+  "technicalDebtDependencyConsentRules": "Client consent, privacy, and notification rules",
+  "technicalDebtSprintClientCommunication": "Client communication and notifications",
+  "technicalDebtAreaClientPortal": "Client Portal",
+  "technicalDebtClassification": "Classification",
+  "technicalDebtClassification.backlog": "Backlog",
+  "whyItMatters": "Why It Matters",
+  "suggestedPriority": "Suggested Priority",
+  "dependencies": "Dependencies",
+  "recommendedFutureSprint": "Recommended Future Sprint",
+  "technicalDebtPendingButtonDescription": "This registered action is pending implementation.",
+  "technicalDebtPendingButtonNextAction": "Connect the action to its existing workflow and mark the registry entry implemented.",
+  "technicalDebtMissingButtonDescription": "This registered action has no working implementation.",
+  "technicalDebtMissingButtonNextAction": "Add or restore the action handler, then update its registry status.",
+  "technicalDebtMissingRouteDescription": "An audited route is not present in the application route registry.",
+  "technicalDebtMissingRouteNextAction": "Register the route or remove the stale audit entry.",
+  "technicalDebtMissingSpanishDescription": "This English translation key has no Spanish equivalent.",
+  "technicalDebtMissingEnglishDescription": "This Spanish translation key has no English equivalent.",
+  "technicalDebtTranslationNextAction": "Add the missing localized value and rerun the translation audit.",
+  "technicalDebtMissingModalDescription": "This audited modal is not registered.",
+  "technicalDebtMissingModalNextAction": "Register the modal or remove the stale audit requirement.",
+  "technicalDebtMobileModalDescription": "This audited modal is not marked mobile ready.",
+  "technicalDebtMobileModalNextAction": "Validate the modal at mobile widths and update its readiness metadata.",
   "buttonAudit": "Button Audit",
   "buttonsImplemented": "Buttons Implemented",
   "buttonsPending": "Buttons Pending",
@@ -1738,4 +1825,35 @@ export const en = {
   ,"deleteProjectConfirmBody": "This permanently deletes the project after Aymero confirms that no related records depend on it. This action cannot be undone."
   ,"projectDeleteBlocked": "This project has related records and can't be deleted yet. Remove or reassign those records first."
   ,"projectDeleteFailed": "We couldn't delete this project. Please try again."
+  ,"healthTab.overview": "Overview"
+  ,"healthTab.backend": "Backend"
+  ,"healthTab.authentication": "Authentication"
+  ,"healthTab.routes": "Routes"
+  ,"healthTab.buttons": "Buttons"
+  ,"healthTab.translations": "Translations"
+  ,"healthTab.modals": "Modals"
+  ,"healthTab.featureFlags": "Feature Flags"
+  ,"healthTab.release": "Release"
+  ,"healthTab.technicalDebt": "Technical Debt"
+  ,"healthSearchLabel": "Search Developer Health"
+  ,"healthSearchPlaceholder": "Search contracts, routes, flags, services, keys…"
+  ,"healthSearchResults": "Search Results"
+  ,"healthSearchNoResults": "No diagnostics match this search."
+  ,"healthWorkspaceNavigation": "Developer Health workspaces"
+  ,"healthUncategorized": "Other"
+  ,"healthFailuresPresent": "{{count}} failing health check requires attention."
+  ,"healthWarningsPresent": "{{count}} non-blocking warning remains visible in Application Health."
+  ,"healthReleasePendingCount": "{{count}} release-readiness check pending"
+  ,"healthRegistryEntries": "{{count}} registered actions"
+  ,"backendReadiness": "Backend Readiness"
+  ,"authenticationReadiness": "Authentication Readiness"
+  ,"releaseReadiness": "Release Readiness"
+  ,"technicalDebtItems": "Technical Debt"
+  ,"backlogItems": "Backlog"
+  ,"noBacklogItems": "No intentional backlog items found."
+  ,"overallApplicationHealth": "Overall Application Health"
+  ,"primaryReleaseBlocker": "Primary Release Blocker"
+  ,"productionDomainPendingHelp": "The production domain is still pending in the existing release-readiness checklist."
+  ,"productionCapabilityFlags": "Production Capability Flags"
+  ,"productionCapabilityFlagsHelp": "Disabled capabilities are shown as their current configured state and are not automatically treated as release blockers."
 }
