@@ -57,12 +57,11 @@ export const buttonRegistry = [
   { id: 'profileSave', labelKey: 'save', area: 'profile', implemented: true },
   { id: 'portalLanguageToggle', labelKey: 'language', area: 'portal', implemented: true },
   { id: 'portalBackToProject', labelKey: 'projectWorkspace', area: 'portal', implemented: true },
-  { id: 'portalMessageContractor', labelKey: 'messageContractor', area: 'portal', implemented: false, status: 'pending' },
   { id: 'loginSubmit', labelKey: 'signIn', area: 'auth', implemented: true },
   { id: 'loginGoToSignup', labelKey: 'createAccount', area: 'auth', implemented: true },
   { id: 'loginForgotPassword', labelKey: 'forgotPassword', area: 'auth', implemented: true },
   { id: 'signupSubmit', labelKey: 'signUp', area: 'auth', implemented: true },
   { id: 'signupGoToLogin', labelKey: 'alreadyHaveAccount', area: 'auth', implemented: true },
   { id: 'forgotPasswordSubmit', labelKey: 'sendResetLink', area: 'auth', implemented: true },
-  { id: 'accountSignOut', labelKey: 'signOut', area: 'account', implemented: false, status: 'pending' },
+  { id: 'accountSignOut', labelKey: 'signOut', area: 'account', implemented: true },
 ]

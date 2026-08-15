@@ -857,6 +857,42 @@ export function TranslationAuditPage({ t }) {
                     <dd className="mt-1 break-words text-sm font-semibold text-slate-700 [overflow-wrap:anywhere]">{item.nextActionKey ? t(item.nextActionKey) : item.nextAction}</dd>
                   </div>
                 </dl>
+                {item.classification || item.whyItMattersKey || item.priority || item.dependencyKeys?.length || item.futureSprintAreaKey ? (
+                  <div className="mt-4 grid min-w-0 gap-3 rounded-xl border border-slate-200 bg-white p-3 sm:grid-cols-2">
+                    {item.classification ? (
+                      <div className="min-w-0">
+                        <p className="text-[11px] font-bold uppercase tracking-[0.14em] text-slate-500">{t('technicalDebtClassification')}</p>
+                        <p className="mt-1 text-sm font-semibold text-slate-700">{t(`technicalDebtClassification.${item.classification}`)}</p>
+                      </div>
+                    ) : null}
+                    {item.priority ? (
+                      <div className="min-w-0">
+                        <p className="text-[11px] font-bold uppercase tracking-[0.14em] text-slate-500">{t('suggestedPriority')}</p>
+                        <p className="mt-1 text-sm font-semibold text-slate-700">{t(`severity.${item.priority}`)}</p>
+                      </div>
+                    ) : null}
+                    {item.whyItMattersKey ? (
+                      <div className="min-w-0 sm:col-span-2">
+                        <p className="text-[11px] font-bold uppercase tracking-[0.14em] text-slate-500">{t('whyItMatters')}</p>
+                        <p className="mt-1 break-words text-sm font-semibold text-slate-700 [overflow-wrap:anywhere]">{t(item.whyItMattersKey)}</p>
+                      </div>
+                    ) : null}
+                    {item.dependencyKeys?.length ? (
+                      <div className="min-w-0">
+                        <p className="text-[11px] font-bold uppercase tracking-[0.14em] text-slate-500">{t('dependencies')}</p>
+                        <ul className="mt-1 space-y-1 text-sm font-semibold text-slate-700">
+                          {item.dependencyKeys.map((dependencyKey) => <li key={dependencyKey} className="break-words [overflow-wrap:anywhere]">{t(dependencyKey)}</li>)}
+                        </ul>
+                      </div>
+                    ) : null}
+                    {item.futureSprintAreaKey ? (
+                      <div className="min-w-0">
+                        <p className="text-[11px] font-bold uppercase tracking-[0.14em] text-slate-500">{t('recommendedFutureSprint')}</p>
+                        <p className="mt-1 break-words text-sm font-semibold text-slate-700 [overflow-wrap:anywhere]">{t(item.futureSprintAreaKey)}</p>
+                      </div>
+                    ) : null}
+                  </div>
+                ) : null}
                 {item.sourceHint ? <p className="mt-4 break-words font-mono text-xs font-semibold text-slate-500 [overflow-wrap:anywhere]">{t('sourceHint')}: {item.sourceHint}</p> : null}
               </article>
             ))}

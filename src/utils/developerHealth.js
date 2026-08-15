@@ -619,17 +619,34 @@ export function buildDeveloperHealthSnapshot() {
     // file. Mark database schema as present based on repository state (no runtime
     // network or file parsing performed here to avoid build-time parsing of SQL).
     const databaseSchemaExists = true
+    // Repository-backed readiness metadata keeps these static artifacts
+    // explicit and traceable without attempting filesystem access in-browser.
+    const rlsPoliciesDrafted = Boolean(technicalDebtRegistry.releaseReadinessEvidence?.rlsPoliciesDrafted?.complete)
+    const storagePlanCreated = Boolean(technicalDebtRegistry.releaseReadinessEvidence?.storagePlanCreated?.complete)
+    const entityBackendStatuses = [
+      getSettingsBackendStatus(),
+      getClientsBackendStatus(),
+      getLeadsBackendStatus(),
+      getProjectsBackendStatus(),
+      getEstimatesBackendStatus(),
+      getContractsBackendStatus(),
+      getInvoicesBackendStatus(),
+      getPaymentsBackendStatus(),
+      getEventsBackendStatus(),
+    ]
+    const realCrudConnected = serviceLayerComplete && entityBackendStatuses.every((entry) => entry.status === 'PASS' && entry.mode === 'supabase')
+    const photoUploadsConnected = getProjectsBackendStatus().mode === 'supabase' && typeof photosService.uploadProjectPhoto === 'function'
 
     const checklist = [
       { id: 'supabaseProjectCreated', labelKey: 'check.supabaseProjectCreated', status: 'Complete' },
       { id: 'envConfigured', labelKey: 'check.envConfigured', status: backendEnvironment.supabaseConfigured ? 'Complete' : 'Pending' },
       { id: 'authFoundationAdded', labelKey: 'check.authFoundationAdded', status: 'Complete' },
       { id: 'databaseSchemaCreated', labelKey: 'check.databaseSchemaCreated', status: databaseSchemaExists ? 'Complete' : 'Pending' },
-      { id: 'rlsPoliciesDrafted', labelKey: 'check.rlsPoliciesDrafted', status: 'Pending' },
+      { id: 'rlsPoliciesDrafted', labelKey: 'check.rlsPoliciesDrafted', status: rlsPoliciesDrafted ? 'Complete' : 'Pending' },
       { id: 'serviceLayerCreated', labelKey: 'check.serviceLayerCreated', status: serviceLayerComplete ? 'Complete' : 'Pending' },
-      { id: 'storagePlanCreated', labelKey: 'check.storagePlanCreated', status: 'Pending' },
-      { id: 'realCrudConnected', labelKey: 'check.realCrudConnected', status: 'Not Started' },
-      { id: 'photoUploadsConnected', labelKey: 'check.photoUploadsConnected', status: 'Not Started' },
+      { id: 'storagePlanCreated', labelKey: 'check.storagePlanCreated', status: storagePlanCreated ? 'Complete' : 'Pending' },
+      { id: 'realCrudConnected', labelKey: 'check.realCrudConnected', status: realCrudConnected ? 'Complete' : 'Pending' },
+      { id: 'photoUploadsConnected', labelKey: 'check.photoUploadsConnected', status: photoUploadsConnected ? 'Complete' : 'Pending' },
       { id: 'productionDomainReady', labelKey: 'check.productionDomainReady', status: 'Pending' },
     ]
 
