@@ -12,6 +12,7 @@ import { JobFormModal } from './components/jobs/JobFormModal'
 import { LeadFormModal } from './components/leads/LeadFormModal'
 import dataProvider from './services/dataProvider'
 import { readLeadPipelineStage, writeLeadPipelineStage } from './services/local/leadPipelineStorage'
+import { clearContractDraft } from './services/local/contractDraftStorage'
 import { clearEstimateDraft } from './services/local/estimateDraftStorage'
 import { readStoredCustomClients, readStoredLeads, readStoredUserProfiles, writeStoredCustomClients, writeStoredLeads, writeStoredUserProfiles } from './services/local/runtimeEntityStorage'
 import { useClientsBootstrap } from './hooks/useClientsBootstrap'
@@ -3742,6 +3743,109 @@ function buildWorkspaceJobRecord(job, clientRecord = null) {
     return archivedContract
   }
 
+  async function restoreContractRecord(leadId, contractRecord = null) {
+    const sourceLead = findLeadByProjectLookup(leads, leadId)
+    const linkedEstimate = hasEstimateData(sourceLead?.portal?.estimate)
+      ? sourceLead.portal.estimate
+      : readLinkedEstimateDraft(sourceLead || leadId, leadId)
+    const linkedContract = hasContractData(contractRecord)
+      ? contractRecord
+      : persistedContracts.find((contract) => matchesLinkedContract(sourceLead || { id: leadId }, contract, linkedEstimate))
+        || sourceLead?.portal?.contract
+        || readLinkedContractDraft(sourceLead || leadId, leadId)
+
+    if (!linkedContract?.id) {
+      showToast(t('restoreFailed'), 'error')
+      return null
+    }
+
+    const response = await dataProvider.contracts.restore(linkedContract.id, {
+      contractorId: projectsContractorId,
+    })
+
+    if (response?.error) {
+      showToast(response.error.message || t('restoreFailed'), 'error')
+      return null
+    }
+
+    const restoredContract = {
+      ...linkedContract,
+      ...(response?.data || {}),
+      archivedAt: null,
+      archived_at: null,
+      isArchived: false,
+      archived: false,
+    }
+
+    upsertPersistedContractRecord(restoredContract)
+    setLeads((current) => current.map((lead) => (
+      matchesLinkedContract(lead, restoredContract, linkedEstimate)
+        ? {
+            ...lead,
+            portal: {
+              ...(lead.portal || {}),
+              contract: restoredContract,
+            },
+          }
+        : lead
+    )))
+
+    showToast(t('itemRestored'))
+    return restoredContract
+  }
+
+  async function deleteContractRecord(leadId, contractRecord = null) {
+    const sourceLead = findLeadByProjectLookup(leads, leadId)
+    const linkedEstimate = hasEstimateData(sourceLead?.portal?.estimate)
+      ? sourceLead.portal.estimate
+      : readLinkedEstimateDraft(sourceLead || leadId, leadId)
+    const linkedContract = hasContractData(contractRecord)
+      ? contractRecord
+      : persistedContracts.find((contract) => matchesLinkedContract(sourceLead || { id: leadId }, contract, linkedEstimate))
+        || sourceLead?.portal?.contract
+        || readLinkedContractDraft(sourceLead || leadId, leadId)
+
+    if (!linkedContract?.id || !isArchivedContractRecord(linkedContract)) {
+      showToast(t('deleteFailed'), 'error')
+      return null
+    }
+
+    const response = await dataProvider.contracts.deletePermanently(linkedContract.id, {
+      contractorId: projectsContractorId,
+      authenticatedUserId: user?.id || session?.user?.id || '',
+    })
+
+    if (response?.error) {
+      showToast(response.error.message || t('deleteFailed'), 'error')
+      return null
+    }
+
+    [
+      linkedContract.id,
+      linkedContract.estimateId,
+      linkedContract.projectId || linkedContract.project_id,
+      linkedContract.leadId || linkedContract.lead_id,
+      leadId,
+    ].filter(Boolean).forEach((lookupId) => clearContractDraft(lookupId))
+
+    removePersistedContractRecord(linkedContract.id)
+    setLeads((current) => current.map((lead) => (
+      matchesLinkedContract(lead, linkedContract, linkedEstimate)
+        ? {
+            ...lead,
+            contractId: null,
+            portal: {
+              ...(lead.portal || {}),
+              contract: {},
+            },
+          }
+        : lead
+    )))
+
+    showToast(t('itemDeletedPermanently'))
+    return response?.data || { id: linkedContract.id, deleted: true }
+  }
+
   function getInvoiceStatus(invoice) {
     if (invoice.status === 'Archived' || invoice.status === 'Canceled') return invoice.status
     const amount = Number(invoice.amount || 0)
@@ -4111,7 +4215,7 @@ function buildWorkspaceJobRecord(job, clientRecord = null) {
       <Route path={appRoutes.leadDetail} element={<LeadRoute leads={visibleLeads} clients={clients} archivedIds={archives.leadIds} onBack={() => navigate(appRoutes.leads)} onOpenProject={openProject} onDuplicateLead={duplicateLead} onConvertLeadToJob={(leadId) => transitionLeadStage(leadId, leadPipelineStages.CONVERTED_TO_JOB)} onTransitionLeadStage={transitionLeadStage} onUpdateLead={updateLead} onArchiveLead={archiveRecord.lead} onRestoreLead={restoreRecord.lead} onDeleteLead={deleteRecord.lead} language={language} t={t} />} />
       <Route path={appRoutes.estimates} element={<EstimatesPage leads={visibleLeads} estimates={persistedEstimates} contracts={persistedContracts} archivedIds={archives.leadIds} onOpenEstimate={openEstimateForLead} onConvertEstimate={async (leadId, estimate) => { const contract = await ensureContractForLead(leadId, estimate); if (contract) openContractForLead(leadId, { source: 'estimate', projectId: contract.projectId || contract.project_id || undefined, leadId }) }} onArchiveEstimate={archiveEstimateRecord} onRestoreEstimate={restoreEstimateRecord} onDeleteEstimate={deleteEstimateRecord} t={t} />} />
       <Route path={appRoutes.estimateDetail} element={<EstimateBuilderRoute companySettings={companySettings} leads={visibleLeads} clients={clients} estimates={persistedEstimates} archivedIds={archives.leadIds} onSaveEstimate={saveEstimate} onConvertEstimate={async (leadId, estimate) => { const contract = await ensureContractForLead(leadId, estimate); if (contract) openContractForLead(leadId, { source: 'estimate', projectId: contract.projectId || contract.project_id || undefined, leadId }); return contract }} onSyncEstimateContract={async (leadId, estimate, options = {}) => syncContractFromEstimate(leadId, estimate, options)} onArchiveEstimate={archiveEstimateRecord} onRestoreEstimate={restoreEstimateRecord} onDeleteEstimate={deleteEstimateRecord} t={t} appLanguage={language} />} />
-      <Route path={appRoutes.contracts} element={<ContractsPage leads={activeLeads} contracts={persistedContracts} onViewContract={openContractForLead} t={t} />} />
+      <Route path={appRoutes.contracts} element={<ContractsPage leads={activeLeads} contracts={persistedContracts} onViewContract={openContractForLead} onRestoreContract={restoreContractRecord} onDeleteContract={deleteContractRecord} t={t} />} />
       <Route path={appRoutes.jobs} element={<JobsPage leads={visibleLeads} clients={clients} archivedIds={archives.projectIds} sampleWorkspace={companySettings?.sampleWorkspace} onViewJob={openCalendarProject} onViewLead={openLead} onCreateJob={() => openJobModal()} onArchiveJob={archiveRecord.job} onRestoreJob={restoreRecord.job} onDeleteJob={deleteRecord.job} t={t} />} />
       <Route path={appRoutes.calendar} element={<CalendarPage leads={activeLeads} scheduleEvents={activeScheduleEvents} onCreateEvent={(event) => createScheduleEvent(event, 'event')} onExportEvent={exportScheduleEvent} onViewProject={openCalendarProject} onViewLead={openLead} onMarkComplete={markScheduleEventComplete} t={t} language={language} />} />
       <Route path={appRoutes.clients} element={<ClientsPage leads={visibleLeads} customClients={customClients} archivedClientIds={archives.clientIds} onOpenClient={openClient} onCreateClient={createClient} onArchiveClient={archiveRecord.client} onRestoreClient={restoreRecord.client} onDeleteClient={deleteRecord.client} language={language} t={t} />} />

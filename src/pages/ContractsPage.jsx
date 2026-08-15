@@ -1,6 +1,6 @@
 import { useEffect, useMemo, useRef, useState } from 'react'
 import { useLocation, useNavigate, useParams } from 'react-router-dom'
-import { Archive, ArrowLeft, MoreVertical } from 'lucide-react'
+import { Archive, ArrowLeft, MoreVertical, Trash2, Undo2 } from 'lucide-react'
 import { ActionMenu } from '../components/common/ActionMenu'
 import { ContractPdfTemplate } from '../components/contracts/ContractPdfTemplate'
 import { PaginatedContractPreview } from '../components/contracts/PaginatedContractPreview'
@@ -25,6 +25,7 @@ import { findRelatedClient } from '../utils/clients'
 import { buildContractNotesAndTermsItems, buildContractWorkBreakdownFromEstimate, buildGeneratedContractPaymentTerms, hasContractWorkBreakdown, normalizeContractWorkBreakdown, resolveContractAcceptanceLegalText, stripLeadingBulletMarker } from '../utils/contractDocument'
 import { normalizeDocumentLanguageOverride, resolveClientFacingLanguage } from '../utils/language'
 import { ESTIMATE_PAPER_MARGIN } from '../utils/estimatePagination'
+import { archiveMenuItemClasses } from '../utils/buttonStyles'
 
 function formatContractDate(value, language = 'en') {
   const locale = language === 'es' ? 'es-ES' : 'en-US'
@@ -792,11 +793,13 @@ export function ContractRoute({ companySettings, leads, clients = [], onSaveCont
   )
 }
 
-export function ContractsPage({ leads, contracts = [], onViewContract, t }) {
+export function ContractsPage({ leads, contracts = [], onViewContract, onRestoreContract, onDeleteContract, t }) {
+  const [selectedFilter, setSelectedFilter] = useState('Active')
+  const [confirmAction, setConfirmAction] = useState(null)
   const usesSupabaseContracts = USE_SUPABASE || USE_SUPABASE_CONTRACTS
   const contractRows = usesSupabaseContracts && contracts.length > 0
     ? dedupeById(
-      contracts.filter((contract) => !isArchivedContractRecord(contract)),
+      contracts,
       ['projectId', 'project_id', 'estimateId', 'estimate_id', 'number', 'contractNumber']
     ).map((contract) => {
       const linkedLead = findLeadByProjectLookup(leads, contract?.projectId, contract?.project_id, contract?.leadId, contract?.lead_id)
@@ -805,21 +808,45 @@ export function ContractsPage({ leads, contracts = [], onViewContract, t }) {
 
       return {
         id: contract.id,
+        record: contract,
+        sourceLeadId: linkedLead?.id || contract.leadId || contract.lead_id || contract.projectId || contract.project_id || contract.id,
         routeId: resolveLinkedProjectId(linkedLead, contract.projectId || contract.project_id || contract.leadId || contract.lead_id || contract.id),
         client: linkedLead?.client || contract.client || t('customer'),
         projectTitle: linkedLead?.projectTitle || linkedLead?.projectType || contract.projectTitle || contract.title || t('contract'),
         status: contract.status || t('draft'),
+        isArchived: isArchivedContractRecord(contract),
       }
     })
     : leads
-        .filter((lead) => !isArchivedContractRecord(lead.portal?.contract) && (lead.portal?.contract?.id || lead.portal?.contract?.number || lead.portal?.contract?.contractNumber))
-        .map((lead) => ({
-        id: lead.id,
+      .filter((lead) => lead.portal?.contract?.id || lead.portal?.contract?.number || lead.portal?.contract?.contractNumber)
+      .map((lead) => ({
+        id: lead.portal.contract.id || lead.id,
+        record: lead.portal.contract,
+        sourceLeadId: lead.id,
         routeId: lead.projectId || lead.project_id || lead.id,
         client: lead.client,
         projectTitle: lead.projectTitle || lead.projectType,
-        status: lead.portal?.contract?.status || t('draft'),
+        status: lead.portal.contract.status || t('draft'),
+        isArchived: isArchivedContractRecord(lead.portal.contract),
       }))
+
+  const filteredContracts = contractRows.filter((contract) => (
+    selectedFilter === 'Archived' ? contract.isArchived : !contract.isArchived
+  ))
+
+  async function restoreContract(contract) {
+    await onRestoreContract?.(contract.sourceLeadId, contract.record)
+  }
+
+  async function deleteContract() {
+    if (!confirmAction?.contract?.isArchived) return
+
+    try {
+      await onDeleteContract?.(confirmAction.contract.sourceLeadId, confirmAction.contract.record)
+    } finally {
+      setConfirmAction(null)
+    }
+  }
 
   return (
     <div className="space-y-6">
@@ -829,21 +856,66 @@ export function ContractsPage({ leads, contracts = [], onViewContract, t }) {
         <p className="mt-2 text-sm text-slate-300">{t('contractsComingDescription')}</p>
       </section>
       <section className="grid gap-4">
-        {contractRows.map((contract) => (
+        <div className="flex flex-wrap gap-2">
+          {['Active', 'Archived'].map((filter) => (
+            <button key={filter} onClick={() => setSelectedFilter(filter)} className={`rounded-full px-4 py-2 text-sm font-bold transition ${selectedFilter === filter ? 'bg-blue-600 text-white shadow-sm' : 'bg-slate-100 text-slate-600 hover:bg-slate-200'}`}>
+              {t(filter === 'Active' ? 'active' : 'archived')}
+            </button>
+          ))}
+        </div>
+        {filteredContracts.map((contract) => (
           <article key={contract.id} className="rounded-3xl border border-slate-200 bg-white p-5 shadow-sm">
             <div className="flex flex-col justify-between gap-4 sm:flex-row sm:items-center">
               <div>
                 <p className="font-bold text-slate-950">{contract.client}</p>
                 <p className="text-sm text-slate-500">{contract.projectTitle}</p>
-                <p className="mt-1 text-xs font-bold uppercase tracking-wide text-slate-400">{contract.status}</p>
+                <p className="mt-1 text-xs font-bold uppercase tracking-wide text-slate-400">{contract.isArchived ? t('archived') : contract.status}</p>
               </div>
-              <button onClick={() => onViewContract(contract.routeId)} className="rounded-2xl bg-slate-950 px-4 py-3 text-sm font-bold text-white hover:bg-slate-800">
-                {t('openContract')}
-              </button>
+              <div className="grid grid-cols-[minmax(0,1fr)_auto] gap-2 sm:min-w-[15rem]">
+                <button onClick={() => onViewContract(contract.routeId)} className="rounded-2xl bg-slate-950 px-4 py-3 text-sm font-bold text-white hover:bg-slate-800">
+                  {t('openContract')}
+                </button>
+                {contract.isArchived ? (
+                  <ActionMenu
+                    label={<MoreVertical className="h-4 w-4" />}
+                    ariaLabel={t('more')}
+                    showChevron={false}
+                    buttonClassName="inline-flex min-h-[44px] items-center justify-center rounded-2xl border border-slate-200 bg-white px-4 py-3 text-sm font-bold text-slate-800 transition hover:bg-slate-50"
+                    items={[
+                      {
+                        id: 'restore-contract',
+                        label: t('restore'),
+                        icon: <Undo2 className="mr-2 h-4 w-4" />,
+                        onClick: () => restoreContract(contract),
+                      },
+                      {
+                        id: 'delete-contract',
+                        label: t('deletePermanently'),
+                        icon: <Trash2 className="mr-2 h-4 w-4" />,
+                        onClick: () => setConfirmAction({ mode: 'delete', contract }),
+                        className: archiveMenuItemClasses,
+                      },
+                    ]}
+                  />
+                ) : null}
+              </div>
             </div>
           </article>
         ))}
+        {!filteredContracts.length ? (
+          <div className="rounded-3xl border border-dashed border-slate-300 bg-slate-50 p-6 text-center text-sm text-slate-500">{t('noContracts')}</div>
+        ) : null}
       </section>
+      <ConfirmRecordModal
+        isOpen={Boolean(confirmAction)}
+        mode="delete"
+        title={t('confirmPermanentDelete')}
+        message={t('permanentDeleteHelp')}
+        confirmLabel={t('deletePermanently')}
+        onCancel={() => setConfirmAction(null)}
+        onConfirm={deleteContract}
+        t={t}
+      />
     </div>
   )
 }
