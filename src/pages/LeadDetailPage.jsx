@@ -2,10 +2,11 @@ import { useEffect, useMemo, useRef, useState } from 'react'
 import { Archive, ArrowLeft, BriefcaseBusiness, CheckCircle2, ChevronRight, ClipboardList, Copy, Edit3, FileText, Send, Trash2, Undo2, UserRoundPlus } from 'lucide-react'
 import { useNavigate, useParams } from 'react-router-dom'
 import { ActionMenu } from '../components/common/ActionMenu'
+import { AymeroLoader } from '../components/common/AymeroLoader'
 import { ConfirmRecordModal } from '../components/common/ConfirmRecordModal'
 import { useToast } from '../components/common/ToastProvider'
 import { LeadFormModal } from '../components/leads/LeadFormModal'
-import { getLeadProgressStageLabelKey, LeadProgress } from '../components/leads/LeadProgress'
+import { LeadProgress } from '../components/leads/LeadProgress'
 import { USE_SUPABASE_LEADS } from '../config/backendConfig'
 import { appRoutes } from '../config/appRoutes'
 import { useAuth } from '../contexts/AuthContext'
@@ -14,7 +15,8 @@ import { getLeadsContractorId } from '../services/system/leadsRuntimeService'
 import { getEstimateForLead, getEstimatedValueForLead, readLinkedEstimateDraft, writeLinkedEstimateDrafts } from '../utils/estimateLinks'
 import { currency, formatDisplayDate } from '../utils/formatters'
 import { archiveMenuItemClasses } from '../utils/buttonStyles'
-import { getLeadNextStepKey, getLeadPipelineStage, getLeadPipelineStageLabelKey, getLeadPrimaryAction, leadPipelineStages } from '../utils/leadPipeline'
+import { getLeadPipelineStage, leadPipelineStages } from '../utils/leadPipeline'
+import { resolveLeadLifecycle, selectPrimaryLeadEstimate } from '../utils/leadLifecycle'
 import { getLanguageLocale } from '../utils/language'
 import { tStatus } from '../translations'
 
@@ -97,7 +99,7 @@ function buildLeadActivityEvents({ lead, estimate, project, language, t }) {
       ? {
           id: `lead-approved-${estimate?.id || 'linked'}`,
           type: 'approved',
-          label: t('leadActivityLeadApproved'),
+          label: t('leadActivityEstimateApproved'),
           dateValue: estimate?.approvedAt || estimate?.approved_at,
           detail: estimate?.number || estimate?.estimateNumber || '',
           rank: 4,
@@ -107,7 +109,7 @@ function buildLeadActivityEvents({ lead, estimate, project, language, t }) {
       ? {
           id: `converted-to-job-${project.id}`,
           type: 'converted',
-          label: t('leadActivityConvertedToJob'),
+          label: t('leadActivityProjectCreated'),
           dateValue: project?.createdAt || project?.created_at,
           detail: project?.projectTitle || project?.title || '',
           rank: 5,
@@ -241,21 +243,28 @@ export function LeadDetailPage({
     }
   }, [estimateRecord, lead, record])
   const currentLead = useMemo(() => createSafeLead(mergedLead, leadId), [leadId, mergedLead])
-  const isArchived = Boolean(currentLead?.isArchived || archivedIds.includes(currentLead?.id))
-  const currentEstimate = currentLead?.portal?.estimate || null
-  const leadHasEstimate = hasSavedEstimate(currentEstimate)
   const relatedProjectId = currentLead?.projectId || currentLead?.project_id || ''
-  const currentStage = getLeadPipelineStage({
-    ...currentLead,
-    isArchived,
-    archivedAt: isArchived ? currentLead?.archivedAt || true : currentLead?.archivedAt,
+  const relatedProject = relatedProjectRecord || (relatedProjectId
+    ? {
+        id: relatedProjectId,
+        projectTitle: currentLead?.projectTitle || currentLead?.title || '',
+        title: currentLead?.projectTitle || currentLead?.title || '',
+      }
+    : null)
+  const lifecycle = resolveLeadLifecycle({
+    lead: currentLead || {},
+    estimates: [currentLead?.portal?.estimate].filter(Boolean),
+    contract: currentLead?.portal?.contract || null,
+    project: relatedProject,
+    archivedLeadIds: archivedIds,
   })
-  const primaryAction = getLeadPrimaryAction(currentStage)
-  const isConvertedToJob = currentStage === leadPipelineStages.CONVERTED_TO_JOB
-  const nextStepDisplay = t(isConvertedToJob ? 'leadCompletedStatus' : getLeadNextStepKey(currentStage))
-  const primaryActionLabel = t(isConvertedToJob ? 'openProject' : primaryAction.labelKey)
-  const progressStageLabelKey = getLeadProgressStageLabelKey(currentStage)
-  const currentStageDisplay = t(progressStageLabelKey || getLeadPipelineStageLabelKey(currentStage))
+  const isArchived = lifecycle.isArchived
+  const currentEstimate = lifecycle.relatedEstimate
+  const leadHasEstimate = Boolean(currentEstimate)
+  const currentStage = lifecycle.stage
+  const isConvertedToJob = lifecycle.hasActiveProject
+  const nextStepDisplay = t(lifecycle.nextStepKey)
+  const currentStageDisplay = t(lifecycle.stageLabelKey)
   const estimatedValueDisplay = leadHasEstimate ? currency.format(currentLead?.value || 0) : t('notEstimated')
   const leadDisplayName = currentLead?.client || currentLead?.name || t('lead')
   const projectDisplayTitle = currentLead?.projectTitle || currentLead?.projectType || t('unknownProject')
@@ -269,17 +278,10 @@ export function LeadDetailPage({
     currentLead?.source ? { id: 'source', label: t('leadSource'), value: currentLead.source } : null,
     createdDateDisplay ? { id: 'created', label: t('dateCreated'), value: createdDateDisplay } : null,
   ].filter(Boolean)
-  const relatedProject = relatedProjectRecord || (relatedProjectId
-    ? {
-        id: relatedProjectId,
-        projectTitle: currentLead?.projectTitle || currentLead?.title || '',
-        title: currentLead?.projectTitle || currentLead?.title || '',
-      }
-    : null)
   const leadActivityEvents = buildLeadActivityEvents({
     lead: currentLead,
-    estimate: currentEstimate,
-    project: relatedProjectRecord,
+    estimate: lifecycle.relatedEstimate,
+    project: lifecycle.relatedProject,
     language,
     t,
   })
@@ -381,8 +383,14 @@ export function LeadDetailPage({
         }
 
         if (!isCancelled) {
-          const nextEstimate = response?.data?.[0]
-            ? { ...(draftEstimate || {}), ...response.data[0] }
+          const primaryEstimate = selectPrimaryLeadEstimate({
+            lead: activeLead || {},
+            estimates: [...(response?.data || []), draftEstimate].filter(Boolean),
+            contract: activeLead?.portal?.contract || null,
+            archivedLeadIds: archivedIds,
+          })
+          const nextEstimate = primaryEstimate
+            ? { ...(draftEstimate || {}), ...primaryEstimate }
             : draftEstimate
 
           setEstimateRecord(nextEstimate)
@@ -402,7 +410,7 @@ export function LeadDetailPage({
     return () => {
       isCancelled = true
     }
-  }, [contractorId, lead, leadId, record])
+  }, [archivedIds, contractorId, lead, leadId, record])
 
   useEffect(() => {
     let isCancelled = false
@@ -445,10 +453,13 @@ export function LeadDetailPage({
 
   if (USE_SUPABASE_LEADS && isLoading) {
     return (
-      <section className="rounded-3xl border border-slate-200 bg-white p-8 text-center shadow-sm">
-        <h1 className="text-2xl font-bold text-slate-950">{t('loadingLead')}</h1>
-        <p className="mx-auto mt-3 max-w-xl text-sm leading-6 text-slate-500">{t('loadingLeadHelp')}</p>
-      </section>
+      <AymeroLoader
+        variant="section"
+        title={t('loadingLead')}
+        message={t('loadingLeadHelp')}
+        accessibleLabel={t('loadingLead')}
+        className="rounded-3xl border border-slate-200 bg-white shadow-sm"
+      />
     )
   }
 
@@ -537,8 +548,14 @@ export function LeadDetailPage({
     }
   }
 
-  function openEstimateBuilder() {
-    navigate(`/projects/${currentLead.id}/estimate`, { state: { source: 'lead', leadId: currentLead.id } })
+  function openEstimateBuilder({ openSend = false } = {}) {
+    navigate(`/projects/${currentLead.id}/estimate`, {
+      state: {
+        source: 'lead',
+        leadId: currentLead.id,
+        ...(openSend ? { openSendEstimate: true } : {}),
+      },
+    })
   }
 
   function openRelatedEstimate() {
@@ -586,10 +603,16 @@ export function LeadDetailPage({
     }
   }
 
-  async function handlePrimaryAction() {
-    switch (primaryAction.actionType) {
+  async function handleLifecycleAction(actionType) {
+    switch (actionType) {
       case 'createEstimate':
         openEstimateBuilder()
+        return
+      case 'editEstimate':
+        openEstimateBuilder()
+        return
+      case 'sendEstimate':
+        openEstimateBuilder({ openSend: true })
         return
       case 'markEstimateSent':
         await handleWorkflowTransition(leadPipelineStages.ESTIMATE_SENT)
@@ -666,7 +689,7 @@ export function LeadDetailPage({
   }
 
   const moreMenuItems = [
-    leadHasEstimate
+    leadHasEstimate && !lifecycle.isDraftEstimate
       ? {
           id: 'edit-estimate',
           label: t('editEstimate'),
@@ -699,13 +722,13 @@ export function LeadDetailPage({
       : null,
   ].filter(Boolean)
 
-  const primaryActionIcon = primaryAction.actionType === 'restoreLead'
-    ? <Undo2 className="h-4 w-4" />
-    : primaryAction.actionType === 'convertToJob'
-      || primaryAction.actionType === 'scheduleJob'
-      || primaryAction.actionType === 'viewJob'
-      ? <BriefcaseBusiness className="h-4 w-4" />
-      : <ClipboardList className="h-4 w-4" />
+  function getLifecycleActionIcon(actionType) {
+    if (actionType === 'restoreLead') return <Undo2 className="h-4 w-4" />
+    if (['convertToJob', 'scheduleJob', 'viewJob'].includes(actionType)) return <BriefcaseBusiness className="h-4 w-4" />
+    if (actionType === 'sendEstimate') return <Send className="h-4 w-4" />
+    if (actionType === 'editEstimate') return <Edit3 className="h-4 w-4" />
+    return <ClipboardList className="h-4 w-4" />
+  }
 
   return (
     <div className="mx-auto max-w-6xl space-y-6">
@@ -757,7 +780,7 @@ export function LeadDetailPage({
       <section className="grid min-w-0 gap-5 lg:grid-cols-[minmax(0,2fr)_minmax(280px,1fr)] lg:items-start lg:gap-6">
         <section className={`min-w-0 rounded-3xl border p-4 shadow-md shadow-slate-200/50 sm:p-5 lg:col-start-1 lg:row-start-1 ${isConvertedToJob ? 'border-emerald-200 bg-gradient-to-br from-white to-emerald-50/60' : 'border-blue-100 bg-gradient-to-br from-white via-white to-blue-50/60'}`}>
           <h2 className="text-lg font-bold text-slate-950 sm:text-xl">{t('nextRecommendedAction')}</h2>
-          <div className="mt-3 grid min-w-0 gap-3 sm:grid-cols-2 xl:grid-cols-[minmax(150px,0.65fr)_minmax(240px,1.35fr)_auto] xl:items-center">
+          <div className="mt-3 grid min-w-0 gap-3 sm:grid-cols-2 xl:grid-cols-[minmax(150px,0.65fr)_minmax(220px,1.2fr)_minmax(180px,auto)] xl:items-center">
             <div className={`min-w-0 rounded-2xl px-3.5 py-3 ${isConvertedToJob ? 'bg-emerald-50 ring-1 ring-emerald-100' : 'bg-slate-50'}`}>
               <p className="text-[11px] font-bold uppercase tracking-[0.16em] text-slate-500">{t('currentStage')}</p>
               <p className="mt-1 flex items-center gap-2 text-sm font-bold text-slate-950">
@@ -766,13 +789,23 @@ export function LeadDetailPage({
               </p>
             </div>
             <div className={`min-w-0 rounded-2xl px-3.5 py-3 ${isConvertedToJob ? 'bg-emerald-50 ring-1 ring-emerald-100' : 'bg-blue-50'}`}>
-              <p className={`text-[11px] font-bold uppercase tracking-[0.16em] ${isConvertedToJob ? 'text-emerald-700' : 'text-blue-600'}`}>{t(isConvertedToJob ? 'status' : 'nextStep')}</p>
+              <p className={`text-[11px] font-bold uppercase tracking-[0.16em] ${isConvertedToJob ? 'text-emerald-700' : 'text-blue-600'}`}>{t('nextStep')}</p>
               <p className="mt-1 text-sm leading-5 text-slate-700">{nextStepDisplay}</p>
             </div>
-            <button disabled={isLeadActionSubmitting} onClick={handlePrimaryAction} className="flex min-h-12 w-full items-center justify-center gap-2 rounded-2xl bg-blue-600 px-5 py-3 text-sm font-bold text-white shadow-sm shadow-blue-600/20 transition hover:bg-blue-700 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-blue-500 focus-visible:ring-offset-2 disabled:cursor-not-allowed disabled:bg-blue-400 sm:col-span-2 xl:col-span-1 xl:w-auto xl:min-w-44">
-              {primaryActionIcon}
-              {isLeadActionSubmitting ? t('saving') : primaryActionLabel}
-            </button>
+            <div className={`grid min-w-0 gap-2 sm:col-span-2 xl:col-span-1 ${lifecycle.actions.length > 1 ? 'sm:grid-cols-2' : ''}`}>
+              {lifecycle.actions.map((action) => (
+                <button
+                  key={action.actionType}
+                  type="button"
+                  disabled={isLeadActionSubmitting}
+                  onClick={() => handleLifecycleAction(action.actionType)}
+                  className={`flex min-h-12 w-full items-center justify-center gap-2 rounded-2xl px-4 py-3 text-sm font-bold transition focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-blue-500 focus-visible:ring-offset-2 disabled:cursor-not-allowed disabled:opacity-60 ${action.variant === 'secondary' ? 'border border-slate-200 bg-white text-slate-800 hover:bg-slate-50' : 'bg-blue-600 text-white shadow-sm shadow-blue-600/20 hover:bg-blue-700'}`}
+                >
+                  {getLifecycleActionIcon(action.actionType)}
+                  <span className="break-words">{isLeadActionSubmitting ? t('saving') : t(action.labelKey)}</span>
+                </button>
+              ))}
+            </div>
           </div>
           <div className="mt-4 flex flex-col gap-3 border-t border-slate-100 pt-3 sm:flex-row sm:items-center">
             <button disabled={isLeadActionSubmitting} onClick={() => setIsEditOpen(true)} className="flex min-h-10 items-center justify-center gap-2 rounded-xl border border-slate-200 bg-slate-50 px-3.5 py-2 text-sm font-bold text-slate-800 transition hover:bg-white hover:shadow-sm focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-blue-500 focus-visible:ring-offset-2 disabled:cursor-not-allowed disabled:opacity-60">
@@ -798,9 +831,11 @@ export function LeadDetailPage({
         {(leadHasEstimate || relatedProject) ? (
           <div className="min-w-0 lg:col-start-2 lg:row-start-1">
             <RelatedLeadRecordsCard
-              estimate={leadHasEstimate ? currentEstimate : null}
+              estimate={leadHasEstimate ? lifecycle.relatedEstimate : null}
               estimateTotal={leadHasEstimate ? Number(currentLead?.value || 0) : null}
-              project={relatedProject}
+              project={lifecycle.relatedProject}
+              estimateIsArchived={lifecycle.estimateArchiveState.isArchived}
+              projectIsArchived={lifecycle.projectArchived}
               onOpenEstimate={leadHasEstimate ? openRelatedEstimate : null}
               onOpenProject={relatedProjectId ? openJobWorkspace : null}
               t={t}
@@ -887,7 +922,7 @@ export function LeadDetailPage({
         isOpen={Boolean(confirmAction)}
         mode={confirmAction?.mode}
         title={confirmAction?.mode === 'delete' ? t('confirmPermanentDelete') : t('confirmArchive')}
-        message={confirmAction?.mode === 'delete' ? t('permanentDeleteHelp') : t('archiveHelp')}
+        message={confirmAction?.mode === 'delete' ? t('permanentDeleteHelp') : t('archiveLeadHelp')}
         confirmLabel={confirmAction?.mode === 'delete' ? t('deletePermanently') : t('archive')}
         onCancel={() => setConfirmAction(null)}
         onConfirm={runConfirmAction}
@@ -961,7 +996,7 @@ function LeadActivityCard({ events, t }) {
   )
 }
 
-function RelatedRecordSection({ eyebrow, title, amount = '', status = '', actionLabel, onAction }) {
+function RelatedRecordSection({ eyebrow, title, amount = '', status = '', isArchived = false, actionLabel, onAction, t }) {
   return (
     <section className="min-w-0 rounded-2xl border border-slate-200 bg-slate-50/70 p-4">
       <div className="min-w-0">
@@ -969,7 +1004,12 @@ function RelatedRecordSection({ eyebrow, title, amount = '', status = '', action
         <h3 className="mt-1 break-words text-sm font-bold text-slate-950 [overflow-wrap:anywhere]">{title}</h3>
       </div>
       {amount ? <p className="mt-3 break-words text-xl font-bold text-slate-950">{amount}</p> : null}
-      {status ? <span className="mt-2 inline-flex max-w-full break-words rounded-full bg-white px-2.5 py-1 text-left text-[11px] font-bold text-slate-600 ring-1 ring-slate-200">{status}</span> : null}
+      {(status || isArchived) ? (
+        <div className="mt-2 flex flex-wrap gap-2">
+          {status ? <span className="inline-flex max-w-full break-words rounded-full bg-white px-2.5 py-1 text-left text-[11px] font-bold text-slate-600 ring-1 ring-slate-200">{status}</span> : null}
+          {isArchived ? <span className="inline-flex rounded-full bg-amber-50 px-2.5 py-1 text-[11px] font-bold text-amber-800 ring-1 ring-amber-200">{t('archived')}</span> : null}
+        </div>
+      ) : null}
       {onAction ? (
         <button
           type="button"
@@ -983,7 +1023,7 @@ function RelatedRecordSection({ eyebrow, title, amount = '', status = '', action
   )
 }
 
-function RelatedLeadRecordsCard({ estimate, estimateTotal, project, onOpenEstimate, onOpenProject, t }) {
+function RelatedLeadRecordsCard({ estimate, estimateTotal, project, estimateIsArchived = false, projectIsArchived = false, onOpenEstimate, onOpenProject, t }) {
   if (!estimate && !project) return null
 
   const estimateTitle = estimate?.number || estimate?.estimateNumber || estimate?.title || t('relatedEstimate')
@@ -1001,8 +1041,10 @@ function RelatedLeadRecordsCard({ estimate, estimateTotal, project, onOpenEstima
             title={estimateTitle}
             amount={estimateTotal !== null ? currency.format(estimateTotal) : ''}
             status={estimateStatus}
+            isArchived={estimateIsArchived}
             actionLabel={t('openEstimate')}
             onAction={onOpenEstimate}
+            t={t}
           />
         ) : null}
         {project ? (
@@ -1011,8 +1053,10 @@ function RelatedLeadRecordsCard({ estimate, estimateTotal, project, onOpenEstima
               eyebrow={t('project')}
               title={projectTitle}
               status={projectStatus ? tStatus(t, projectStatus) : ''}
+              isArchived={projectIsArchived}
               actionLabel={t('openProject')}
               onAction={onOpenProject}
+              t={t}
             />
           </div>
         ) : null}

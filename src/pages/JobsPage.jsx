@@ -5,6 +5,7 @@ import { SelectField } from '../components/ui/SelectField'
 import { StatusBadge } from '../components/ui/StatusBadge'
 import { MobileJobStat } from '../components/ui/MobileJobStat'
 import { ConfirmRecordModal } from '../components/common/ConfirmRecordModal'
+import { AymeroLoader } from '../components/common/AymeroLoader'
 import ActionMenu from '../components/common/ActionMenu'
 import { USE_SUPABASE_PROJECTS } from '../config/backendConfig'
 import { useAuth } from '../contexts/AuthContext'
@@ -566,9 +567,12 @@ export function JobsPage({ leads, clients = [], archivedIds = [], sampleWorkspac
         </div>
 
         {USE_SUPABASE_PROJECTS && isLoadingProjects && (
-          <div className="mb-5 rounded-2xl border border-slate-200 bg-slate-50 px-4 py-3 text-sm font-medium text-slate-600">
-            {t('loadingJobs')}
-          </div>
+          <AymeroLoader
+            variant="section"
+            title={t('loadingJobs')}
+            accessibleLabel={t('loadingJobs')}
+            className="mb-5 rounded-2xl border border-slate-200 bg-slate-50"
+          />
         )}
 
         <div className="hidden overflow-hidden rounded-2xl border border-slate-200 md:block">

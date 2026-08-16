@@ -1,4 +1,5 @@
-import { AlertTriangle, ArrowRight, CheckCircle2, CircleDollarSign, ClipboardList, Eye, EyeOff, LoaderCircle, LockKeyhole, Mail, ShieldCheck, User } from 'lucide-react'
+import { AlertTriangle, ArrowRight, CheckCircle2, CircleDollarSign, ClipboardList, Eye, EyeOff, LockKeyhole, Mail, ShieldCheck, User } from 'lucide-react'
+import { AymeroLoader } from '../../components/common/AymeroLoader'
 import { useEffect, useMemo, useRef, useState } from 'react'
 import { NavLink, useNavigate } from 'react-router-dom'
 import { LanguageToggleButton } from '../../components/common/LanguageToggleButton'
@@ -467,7 +468,6 @@ function ForgotPasswordFormCard({
 
       {resetView === 'resolving' ? (
         <StatusBanner
-          icon={LoaderCircle}
           title={t('passwordResetResolvingTitle')}
           body={t('passwordResetResolvingDescription')}
           tone="info"
@@ -608,7 +608,7 @@ function StatusBanner({ icon: Icon, title, body, tone, animateIcon = false }) {
     <div className={`mt-8 rounded-[1.4rem] border p-4 ${toneClasses}`}>
       <div className="flex items-start gap-3">
         <div className={`mt-0.5 flex h-10 w-10 shrink-0 items-center justify-center rounded-2xl ${iconClasses}`}>
-          <Icon className={`h-5 w-5 ${animateIcon ? 'animate-spin' : ''}`} />
+          {animateIcon ? <AymeroLoader variant="inline" accessibleLabel={title} /> : Icon ? <Icon className="h-5 w-5" /> : null}
         </div>
         <div>
           <p className="text-sm font-semibold text-slate-900">{title}</p>

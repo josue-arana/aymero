@@ -17,6 +17,9 @@ export function getDocumentPaperGeometry(sourceWidth = DOCUMENT_SOURCE_WIDTH_PIX
   const printableWidthCssPixels = (
     DOCUMENT_PAPER_WIDTH_INCHES - (pageMarginInches * 2)
   ) * CSS_PIXELS_PER_INCH
+  const printableHeightCssPixels = (
+    DOCUMENT_PAPER_HEIGHT_INCHES - (pageMarginInches * 2)
+  ) * CSS_PIXELS_PER_INCH
   const printScale = printableWidthCssPixels / sourceWidth
 
   return {
@@ -27,10 +30,24 @@ export function getDocumentPaperGeometry(sourceWidth = DOCUMENT_SOURCE_WIDTH_PIX
     printableWidthPoints,
     printableHeightPoints,
     printableWidthCssPixels,
+    printableHeightCssPixels,
     sourceWidth,
     sourceToPaperScale,
     sourcePageHeight,
     printScale,
+  }
+}
+
+export function getPaginatedPrintPageLayout(pagination = {}) {
+  const paperGeometry = getDocumentPaperGeometry(pagination.elementWidth)
+  const scale = paperGeometry.printScale
+
+  return {
+    sourceWidth: Number(pagination.elementWidth || 0),
+    sourcePageHeight: Number(pagination.sourcePageHeight || 0),
+    outputWidth: paperGeometry.printableWidthCssPixels,
+    outputHeight: paperGeometry.printableHeightCssPixels,
+    scale,
   }
 }
 

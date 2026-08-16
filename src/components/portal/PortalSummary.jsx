@@ -4,6 +4,7 @@ import { useSearchParams } from 'react-router-dom'
 import { DetailRow } from '../ui/DetailRow'
 import { InfoCard } from '../ui/InfoCard'
 import { ModalShell } from '../common/ModalShell'
+import { AymeroLoader } from '../common/AymeroLoader'
 import { EstimatePdfTemplate } from '../estimates/EstimatePdfTemplate'
 import { PaginatedEstimatePreview } from '../estimates/PaginatedEstimatePreview'
 import { ContractPdfTemplate } from '../contracts/ContractPdfTemplate'
@@ -555,7 +556,7 @@ export function PortalSummary({
         {showPhotos ? <div className="lg:col-span-2">
           <InfoCard title={<SectionTitle icon={Images} tone="purple">{t('projectPhotos')}</SectionTitle>}>
             {isLoadingPhotos ? (
-              <EmptyState message={t('loading')} />
+              <AymeroLoader variant="section" title={t('loading')} accessibleLabel={t('loading')} />
             ) : photosLoadFailed ? (
               <CalloutEmptyState icon={CircleAlert} message={t('unableToLoadProjectPhotos')} />
             ) : hasProjectPhotos ? (

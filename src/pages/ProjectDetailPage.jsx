@@ -2,6 +2,7 @@ import { Component, useEffect, useMemo, useState } from 'react'
 import { Archive, ArrowLeft, CalendarDays, Camera, ChevronLeft, ChevronRight, Clock, Copy, Download, Edit3, ExternalLink, FileText, MapPin, MoreVertical, Share2, DollarSign, Trash2, Undo2, X } from 'lucide-react'
 import { useLocation, useNavigate, useParams } from 'react-router-dom'
 import { ActionMenu } from '../components/common/ActionMenu'
+import { AymeroLoader } from '../components/common/AymeroLoader'
 import { ModalShell } from '../components/common/ModalShell'
 import { InfoCard } from '../components/ui/InfoCard'
 import { DetailRow } from '../components/ui/DetailRow'
@@ -1050,10 +1051,13 @@ function ProjectDetailPageContent({ lead, companySettings, clients = [], schedul
 
   if (USE_SUPABASE_PROJECTS && isLoadingProject) {
     return (
-      <section className="rounded-3xl border border-slate-200 bg-white p-8 text-center shadow-sm">
-        <h1 className="text-2xl font-bold text-slate-950">{t('loadingProject')}</h1>
-        <p className="mx-auto mt-3 max-w-xl text-sm leading-6 text-slate-500">{t('projectLoadingHelp')}</p>
-      </section>
+      <AymeroLoader
+        variant="section"
+        title={t('loadingProject')}
+        message={t('projectLoadingHelp')}
+        accessibleLabel={t('loadingProject')}
+        className="rounded-3xl border border-slate-200 bg-white shadow-sm"
+      />
     )
   }
 
@@ -1783,9 +1787,12 @@ function ProjectDetailPageContent({ lead, companySettings, clients = [], schedul
         </div>
 
         {isLoadingPhotos ? (
-          <div className="rounded-2xl border border-dashed border-slate-300 bg-slate-50 p-5 text-sm text-slate-500">
-            {t('loading')}
-          </div>
+          <AymeroLoader
+            variant="section"
+            title={t('loading')}
+            accessibleLabel={t('loading')}
+            className="rounded-2xl border border-dashed border-slate-300 bg-slate-50"
+          />
         ) : galleryPhotos.length > 0 ? (
           <div className="grid grid-cols-2 gap-3 sm:grid-cols-3 lg:grid-cols-4 xl:grid-cols-5">
             {galleryPhotos.map((photo) => {

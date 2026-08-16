@@ -2,6 +2,7 @@ import { useEffect, useMemo, useRef, useState } from 'react'
 import { matchPath, useLocation } from 'react-router-dom'
 import { EstimatePdfTemplate } from '../components/estimates/EstimatePdfTemplate'
 import { PaginatedEstimatePreview } from '../components/estimates/PaginatedEstimatePreview'
+import { AymeroLoader } from '../components/common/AymeroLoader'
 import { getPublicEstimateByToken } from '../services/publicPortalService'
 import { createTranslator } from '../translations'
 import { normalizeEstimateDocument, resolveEstimatePricingMode, resolveEstimateValidUntil } from '../utils/estimateDocument'
@@ -20,11 +21,10 @@ function formatClientAddress(client = {}, project = {}) {
   return [client.address || project.address || '', locality].filter(Boolean).join('\n')
 }
 
-function PublicEstimateState({ title, message, loading = false }) {
+function PublicEstimateState({ title, message }) {
   return (
     <main className="flex min-h-[100dvh] items-center justify-center bg-slate-50 px-4 py-[max(1.5rem,env(safe-area-inset-top))] sm:px-6">
-      <section className="w-full max-w-xl rounded-3xl border border-slate-200 bg-white p-8 text-center shadow-sm" aria-busy={loading || undefined}>
-        {loading ? <span className="mx-auto mb-5 block h-9 w-9 animate-spin rounded-full border-4 border-slate-200 border-t-blue-600" aria-hidden="true" /> : null}
+      <section className="w-full max-w-xl rounded-3xl border border-slate-200 bg-white p-8 text-center shadow-sm">
         <h1 className="text-2xl font-bold text-slate-950">{title}</h1>
         <p className="mx-auto mt-3 max-w-lg text-sm leading-6 text-slate-500">{message}</p>
       </section>
@@ -146,7 +146,14 @@ export function PublicEstimatePage() {
   }
 
   if (state.loading) {
-    return <PublicEstimateState loading title={t('loadingEstimate')} message={t('loadingEstimateHelp')} />
+    return (
+      <AymeroLoader
+        variant="page"
+        title={t('loadingEstimate')}
+        message={t('loadingEstimateHelp')}
+        accessibleLabel={t('loadingEstimate')}
+      />
+    )
   }
 
   if (state.error || !previewProps) {

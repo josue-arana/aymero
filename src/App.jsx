@@ -9,6 +9,7 @@ import { initialLeads } from './data/mockLeads'
 import { mockScheduleEvents } from './data/mockScheduleEvents'
 import { ScheduleEventModal } from './components/calendar/ScheduleEventModal'
 import { ToastProvider, useToast } from './components/common/ToastProvider'
+import { AymeroLoader } from './components/common/AymeroLoader'
 import { JobFormModal } from './components/jobs/JobFormModal'
 import { LeadFormModal } from './components/leads/LeadFormModal'
 import dataProvider from './services/dataProvider'
@@ -63,6 +64,7 @@ import { dedupeInvoiceRecords, hydrateInvoiceRecord } from './utils/invoiceRecor
 import { normalizeClientPreferredLanguageFields, normalizeDocumentLanguageOverride, normalizeLeadClientLanguageFields, normalizeSupportedLanguage, normalizeSupportedLanguageOrEmpty, readStoredSupportedLanguage, resolveInitialSupportedLanguage, resolvePreferredClientLanguage } from './utils/language'
 import { buildLeadPipelineTransition, getLeadPipelineStage, getLeadPipelineStageCounts, leadPipelineStageOrder, leadPipelineStages, normalizeLeadPipelineStage } from './utils/leadPipeline'
 import { calculateProjectPaymentSummary, dedupePayments, normalizePaymentRecord } from './utils/projectPayments'
+import { isRecordArchived, resolveEstimateArchiveState } from './utils/archiveLifecycle'
 import { createLocalRecordId, dedupeById, findLeadByProjectLookup, resolveLinkedLeadId, resolveLinkedProjectId } from './utils/projectIdentity'
 import { buildPortalShareUrl, resolvePortalRouteId } from './utils/portal'
 import { buildContractWorkBreakdownFromEstimate, isGeneratedContractScopeText } from './utils/contractDocument'
@@ -587,6 +589,7 @@ function ContractorFlowApp() {
   }))
   const [persistedEstimates, setPersistedEstimates] = useState([])
   const [persistedContracts, setPersistedContracts] = useState([])
+  const [persistedProjects, setPersistedProjects] = useState([])
   const [notifications, setNotifications] = useState(initialNotifications)
   const contractEnsureGuardRef = useRef(new Map())
   const [userProfilesByUserId, setUserProfilesByUserId] = useState(() => {
@@ -712,6 +715,7 @@ function ContractorFlowApp() {
     if (!clientsResponse?.error && Array.isArray(clientsResponse?.data)) setCustomClients(clientsResponse.data)
     if (!leadsResponse?.error && Array.isArray(leadsResponse?.data)) setLeads(leadsResponse.data)
     if (!estimatesResponse?.error && Array.isArray(estimatesResponse?.data)) setPersistedEstimates(estimatesResponse.data)
+    if (!projectsResponse?.error && Array.isArray(projectsResponse?.data)) setPersistedProjects(projectsResponse.data)
     if (!contractsResponse?.error && Array.isArray(contractsResponse?.data)) setPersistedContracts(contractsResponse.data)
     if (!invoicesResponse?.error && Array.isArray(invoicesResponse?.data)) {
       setInvoiceRecords(dedupeInvoiceRecords(invoicesResponse.data))
@@ -1288,6 +1292,31 @@ function ContractorFlowApp() {
   useEffect(() => {
     let isCancelled = false
 
+    if (!USE_SUPABASE_PROJECTS || !projectsContractorId) {
+      setPersistedProjects([])
+      return undefined
+    }
+
+    async function loadPersistedProjects() {
+      const response = await dataProvider.projects.list({
+        contractorId: projectsContractorId,
+        includeArchived: true,
+      })
+
+      if (isCancelled || response?.error || !Array.isArray(response?.data)) return
+      setPersistedProjects(dedupeById(response.data))
+    }
+
+    loadPersistedProjects()
+
+    return () => {
+      isCancelled = true
+    }
+  }, [projectsContractorId])
+
+  useEffect(() => {
+    let isCancelled = false
+
     if ((!USE_SUPABASE && !USE_SUPABASE_CONTRACTS) || !projectsContractorId) {
       setPersistedContracts([])
       return undefined
@@ -1428,6 +1457,14 @@ function ContractorFlowApp() {
     .filter((lead) => !archives.deletedLeadIds.includes(lead.id))
     .map((lead) => mergePersistedDocumentsIntoLead(lead, persistedEstimates, persistedContracts)), [archives.deletedLeadIds, leads, persistedContracts, persistedEstimates])
   const activeLeads = useMemo(() => visibleLeads.filter((lead) => !isLeadArchivedRecord(lead, archives.leadIds)), [visibleLeads, archives.leadIds])
+  const activeDashboardLeads = useMemo(() => activeLeads.filter((lead) => {
+    const projectId = lead?.projectId || lead?.project_id || ''
+    if (!projectId) return true
+    if (archives.deletedProjectIds.includes(projectId)) return false
+
+    const project = persistedProjects.find((record) => record.id === projectId) || { id: projectId }
+    return !isRecordArchived(project, archives.projectIds)
+  }), [activeLeads, archives.deletedProjectIds, archives.projectIds, persistedProjects])
   const clients = useMemo(() => buildClientProfiles(visibleLeads, customClients).filter((client) => !archives.deletedClientIds.includes(client.id)), [visibleLeads, customClients, archives.deletedClientIds])
   const visibleScheduleEvents = useMemo(() => sortScheduleEventRecords(scheduleEvents.filter((event) => !archives.deletedScheduleEventIds.includes(event.id))), [scheduleEvents, archives.deletedScheduleEventIds])
   const activeScheduleEvents = useMemo(() => visibleScheduleEvents.filter((event) => !archives.scheduleEventIds.includes(event.id) && !event.archivedAt), [visibleScheduleEvents, archives.scheduleEventIds])
@@ -1438,13 +1475,17 @@ function ContractorFlowApp() {
       defaultContractorId: invoicesContractorId,
     }))
   ), [invoiceRecords, invoicesContractorId, persistedPayments, visibleLeads])
+  const activeInvoices = useMemo(() => invoices.filter((invoice) => (
+    !archives.deletedInvoiceIds.includes(invoice.id)
+      && !isRecordArchived(invoice, archives.invoiceIds)
+  )), [archives.deletedInvoiceIds, archives.invoiceIds, invoices])
   const mobileTodaySummary = useMemo(() => {
     const todayKey = buildDateKey(new Date())
     const findLeadByAnyId = (...ids) => {
       const normalizedIds = ids.map((id) => String(id || '').trim()).filter(Boolean)
       if (normalizedIds.length === 0) return null
 
-      return visibleLeads.find((lead) => normalizedIds.includes(String(lead.id || '').trim())
+      return activeDashboardLeads.find((lead) => normalizedIds.includes(String(lead.id || '').trim())
         || normalizedIds.includes(String(lead.projectId || '').trim())
         || normalizedIds.includes(String(lead.project_id || '').trim()))
     }
@@ -1487,7 +1528,15 @@ function ContractorFlowApp() {
       }
     }
 
-    const estimateLead = visibleLeads.find((lead) => getLeadPipelineStage(lead) === leadPipelineStages.ESTIMATE_CREATED)
+    const estimateLead = activeDashboardLeads.find((lead) => (
+      getLeadPipelineStage(lead) === leadPipelineStages.ESTIMATE_CREATED
+        && !resolveEstimateArchiveState({
+          estimate: lead?.portal?.estimate || {},
+          lead,
+          contract: lead?.portal?.contract || null,
+          archivedLeadIds: archives.leadIds,
+        }).isArchived
+    ))
 
     if (estimateLead) {
       return {
@@ -1498,9 +1547,9 @@ function ContractorFlowApp() {
       }
     }
 
-    const contractLead = visibleLeads.find((lead) => {
+    const contractLead = activeDashboardLeads.find((lead) => {
       const contract = hasContractData(lead?.portal?.contract) ? lead.portal.contract : readLinkedContractDraft(lead)
-      if (!hasContractData(contract)) return false
+      if (!hasContractData(contract) || isRecordArchived(contract)) return false
 
       const contractStatus = String(contract?.status || '').trim().toLowerCase()
       const signed = Boolean(
@@ -1523,7 +1572,7 @@ function ContractorFlowApp() {
       }
     }
 
-    const overdueInvoice = invoices.find((invoice) => {
+    const overdueInvoice = activeInvoices.find((invoice) => {
       const remainingBalance = Math.max(Number(invoice?.amount || 0) - Number(invoice?.amountPaid || 0), 0)
       if (remainingBalance <= 0) return false
 
@@ -1546,7 +1595,7 @@ function ContractorFlowApp() {
       }
     }
 
-    const outstandingProject = visibleLeads
+    const outstandingProject = activeDashboardLeads
       .map((lead) => {
         const outstandingBalance = Math.max(
           Number(
@@ -1584,14 +1633,22 @@ function ContractorFlowApp() {
       supporting: t('todayNothingRequiresAttention'),
       to: appRoutes.dashboard,
     }
-  }, [activeScheduleEvents, invoices, t, visibleLeads])
+  }, [activeDashboardLeads, activeInvoices, activeScheduleEvents, archives.leadIds, t])
 
   const metrics = useMemo(() => {
-    const pipelineCounts = getLeadPipelineStageCounts(activeLeads)
+    const pipelineCounts = getLeadPipelineStageCounts(activeDashboardLeads)
+    const estimatePipelineCounts = getLeadPipelineStageCounts(activeDashboardLeads.filter((lead) => (
+      !resolveEstimateArchiveState({
+        estimate: lead?.portal?.estimate || {},
+        lead,
+        contract: lead?.portal?.contract || null,
+        archivedLeadIds: archives.leadIds,
+      }).isArchived
+    )))
     const newLeads = pipelineCounts.newLeads
-    const estimates = pipelineCounts.estimatesToSend + pipelineCounts.followUpsDue
+    const estimates = estimatePipelineCounts.estimatesToSend + estimatePipelineCounts.followUpsDue
     const activeJobs = pipelineCounts.readyForJob + pipelineCounts.byStage[leadPipelineStages.CONVERTED_TO_JOB]
-    const pipelineValue = activeLeads.reduce((sum, lead) => sum + lead.value, 0)
+    const pipelineValue = activeDashboardLeads.reduce((sum, lead) => sum + lead.value, 0)
 
     return [
       { label: t('metricNewLeads'), value: newLeads, helper: t('metricNewLeadsHelper'), icon: Users, tone: 'blue' },
@@ -1599,7 +1656,7 @@ function ContractorFlowApp() {
       { label: t('metricJobsInProgress'), value: activeJobs, helper: t('metricJobsInProgressHelper'), icon: BriefcaseBusiness, tone: 'amber' },
       { label: t('metricRevenuePipeline'), value: currency.format(pipelineValue), helper: t('metricRevenuePipelineHelper'), icon: DollarSign, tone: 'emerald' },
     ]
-  }, [activeLeads, t])
+  }, [activeDashboardLeads, archives.leadIds, t])
 
   function addNotification(titleKey, messageKey) {
     setNotifications((current) => [
@@ -1676,7 +1733,7 @@ function ContractorFlowApp() {
     lead: archiveLeadRecord,
     project: archiveProjectRecord,
     job: archiveProjectRecord,
-    estimate: archiveLeadRecord,
+    estimate: archiveEstimateRecord,
     client: archiveClientRecord,
     invoice: (id) => { updateArchiveList('invoiceIds', id, 'add'); showToast(t('itemArchived')) },
     scheduleEvent: (id) => {
@@ -1693,7 +1750,7 @@ function ContractorFlowApp() {
     lead: restoreLeadRecord,
     project: restoreProjectRecord,
     job: restoreProjectRecord,
-    estimate: restoreLeadRecord,
+    estimate: restoreEstimateRecord,
     client: restoreClientRecord,
     invoice: (id) => { updateArchiveList('invoiceIds', id, 'remove'); showToast(t('itemRestored')) },
     scheduleEvent: (id) => {
@@ -1709,7 +1766,7 @@ function ContractorFlowApp() {
     lead: deleteLeadRecord,
     project: deleteProjectRecord,
     job: deleteProjectRecord,
-    estimate: deleteLeadRecord,
+    estimate: deleteEstimateRecord,
     client: deleteClientRecord,
     invoice: (id) => { updateArchiveList('deletedInvoiceIds', id, 'add'); showToast(t('itemDeletedPermanently')) },
     scheduleEvent: (id) => {
@@ -2565,18 +2622,24 @@ function buildWorkspaceJobRecord(job, clientRecord = null) {
         : null
     const linkedEstimate = persistedEstimates.find((item) => matchesLinkedEstimate(sourceLead, item))
       || (hasEstimateData(sourceLead?.portal?.estimate) ? sourceLead.portal.estimate : readLinkedEstimateDraft(sourceLead || leadId, leadId))
+    let transitionedEstimate = linkedEstimate || null
 
     if (nextEstimateStatus && linkedEstimate?.id) {
       try {
+        const transitionTimestamp = new Date().toISOString()
         const estimateResponse = await dataProvider.estimates.update(linkedEstimate.id, {
           ...linkedEstimate,
           status: nextEstimateStatus,
+          ...(nextEstimateStatus === 'Sent'
+            ? { sentAt: linkedEstimate.sentAt || linkedEstimate.sent_at || transitionTimestamp }
+            : { approvedAt: linkedEstimate.approvedAt || linkedEstimate.approved_at || transitionTimestamp }),
         }, {
           contractorId: projectsContractorId,
         })
 
         if (!estimateResponse?.error && estimateResponse?.data) {
-          upsertPersistedEstimateRecord(estimateResponse.data)
+          transitionedEstimate = { ...linkedEstimate, ...estimateResponse.data }
+          upsertPersistedEstimateRecord(transitionedEstimate)
         }
       } catch (error) {
         logEstimateDevError('[dev] Failed to sync estimate status during lead stage transition.', error, {
@@ -2595,6 +2658,12 @@ function buildWorkspaceJobRecord(job, clientRecord = null) {
       archivedAt: null,
       archived_at: null,
       isArchived: false,
+      ...(transitionedEstimate ? {
+        portal: {
+          ...(sourceLead.portal || {}),
+          estimate: transitionedEstimate,
+        },
+      } : {}),
     })
 
     setLeads((current) => current.map((lead) => (lead.id === leadId ? persistedLead : lead)))
@@ -3013,6 +3082,9 @@ function buildWorkspaceJobRecord(job, clientRecord = null) {
     if (!settingsResponse?.error && settingsResponse?.data) {
       setCompanySettings(createDefaultCompanySettings(settingsResponse.data))
     }
+    if (!projectsResponse?.error && Array.isArray(projectsResponse?.data)) {
+      setPersistedProjects(dedupeById(projectsResponse.data))
+    }
 
     const failedEntry = [
       ['estimates', estimatesResponse],
@@ -3032,11 +3104,45 @@ function buildWorkspaceJobRecord(job, clientRecord = null) {
 
   async function archiveEstimateRecord(leadId, estimateRecord = null) {
     if (!USE_SUPABASE && !USE_SUPABASE_ESTIMATES) {
-      archiveLeadRecord(leadId)
-      return null
+      const sourceLead = findLeadByProjectLookup(
+        visibleLeads,
+        leadId,
+        estimateRecord?.leadId,
+        estimateRecord?.lead_id,
+        estimateRecord?.projectId,
+        estimateRecord?.project_id,
+      )
+      const linkedEstimate = hasEstimateData(estimateRecord)
+        ? estimateRecord
+        : sourceLead?.portal?.estimate || readLinkedEstimateDraft(sourceLead || leadId, leadId)
+
+      if (!sourceLead || !hasEstimateData(linkedEstimate)) return null
+
+      const archivedAt = new Date().toISOString()
+      const archivedEstimate = {
+        ...linkedEstimate,
+        archivedAt,
+        archived_at: archivedAt,
+        isArchived: true,
+      }
+      writeLinkedEstimateDrafts(sourceLead, archivedEstimate, [leadId, linkedEstimate.id])
+      setLeads((current) => current.map((lead) => (
+        lead.id === sourceLead.id
+          ? { ...lead, portal: { ...(lead.portal || {}), estimate: archivedEstimate } }
+          : lead
+      )))
+      showToast(t('itemArchived'))
+      return archivedEstimate
     }
 
-    const sourceLead = visibleLeads.find((lead) => lead.id === leadId || lead.projectId === leadId || lead.project_id === leadId)
+    const sourceLead = findLeadByProjectLookup(
+      visibleLeads,
+      leadId,
+      estimateRecord?.leadId,
+      estimateRecord?.lead_id,
+      estimateRecord?.projectId,
+      estimateRecord?.project_id,
+    )
     const linkedEstimate = hasEstimateData(estimateRecord)
       ? estimateRecord
       : persistedEstimates.find((item) => matchesLinkedEstimate(sourceLead || { id: leadId }, item))
@@ -3077,13 +3183,62 @@ function buildWorkspaceJobRecord(job, clientRecord = null) {
     return archivedEstimate
   }
 
-  async function restoreEstimateRecord(leadId, estimateRecord = null) {
-    if (!USE_SUPABASE && !USE_SUPABASE_ESTIMATES) {
-      restoreLeadRecord(leadId)
-      return null
+  async function restoreEstimateRecord(leadId, estimateRecord = null, { archiveSource = null } = {}) {
+    const sourceLead = findLeadByProjectLookup(
+      visibleLeads,
+      leadId,
+      estimateRecord?.leadId,
+      estimateRecord?.lead_id,
+      estimateRecord?.projectId,
+      estimateRecord?.project_id,
+    )
+
+    if (archiveSource === 'lead') {
+      if (!sourceLead?.id || !isRecordArchived(sourceLead, archives.leadIds)) {
+        showToast(t('restoreFailed'), 'error')
+        return null
+      }
+
+      const response = await dataProvider.leads.restore(sourceLead.id, { contractorId: leadsContractorId })
+      if (response?.error) {
+        showToast(response.error.message || t('restoreFailed'), 'error')
+        return null
+      }
+
+      updateArchiveList('leadIds', sourceLead.id, 'remove')
+      setLeads((current) => current.map((lead) => (
+        lead.id === sourceLead.id
+          ? { ...lead, ...(response?.data || {}), archivedAt: null, archived_at: null, isArchived: false }
+          : lead
+      )))
+      showToast(t('itemRestored'))
+      return estimateRecord
     }
 
-    const sourceLead = visibleLeads.find((lead) => lead.id === leadId || lead.projectId === leadId || lead.project_id === leadId)
+    if (!USE_SUPABASE && !USE_SUPABASE_ESTIMATES) {
+      const linkedEstimate = hasEstimateData(estimateRecord)
+        ? estimateRecord
+        : sourceLead?.portal?.estimate || readLinkedEstimateDraft(sourceLead || leadId, leadId)
+
+      if (!sourceLead || !hasEstimateData(linkedEstimate)) return null
+
+      const restoredEstimate = {
+        ...linkedEstimate,
+        archivedAt: null,
+        archived_at: null,
+        isArchived: false,
+        archived: false,
+      }
+      writeLinkedEstimateDrafts(sourceLead, restoredEstimate, [leadId, linkedEstimate.id])
+      setLeads((current) => current.map((lead) => (
+        lead.id === sourceLead.id
+          ? { ...lead, portal: { ...(lead.portal || {}), estimate: restoredEstimate } }
+          : lead
+      )))
+      showToast(t('itemRestored'))
+      return restoredEstimate
+    }
+
     const linkedEstimate = hasEstimateData(estimateRecord)
       ? estimateRecord
       : persistedEstimates.find((item) => matchesLinkedEstimate(sourceLead || { id: leadId }, item))
@@ -3126,21 +3281,47 @@ function buildWorkspaceJobRecord(job, clientRecord = null) {
   }
 
   async function deleteEstimateRecord(leadId, estimateRecord = null) {
-    if (!USE_SUPABASE && !USE_SUPABASE_ESTIMATES) {
-      deleteLeadRecord(leadId)
-      return null
-    }
-
-    const sourceLead = visibleLeads.find((lead) => lead.id === leadId || lead.projectId === leadId || lead.project_id === leadId)
+    const sourceLead = findLeadByProjectLookup(
+      visibleLeads,
+      leadId,
+      estimateRecord?.leadId,
+      estimateRecord?.lead_id,
+      estimateRecord?.projectId,
+      estimateRecord?.project_id,
+    )
     const linkedEstimate = hasEstimateData(estimateRecord)
       ? estimateRecord
       : persistedEstimates.find((item) => matchesLinkedEstimate(sourceLead || { id: leadId }, item))
         || sourceLead?.portal?.estimate
         || readLinkedEstimateDraft(sourceLead || leadId, leadId)
 
-    if (!linkedEstimate?.id) {
+    const linkedContract = persistedContracts.find((contract) => matchesLinkedContract(sourceLead || { id: leadId }, contract, linkedEstimate))
+      || sourceLead?.portal?.contract
+      || null
+    const archiveState = resolveEstimateArchiveState({
+      estimate: linkedEstimate || {},
+      lead: sourceLead,
+      contract: linkedContract,
+      archivedLeadIds: archives.leadIds,
+    })
+
+    if (!hasEstimateData(linkedEstimate) || !archiveState.isArchived) {
+      showToast(t('deleteFailed'), 'error')
       return null
     }
+
+    if (!USE_SUPABASE && !USE_SUPABASE_ESTIMATES) {
+      buildEstimateLookupIds(linkedEstimate, [leadId]).forEach((lookupId) => clearEstimateDraft(lookupId))
+      setLeads((current) => current.map((lead) => (
+        lead.id === sourceLead?.id
+          ? { ...lead, estimateId: null, portal: { ...(lead.portal || {}), estimate: {} } }
+          : lead
+      )))
+      showToast(t('itemDeletedPermanently'))
+      return { id: linkedEstimate.id || leadId, deleted: true }
+    }
+
+    if (!linkedEstimate?.id) return null
 
     const response = await dataProvider.estimates.deletePermanently(linkedEstimate.id, {
       contractorId: projectsContractorId,
@@ -4209,10 +4390,10 @@ function buildWorkspaceJobRecord(job, clientRecord = null) {
 
   const dashboardPage = (
     <DashboardPage
-      leads={activeLeads}
+      leads={activeDashboardLeads}
       metrics={metrics}
       scheduleEvents={activeScheduleEvents}
-      invoices={invoices.filter((invoice) => !archives.deletedInvoiceIds.includes(invoice.id) && !archives.invoiceIds.includes(invoice.id))}
+      invoices={activeInvoices}
       draggedLeadId={draggedLeadId}
       setDraggedLeadId={setDraggedLeadId}
       selectedMobileStage={selectedMobileStage}
@@ -4270,8 +4451,8 @@ function buildWorkspaceJobRecord(job, clientRecord = null) {
       <Route path={appRoutes.forgotPassword} element={<ForgotPasswordPage t={t} language={language} setLanguage={setLanguage} />} />
       {ENABLE_DEVELOPER_ROUTES ? (
         <>
-          <Route path={appRoutes.developerHealth} element={<Suspense fallback={null}><TranslationAuditPage t={t} /></Suspense>} />
-          <Route path={appRoutes.developerTranslations} element={<Suspense fallback={null}><TranslationAuditPage t={t} /></Suspense>} />
+          <Route path={appRoutes.developerHealth} element={<Suspense fallback={<AymeroLoader variant="section" title={t('loading')} accessibleLabel={t('loading')} />}><TranslationAuditPage t={t} /></Suspense>} />
+          <Route path={appRoutes.developerTranslations} element={<Suspense fallback={<AymeroLoader variant="section" title={t('loading')} accessibleLabel={t('loading')} />}><TranslationAuditPage t={t} /></Suspense>} />
         </>
       ) : null}
       <Route path="*" element={<Navigate to={appRoutes.dashboard} replace />} />
@@ -4287,7 +4468,7 @@ function buildWorkspaceJobRecord(job, clientRecord = null) {
   }
 
   if (USE_AUTH && isLoading) {
-    return null
+    return <AymeroLoader variant="page" title={t('loading')} accessibleLabel={t('loading')} />
   }
 
   if (USE_AUTH && !isAuthenticated) {
@@ -4296,7 +4477,7 @@ function buildWorkspaceJobRecord(job, clientRecord = null) {
 
   if (USE_AUTH && isAuthenticated && (onboardingRequired || onboardingSessionActive || isCompanySetupReopen || shouldAutoOpenOnboarding) && !isDeveloperRoute) {
     return (
-      <Suspense fallback={<div className="min-h-screen bg-slate-50" />}>
+      <Suspense fallback={<AymeroLoader variant="page" title={t('loading')} accessibleLabel={t('loading')} />}>
           <AuthOnboardingPage
             t={t}
             language={language}
@@ -4323,7 +4504,7 @@ function buildWorkspaceJobRecord(job, clientRecord = null) {
   }
 
   if (isAwaitingResolvedSettings && !isDeveloperRoute) {
-    return null
+    return <AymeroLoader variant="page" title={t('loading')} accessibleLabel={t('loading')} />
   }
 
   if (USE_AUTH && isAuthenticated && !hasContractorAccess && !isDeveloperRoute) {

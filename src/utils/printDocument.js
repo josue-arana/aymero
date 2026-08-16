@@ -1,4 +1,4 @@
-import { DOCUMENT_PAPER_WIDTH_INCHES, getDocumentPaperGeometry } from './documentPaper'
+import { DOCUMENT_PAPER_WIDTH_INCHES, getDocumentPaperGeometry, getPaginatedPrintPageLayout } from './documentPaper'
 import { getEstimatePaginationModel, waitForEstimateDocumentAssets } from './estimatePagination'
 
 const defaultPrintPageMarginInches = 0.45
@@ -76,6 +76,8 @@ function escapeHtml(value) {
 function preparePrintContentNode(contentNode) {
   if (!contentNode?.style) return
 
+  contentNode.querySelectorAll?.('[data-aymero-loader]').forEach((loaderNode) => loaderNode.remove())
+
   contentNode.style.width = '100%'
   contentNode.style.maxWidth = '100%'
   contentNode.style.padding = '0'
@@ -98,19 +100,25 @@ function isSharedPaginatedDocument(element) {
 }
 
 function createPaginatedPrintContent(element, targetDocument, pagination) {
-  const paperGeometry = getDocumentPaperGeometry(pagination.elementWidth)
+  const pageLayout = getPaginatedPrintPageLayout(pagination)
   const container = targetDocument.createElement('div')
   container.dataset.documentPaginatedPrint = 'true'
+  container.style.display = 'block'
+  container.style.width = `${pageLayout.outputWidth}px`
+  container.style.height = 'auto'
+  container.style.margin = '0'
+  container.style.padding = '0'
+  container.style.overflow = 'visible'
 
   pagination.pages.forEach((page, index) => {
     const pageNode = targetDocument.createElement('section')
     pageNode.dataset.documentPrintPage = 'true'
     pageNode.style.position = 'relative'
-    pageNode.style.width = `${pagination.elementWidth}px`
-    pageNode.style.height = `${pagination.sourcePageHeight}px`
+    pageNode.style.display = 'block'
+    pageNode.style.width = `${pageLayout.outputWidth}px`
+    pageNode.style.height = `${pageLayout.outputHeight}px`
     pageNode.style.overflow = 'hidden'
     pageNode.style.boxSizing = 'border-box'
-    pageNode.style.zoom = String(paperGeometry.printScale)
     pageNode.style.breakInside = 'avoid'
     pageNode.style.pageBreakInside = 'avoid'
 
@@ -120,10 +128,14 @@ function createPaginatedPrintContent(element, targetDocument, pagination) {
     }
 
     const viewportNode = targetDocument.createElement('div')
-    viewportNode.style.position = 'relative'
-    viewportNode.style.width = `${pagination.elementWidth}px`
+    viewportNode.style.position = 'absolute'
+    viewportNode.style.left = '0'
+    viewportNode.style.top = '0'
+    viewportNode.style.width = `${pageLayout.sourceWidth}px`
     viewportNode.style.height = `${page.height}px`
     viewportNode.style.overflow = 'hidden'
+    viewportNode.style.transform = `scale(${pageLayout.scale})`
+    viewportNode.style.transformOrigin = 'top left'
 
     const sliceNode = targetDocument.createElement('div')
     sliceNode.style.position = 'absolute'
@@ -134,6 +146,7 @@ function createPaginatedPrintContent(element, targetDocument, pagination) {
     sliceNode.style.transformOrigin = 'top left'
 
     const clonedSource = element.cloneNode(true)
+    clonedSource.querySelectorAll?.('[data-aymero-loader]').forEach((loaderNode) => loaderNode.remove())
     clonedSource.style.width = `${pagination.elementWidth}px`
     clonedSource.style.maxWidth = 'none'
     clonedSource.style.margin = '0'
@@ -153,8 +166,7 @@ function makePrintContextReady(printWindow, printLabel = '') {
   const actionButton = printWindow.document.querySelector('[data-print-action="true"]')
 
   if (loadingNode) {
-    loadingNode.hidden = true
-    loadingNode.style.display = 'none'
+    loadingNode.remove()
   }
   if (!actionButton || !printLabel) return
 
@@ -270,13 +282,15 @@ export async function printDocumentElement(element, {
         <title>${escapeHtml(documentTitle)}</title>
         <style>
           @page { size: letter; margin: ${normalizedPageMargin}in; }
-          html, body { margin: 0; padding: 0; width: 100%; background: #ffffff; color: #0f172a; }
-          body { font-family: ui-sans-serif, system-ui, sans-serif; }
+          html, body { margin: 0; padding: 0; width: 100%; height: auto; min-height: 0; background: #ffffff; color: #0f172a; }
+          body { overflow: visible; font-family: ui-sans-serif, system-ui, sans-serif; }
           img { max-width: 100%; }
           [data-print-root="true"] {
             width: calc(100% - ${normalizedSafeInset}in);
             max-width: ${printContentMaxWidthInches}in;
             min-width: 0;
+            height: auto;
+            min-height: 0;
             margin: 0 auto;
             box-sizing: border-box;
             display: block;
@@ -289,14 +303,44 @@ export async function printDocumentElement(element, {
             place-items: center;
             background: #ffffff;
           }
-          [data-print-loading="true"]::before {
-            content: '';
-            width: 2rem;
-            height: 2rem;
-            border: 3px solid #e2e8f0;
-            border-top-color: #2563eb;
+          .aymero-print-loader__visual {
+            position: relative;
+            display: grid;
+            width: 3.5rem;
+            height: 3.5rem;
+            place-items: center;
+          }
+          .aymero-print-loader__mark {
+            width: 2.25rem;
+            height: 2.25rem;
+            object-fit: contain;
+          }
+          .aymero-print-loader__ring {
+            position: absolute;
+            inset: 0;
+            width: 100%;
+            height: 100%;
+            fill: none;
+            stroke-linecap: round;
+            stroke-width: 2.4;
+          }
+          .aymero-print-loader__track { stroke: rgba(15, 139, 141, 0.18); }
+          .aymero-print-loader__accent { stroke: #0f8b8d; }
+          .aymero-print-loader__orbit {
+            position: absolute;
+            inset: 0;
+            animation: aymero-print-orbit 1.6s linear infinite;
+          }
+          .aymero-print-loader__dot {
+            position: absolute;
+            top: 0.125rem;
+            left: 50%;
+            width: 0.4rem;
+            height: 0.4rem;
             border-radius: 9999px;
-            animation: aymero-print-spin 0.8s linear infinite;
+            background: #0f8b8d;
+            box-shadow: 0 1px 3px rgba(15, 23, 42, 0.2);
+            transform: translateX(-50%);
           }
           [data-print-action="true"] {
             position: fixed;
@@ -311,7 +355,10 @@ export async function printDocumentElement(element, {
             font: 700 0.875rem/1 ui-sans-serif, system-ui, sans-serif;
             box-shadow: 0 12px 30px rgba(15, 23, 42, 0.24);
           }
-          @keyframes aymero-print-spin { to { transform: rotate(360deg); } }
+          @keyframes aymero-print-orbit { to { transform: rotate(360deg); } }
+          @media (prefers-reduced-motion: reduce) {
+            .aymero-print-loader__orbit { animation: none; transform: rotate(40deg); }
+          }
           [data-print-root="true"], [data-print-root="true"] * {
             box-sizing: border-box;
           }
@@ -337,6 +384,8 @@ export async function printDocumentElement(element, {
             margin: 0 !important;
             padding: 0 !important;
             overflow: visible !important;
+            height: auto !important;
+            min-height: 0 !important;
           }
           [data-print-root="true"] [data-document-print-page="true"] {
             margin: 0 !important;
@@ -377,7 +426,7 @@ export async function printDocumentElement(element, {
             page-break-inside: avoid;
           }
           @media print {
-            html, body { background: #ffffff; }
+            html, body { height: auto !important; min-height: 0 !important; background: #ffffff; overflow: visible !important; }
             body { -webkit-print-color-adjust: exact; print-color-adjust: exact; }
             [data-print-loading="true"], [data-print-action="true"] { display: none !important; }
             [data-print-root="true"] {
@@ -388,7 +437,16 @@ export async function printDocumentElement(element, {
         </style>
       </head>
       <body>
-        <div data-print-loading="true" aria-hidden="true"></div>
+        <div data-print-loading="true" data-aymero-loader="document" role="status" aria-live="polite" aria-label="${escapeHtml(documentTitle)}">
+          <span class="aymero-print-loader__visual" aria-hidden="true">
+            <svg class="aymero-print-loader__ring" viewBox="0 0 64 64" focusable="false">
+              <circle class="aymero-print-loader__track" cx="32" cy="32" r="27"></circle>
+              <path class="aymero-print-loader__accent" d="M 10.2 48 A 27 27 0 0 1 45.5 8.6"></path>
+            </svg>
+            <span class="aymero-print-loader__orbit"><span class="aymero-print-loader__dot"></span></span>
+            <img class="aymero-print-loader__mark" src="/AppLogoDark.png" alt="" />
+          </span>
+        </div>
         <button type="button" data-print-action="true" hidden></button>
         <div data-print-root="true"></div>
       </body>
@@ -412,9 +470,31 @@ export async function printDocumentElement(element, {
     const layoutOverride = printWindow.document.createElement('style')
     layoutOverride.textContent = `
       @page { size: letter; margin: ${normalizedPageMargin}in; }
+      html, body {
+        margin: 0 !important;
+        padding: 0 !important;
+        width: 100% !important;
+        height: auto !important;
+        min-height: 0 !important;
+        overflow: visible !important;
+      }
       [data-print-root="true"] {
         width: calc(100% - ${normalizedSafeInset}in);
         max-width: ${printContentMaxWidthInches}in;
+        height: auto !important;
+        min-height: 0 !important;
+        margin: 0 auto !important;
+        padding: 0 !important;
+        overflow: visible !important;
+      }
+      @media print {
+        html, body, [data-print-root="true"] {
+          height: auto !important;
+          min-height: 0 !important;
+        }
+        [data-print-loading="true"], [data-print-action="true"] {
+          display: none !important;
+        }
       }
     `
     printWindow.document.head.appendChild(layoutOverride)

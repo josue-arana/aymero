@@ -14,6 +14,7 @@ import { getEstimateDisplayNumber } from '../utils/estimateNumber'
 import { dedupeById, findLeadByProjectLookup, resolveLinkedProjectId } from '../utils/projectIdentity'
 import estimatesHeroBackground from '../assets/page-heroes/estimates-bg.png'
 import { buildHeroBackgroundStyle } from '../utils/heroBackground'
+import { resolveEstimateArchiveState } from '../utils/archiveLifecycle'
 
 const estimateFilters = ['All', 'Archived', 'Draft', 'Sent', 'Approved', 'Rejected', 'Converted to Contract']
 
@@ -32,22 +33,29 @@ export function EstimatesPage({ leads, estimates = [], contracts = [], archivedI
   const [confirmAction, setConfirmAction] = useState(null)
   const { isAnalyticsMode } = useAnalyticsMode()
 
-  const leadBackedEstimates = useMemo(() => leads.map((lead) => ({
-    id: lead.id,
-    sourceLeadId: lead.id,
-    routeId: lead.projectId || lead.project_id || lead.id,
-    estimateNumber: getEstimateDisplayNumber(lead.portal?.estimate || {}, lead),
-    client: lead.client,
-    projectTitle: lead.projectTitle || lead.projectType,
-    amount: lead.portal?.estimate?.total || lead.value,
-    status: getEstimateStatus(lead),
-    dateCreated: lead.portal?.estimate?.dateCreated || lead.portal?.estimate?.createdAt || lead.portal?.contract?.signedDate || 'June 2026',
-    hasLinkedContract: Boolean(lead.portal?.contract?.id || lead.portal?.contract?.number || lead.portal?.contract?.contractNumber),
-    nextAction: (lead.portal?.contract?.id || lead.portal?.contract?.number || lead.portal?.contract?.contractNumber) ? t('viewContract') : t('convertToContract'),
-    isArchived: archivedIds.includes(lead.id),
-    routeUsesEstimateId: false,
-    canUseProjectActions: true,
-  })), [archivedIds, leads, t])
+  const leadBackedEstimates = useMemo(() => leads.map((lead) => {
+    const estimate = lead.portal?.estimate || {}
+    const contract = lead.portal?.contract || null
+    const archiveState = resolveEstimateArchiveState({ estimate, lead, contract, archivedLeadIds: archivedIds })
+
+    return {
+      id: lead.id,
+      sourceLeadId: lead.id,
+      routeId: lead.projectId || lead.project_id || lead.id,
+      estimateNumber: getEstimateDisplayNumber(estimate, lead),
+      client: lead.client,
+      projectTitle: lead.projectTitle || lead.projectType,
+      amount: estimate.total || lead.value,
+      status: getEstimateStatus(lead),
+      dateCreated: estimate.dateCreated || estimate.createdAt || contract?.signedDate || 'June 2026',
+      hasLinkedContract: Boolean(contract?.id || contract?.number || contract?.contractNumber),
+      nextAction: (contract?.id || contract?.number || contract?.contractNumber) ? t('viewContract') : t('convertToContract'),
+      isArchived: archiveState.isArchived,
+      archiveSource: archiveState.source,
+      routeUsesEstimateId: false,
+      canUseProjectActions: true,
+    }
+  }), [archivedIds, leads, t])
 
   const persistedEstimates = useMemo(() => dedupeById(estimates, ['projectId', 'project_id', 'leadId', 'lead_id', 'number', 'estimateNumber']).map((estimate) => {
     const linkedLead = findLeadByProjectLookup(leads, estimate?.projectId, estimate?.project_id, estimate?.leadId, estimate?.lead_id)
@@ -58,7 +66,12 @@ export function EstimatesPage({ leads, estimates = [], contracts = [], archivedI
       || ((estimate?.projectId || estimate?.project_id) && (contract?.projectId === (estimate.projectId || estimate.project_id) || contract?.project_id === (estimate.projectId || estimate.project_id)))
       || ((estimate?.leadId || estimate?.lead_id) && (contract?.leadId === (estimate.leadId || estimate.lead_id) || contract?.lead_id === (estimate.leadId || estimate.lead_id)))
     )) || linkedLead?.portal?.contract || null
-    const isArchived = Boolean(estimate?.archivedAt || estimate?.archived_at)
+    const archiveState = resolveEstimateArchiveState({
+      estimate,
+      lead: linkedLead,
+      contract: linkedContract,
+      archivedLeadIds: archivedIds,
+    })
     const routeId = estimate.id
 
     return {
@@ -74,11 +87,12 @@ export function EstimatesPage({ leads, estimates = [], contracts = [], archivedI
       dateCreated: estimate.dateCreated || estimate.createdAt || estimate.created_at || 'June 2026',
       hasLinkedContract: Boolean(linkedContract?.id || linkedContract?.number || linkedContract?.contractNumber),
       nextAction: (linkedContract?.id || linkedContract?.number || linkedContract?.contractNumber) ? t('viewContract') : t('convertToContract'),
-      isArchived,
+      isArchived: archiveState.isArchived,
+      archiveSource: archiveState.source,
       routeUsesEstimateId: true,
       canUseProjectActions: Boolean(linkedLead),
     }
-  }), [contracts, estimates, leads, t])
+  }), [archivedIds, contracts, estimates, leads, t])
 
   const usesSupabaseEstimates = USE_SUPABASE || USE_SUPABASE_ESTIMATES
   const estimateRows = usesSupabaseEstimates && persistedEstimates.length > 0 ? persistedEstimates : leadBackedEstimates
@@ -115,10 +129,10 @@ export function EstimatesPage({ leads, estimates = [], contracts = [], archivedI
     if (!confirmAction) return
     try {
       if (confirmAction.mode === 'archive') {
-        await onArchiveEstimate?.(confirmAction.estimate.id, confirmAction.estimate)
+        await onArchiveEstimate?.(confirmAction.estimate.sourceLeadId, confirmAction.estimate)
       }
       if (confirmAction.mode === 'delete') {
-        await onDeleteEstimate?.(confirmAction.estimate.id, confirmAction.estimate)
+        await onDeleteEstimate?.(confirmAction.estimate.sourceLeadId, confirmAction.estimate)
       }
     } catch (err) {
       if (import.meta.env.DEV) {
@@ -137,9 +151,9 @@ export function EstimatesPage({ leads, estimates = [], contracts = [], archivedI
       ? [
           {
             id: 'restore-estimate',
-            label: t('restore'),
+            label: t(estimate.archiveSource === 'lead' ? 'restoreLeadAndEstimate' : 'restore'),
             icon: <Undo2 className="mr-2 h-4 w-4" />,
-            onClick: () => onRestoreEstimate(estimate.id, estimate),
+            onClick: () => onRestoreEstimate(estimate.sourceLeadId, estimate, { archiveSource: estimate.archiveSource }),
           },
           {
             id: 'delete-estimate',
@@ -260,7 +274,12 @@ export function EstimatesPage({ leads, estimates = [], contracts = [], archivedI
                       <p className="mt-1 text-sm font-semibold text-slate-600">{currency.format(estimate.amount)}</p>
                     </div>
                   </td>
-                  <td className="px-4 py-4 align-top"><StatusBadge status={estimate.isArchived ? 'Archived' : estimate.status} t={t} /></td>
+                  <td className="px-4 py-4 align-top">
+                    <div className="flex flex-wrap gap-2">
+                      <StatusBadge status={estimate.status} t={t} />
+                      {estimate.isArchived ? <StatusBadge status="Archived" t={t} /> : null}
+                    </div>
+                  </td>
                   <td className="px-4 py-4 align-top font-medium text-slate-700">{formatDisplayDate(estimate.dateCreated, estimate.dateCreated)}</td>
                   <td className="px-4 py-4 text-right align-top">{renderEstimateActions(estimate)}</td>
                 </tr>
@@ -283,7 +302,10 @@ export function EstimatesPage({ leads, estimates = [], contracts = [], archivedI
                   <h3 className="truncate font-bold text-slate-950">{estimate.client}</h3>
                   <p className="mt-1 truncate text-sm text-slate-500">{estimate.projectTitle}</p>
                 </div>
-                <StatusBadge status={estimate.isArchived ? 'Archived' : estimate.status} t={t} />
+                <div className="flex flex-wrap justify-end gap-2">
+                  <StatusBadge status={estimate.status} t={t} />
+                  {estimate.isArchived ? <StatusBadge status="Archived" t={t} /> : null}
+                </div>
               </div>
               <div className="grid gap-3 rounded-2xl bg-slate-50 p-3 sm:grid-cols-2">
                 <div>

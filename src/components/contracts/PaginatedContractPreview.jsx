@@ -1,8 +1,6 @@
 import { PaginatedEstimatePreview } from '../estimates/PaginatedEstimatePreview'
 
 const contractTranslationKeys = {
-  pageCountSingle: 'contractPageCountSingle',
-  pageCountMultiple: 'contractPageCountMultiple',
   pageOf: 'contractPageOf',
   paginationLabel: 'contractPreviewPagination',
   preparing: 'preparingContractPreview',

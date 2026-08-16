@@ -380,7 +380,7 @@ export function LeadsPage({ leads, clients = [], archivedIds = [], onViewLead, o
         isOpen={Boolean(confirmAction)}
         mode={confirmAction?.mode}
         title={confirmAction?.mode === 'delete' ? t('confirmPermanentDelete') : t('confirmArchive')}
-        message={confirmAction?.mode === 'delete' ? t('permanentDeleteHelp') : t('archiveHelp')}
+        message={confirmAction?.mode === 'delete' ? t('permanentDeleteHelp') : t('archiveLeadHelp')}
         confirmLabel={confirmAction?.mode === 'delete' ? t('deletePermanently') : t('archive')}
         onCancel={() => setConfirmAction(null)}
         onConfirm={runConfirmAction}

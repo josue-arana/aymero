@@ -1,5 +1,6 @@
 import { useEffect, useRef, useState } from 'react'
 import { ScaledDocumentPreview } from '../common/ScaledDocumentPreview'
+import { AymeroLoader } from '../common/AymeroLoader'
 import {
   ESTIMATE_DOCUMENT_SOURCE_PADDING,
   ESTIMATE_DOCUMENT_SOURCE_WIDTH,
@@ -10,19 +11,11 @@ import {
 const paginationDebounceMs = 180
 
 const defaultTranslationKeys = {
-  pageCountSingle: 'estimatePageCountSingle',
-  pageCountMultiple: 'estimatePageCountMultiple',
   pageOf: 'estimatePageOf',
   paginationLabel: 'estimatePreviewPagination',
   preparing: 'preparingEstimatePreview',
   updating: 'updatingEstimatePreview',
   unavailable: 'estimatePreviewUnavailable',
-}
-
-function getPageCountLabel(pageCount, t, translationKeys) {
-  return pageCount === 1
-    ? t(translationKeys.pageCountSingle, { count: pageCount })
-    : t(translationKeys.pageCountMultiple, { count: pageCount })
 }
 
 export function PaginatedEstimatePreview({
@@ -89,8 +82,6 @@ export function PaginatedEstimatePreview({
     }
   }, [children, sourcePadding, sourceWidth])
 
-  const pageCount = snapshot?.model?.pageCount || 0
-
   return (
     <div
       className={`relative min-w-0 ${className}`.trim()}
@@ -117,22 +108,23 @@ export function PaginatedEstimatePreview({
         </div>
       </div>
 
-      <div className="mb-3 flex min-h-6 items-center justify-end gap-2 px-1 text-xs font-semibold text-slate-500">
-        {pageCount ? (
-          <span aria-live="polite">{getPageCountLabel(pageCount, chromeT, translationKeys)}</span>
-        ) : null}
-        {isPaginating ? (
-          <span role="status" className="inline-flex items-center gap-1.5">
-            <span aria-hidden="true" className="h-2 w-2 animate-pulse rounded-full bg-blue-500" />
+      {isPaginating && snapshot ? (
+        <div className="mb-3 flex min-h-6 items-center justify-end gap-2 px-1 text-xs font-semibold text-slate-500">
+          <span className="inline-flex items-center gap-1.5">
+            <AymeroLoader variant="inline" accessibleLabel={chromeT(translationKeys.updating)} />
             {chromeT(translationKeys.updating)}
           </span>
-        ) : null}
-      </div>
+        </div>
+      ) : null}
 
       {!snapshot && isPaginating ? (
-        <div role="status" className="overflow-hidden rounded-2xl border border-slate-200 bg-white shadow-sm">
-          <div className="aspect-[8.5/11] animate-pulse bg-gradient-to-br from-white via-slate-50 to-slate-100" />
-          <span className="sr-only">{chromeT(translationKeys.preparing)}</span>
+        <div className="aspect-[8.5/11] overflow-hidden rounded-2xl border border-slate-200 bg-white shadow-sm">
+          <AymeroLoader
+            variant="document"
+            title={chromeT(translationKeys.preparing)}
+            accessibleLabel={chromeT(translationKeys.preparing)}
+            className="h-full min-h-0 border-0 shadow-none"
+          />
         </div>
       ) : null}
 
