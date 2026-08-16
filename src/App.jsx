@@ -62,7 +62,7 @@ import { normalizeClientPreferredLanguageFields, normalizeDocumentLanguageOverri
 import { buildLeadPipelineTransition, getLeadPipelineStage, getLeadPipelineStageCounts, leadPipelineStageOrder, leadPipelineStages, normalizeLeadPipelineStage } from './utils/leadPipeline'
 import { calculateProjectPaymentSummary, dedupePayments, normalizePaymentRecord } from './utils/projectPayments'
 import { createLocalRecordId, dedupeById, findLeadByProjectLookup, resolveLinkedLeadId, resolveLinkedProjectId } from './utils/projectIdentity'
-import { resolvePortalRouteId } from './utils/portal'
+import { buildPortalShareUrl, resolvePortalRouteId } from './utils/portal'
 import { buildContractWorkBreakdownFromEstimate, isGeneratedContractScopeText } from './utils/contractDocument'
 import { SAMPLE_GUIDE_ITEM_KEYS, SAMPLE_WORKSPACE_VERSION, createSampleWorkspace, removeSampleWorkspace, updateSampleWorkspaceGuide, upgradeSampleWorkspace as upgradeSampleWorkspaceRecords } from './services/sampleWorkspaceService'
 
@@ -560,8 +560,8 @@ function ContractorFlowApp() {
   const [invoiceRecords, setInvoiceRecords] = useState([])
   const [persistedPayments, setPersistedPayments] = useState([])
   const [areInvoicesLoaded, setAreInvoicesLoaded] = useState(false)
-  const [scheduleModalState, setScheduleModalState] = useState({ isOpen: false, leadId: '', context: 'event', editingEvent: null })
-  const [jobModalState, setJobModalState] = useState({ isOpen: false, initialClientId: '', initialClient: null })
+  const [scheduleModalState, setScheduleModalState] = useState({ isOpen: false, leadId: '', context: 'event', editingEvent: null, origin: '' })
+  const [jobModalState, setJobModalState] = useState({ isOpen: false, initialClientId: '', initialClient: null, origin: '' })
   const [isDashboardLeadModalOpen, setIsDashboardLeadModalOpen] = useState(false)
   const [dashboardSuccessMessage, setDashboardSuccessMessage] = useState('')
   const [archives, setArchives] = useState(emptyArchiveState)
@@ -2291,7 +2291,9 @@ function buildWorkspaceJobRecord(job, clientRecord = null) {
 
     try {
       setIsDashboardLeadModalOpen(false)
-      navigate(appRoutes.leadDetail.replace(':id', persistedLead.id))
+      if (persistedLead.id) {
+        navigate(appRoutes.leadDetail.replace(':id', persistedLead.id))
+      }
     } catch (err) {
       logLeadDevError('[dev] Failed to finalize dashboard lead creation state.', err, {
         leadDraft: lead,
@@ -2312,8 +2314,14 @@ function buildWorkspaceJobRecord(job, clientRecord = null) {
         return
       }
 
-      createJob(mergeCreatedJobDraft(jobDraft, response?.data || {}, matchedClient || null), matchedClient || null)
-      setJobModalState({ isOpen: false, initialClientId: '', initialClient: null })
+      const persistedJob = mergeCreatedJobDraft(jobDraft, response?.data || {}, matchedClient || null)
+      const shouldOpenCreatedProject = jobModalState.origin === 'dashboard'
+      const persistedProjectId = persistedJob.projectId || persistedJob.project_id || persistedJob.id || ''
+      createJob(persistedJob, matchedClient || null)
+      setJobModalState({ isOpen: false, initialClientId: '', initialClient: null, origin: '' })
+      if (shouldOpenCreatedProject && persistedProjectId) {
+        navigate(appRoutes.projects.replace(':id', persistedProjectId))
+      }
     } catch (err) {
       showToast(err?.message || t('jobSaveFailed'), 'error')
     }
@@ -4016,24 +4024,25 @@ function buildWorkspaceJobRecord(job, clientRecord = null) {
     updateScheduleEvent(eventId, response?.data || completionUpdates)
   }
 
-  function openScheduleModal({ leadId = '', context = 'event', event = null } = {}) {
-    setScheduleModalState({ isOpen: true, leadId: leadId || event?.leadId || '', context, editingEvent: event })
+  function openScheduleModal({ leadId = '', context = 'event', event = null, origin = '' } = {}) {
+    setScheduleModalState({ isOpen: true, leadId: leadId || event?.leadId || '', context, editingEvent: event, origin })
   }
 
   function closeScheduleModal() {
-    setScheduleModalState({ isOpen: false, leadId: '', context: 'event', editingEvent: null })
+    setScheduleModalState({ isOpen: false, leadId: '', context: 'event', editingEvent: null, origin: '' })
   }
 
-  function openJobModal({ clientId = '', client = null } = {}) {
+  function openJobModal({ clientId = '', client = null, origin = '' } = {}) {
     setJobModalState({
       isOpen: true,
       initialClientId: clientId || client?.id || '',
       initialClient: client || null,
+      origin,
     })
   }
 
   function closeJobModal() {
-    setJobModalState({ isOpen: false, initialClientId: '', initialClient: null })
+    setJobModalState({ isOpen: false, initialClientId: '', initialClient: null, origin: '' })
   }
 
   function exportScheduleEvent(event) {
@@ -4159,8 +4168,11 @@ function buildWorkspaceJobRecord(job, clientRecord = null) {
   function openPortal(leadId) {
     const matchingLead = findLeadByProjectLookup(visibleLeads, leadId)
     const portalId = resolvePortalRouteId(matchingLead || { id: leadId })
+    const portalUrl = buildPortalShareUrl(portalId)
 
-    navigate(appRoutes.portal.replace(':portalId', portalId))
+    if (portalUrl) {
+      window.open(portalUrl, '_blank', 'noopener,noreferrer')
+    }
     setSidebarOpen(false)
   }
 
@@ -4184,9 +4196,9 @@ function buildWorkspaceJobRecord(job, clientRecord = null) {
       onOpenProject={openProject}
       onOpenInvoice={(invoiceId) => navigate(`/invoices/${invoiceId}`)}
       onCreateLeadClick={() => setIsDashboardLeadModalOpen(true)}
-      onCreateJob={() => openJobModal()}
+      onCreateJob={() => openJobModal({ origin: 'dashboard' })}
       onRecordPayment={() => navigate(appRoutes.invoices)}
-      onScheduleVisit={() => openScheduleModal()}
+      onScheduleVisit={() => openScheduleModal({ origin: 'dashboard' })}
       successMessage={dashboardSuccessMessage}
       showOnboardingReminder={companySettings?.onboarding?.completed === false}
       onResumeOnboarding={() => {
@@ -4392,11 +4404,16 @@ function buildWorkspaceJobRecord(job, clientRecord = null) {
                 throw response.error
               }
 
-              const savedEvent = response?.data || eventPayload
+              const savedEvent = { ...eventPayload, ...(response?.data || {}) }
+              const shouldNavigateFromDashboard = scheduleModalState.origin === 'dashboard'
+              const savedProjectId = savedEvent.projectId || savedEvent.project_id || ''
 
               if (scheduleModalState.editingEvent?.id) updateScheduleEvent(scheduleModalState.editingEvent.id, savedEvent)
               else createScheduleEvent(savedEvent, scheduleModalState.context)
               closeScheduleModal()
+              if (shouldNavigateFromDashboard) {
+                navigate(savedProjectId ? appRoutes.projects.replace(':id', savedProjectId) : appRoutes.calendar)
+              }
             } catch (error) {
               logLeadDevError('[dev] Failed to save schedule event.', error, {
                 event,

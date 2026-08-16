@@ -8,6 +8,25 @@ export const technicalDebtRegistry = {
       complete: true,
       sourceHints: ['supabase/README.md', 'supabase/migrations/20260628_enable_project_photos_storage_beta.sql'],
     },
+    productionDeployment: {
+      sourceHint: 'docs/PRIVATE_BETA_LAUNCH_CHECKLIST.md#production-deployment-readiness',
+      verifiedAt: '2026-08-15T21:40:10-04:00',
+      verificationChecks: [
+        { id: 'siteDomain', labelKey: 'releaseCheckSiteDomain', status: 'PASS', evidenceKey: 'releaseEvidenceSiteDomain' },
+        { id: 'appDomain', labelKey: 'releaseCheckAppDomain', status: 'PASS', evidenceKey: 'releaseEvidenceAppDomain' },
+        { id: 'portalDomain', labelKey: 'releaseCheckPortalDomain', status: 'PASS', evidenceKey: 'releaseEvidencePortalDomain' },
+        { id: 'authDomain', labelKey: 'releaseCheckAuthDomain', status: 'PASS', evidenceKey: 'releaseEvidenceAuthDomain' },
+        { id: 'https', labelKey: 'releaseCheckHttps', status: 'PASS', evidenceKey: 'releaseEvidenceHttps' },
+        { id: 'spaRouting', labelKey: 'releaseCheckSpaRouting', status: 'PASS', evidenceKey: 'releaseEvidenceSpaRouting' },
+        { id: 'authRedirects', labelKey: 'releaseCheckAuthRedirects', status: 'PENDING', evidenceKey: 'releaseEvidenceAuthRedirects' },
+        { id: 'databaseMigrations', labelKey: 'releaseCheckDatabaseMigrations', status: 'PENDING', evidenceKey: 'releaseEvidenceDatabaseMigrations' },
+        { id: 'rls', labelKey: 'releaseCheckRls', status: 'PENDING', evidenceKey: 'releaseEvidenceRls' },
+        { id: 'edgeFunction', labelKey: 'releaseCheckEdgeFunction', status: 'PENDING', evidenceKey: 'releaseEvidenceEdgeFunction' },
+        { id: 'portalIsolation', labelKey: 'releaseCheckPortalIsolation', status: 'PENDING', evidenceKey: 'releaseEvidencePortalIsolation' },
+        { id: 'productionEnvironment', labelKey: 'releaseCheckProductionEnvironment', status: 'PASS', evidenceKey: 'releaseEvidenceProductionEnvironment' },
+        { id: 'developerRoutes', labelKey: 'releaseCheckDeveloperRoutes', status: 'PASS', evidenceKey: 'releaseEvidenceDeveloperRoutes' },
+      ],
+    },
   },
   todoItems: [
     {

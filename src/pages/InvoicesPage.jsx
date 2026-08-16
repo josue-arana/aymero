@@ -14,17 +14,13 @@ import { useAnalyticsMode } from '../contexts/SimpleModeContext'
 import { useAuth } from '../contexts/AuthContext'
 import dataProvider from '../services/dataProvider'
 import { getInvoicesContractorId } from '../services/system/invoicesRuntimeService'
-import { findRelatedLeadForInvoice } from '../utils/invoiceRecords'
+import { calculateOutstandingInvoiceBalance, findRelatedLeadForInvoice, getInvoiceRemainingBalance } from '../utils/invoiceRecords'
 import invoicesHeroBackground from '../assets/page-heroes/invoices-bg.png'
 import { buildHeroBackgroundStyle } from '../utils/heroBackground'
 import { findRelatedClient } from '../utils/clients'
 import { getLanguageLocale, resolveClientFacingLanguage } from '../utils/language'
 
 const invoiceFilters = ['All', 'Archived', 'Draft', 'Sent', 'Paid', 'Overdue', 'Canceled']
-
-function remainingBalance(invoice) {
-  return Math.max((invoice.amount || 0) - (invoice.amountPaid || 0), 0)
-}
 
 function formatLocalizedInvoiceDate(value, language = 'en') {
   if (!value) return ''
@@ -58,7 +54,7 @@ export function InvoicesPage({ leads, clients = [], invoices: invoiceRecords = [
       ...invoice,
       client: invoice.client || lead?.client || t('unknownClient'),
       projectTitle: invoice.projectTitle || lead?.projectTitle || lead?.projectType || t('project'),
-      remainingBalance: remainingBalance(invoice),
+      remainingBalance: getInvoiceRemainingBalance(invoice),
     }
   }), [invoiceRecords, leads, t, deletedIds])
   const sendInvoiceLead = useMemo(
@@ -93,7 +89,7 @@ export function InvoicesPage({ leads, clients = [], invoices: invoiceRecords = [
     { label: t('sentInvoices'), value: activeInvoices.filter((invoice) => invoice.status === 'Sent').length, helper: t('sentInvoicesHelper'), icon: Send },
     { label: t('paidInvoices'), value: activeInvoices.filter((invoice) => invoice.status === 'Paid').length, helper: t('paidInvoicesHelper'), icon: CheckCircle2 },
     { label: t('overdueInvoices'), value: activeInvoices.filter((invoice) => invoice.status === 'Overdue').length, helper: t('overdueInvoicesHelper'), icon: Clock },
-    { label: t('outstandingBalance'), value: currency.format(activeInvoices.reduce((sum, invoice) => sum + invoice.remainingBalance, 0)), helper: t('invoiceOutstandingHelper'), icon: DollarSign },
+    { label: t('outstandingBalance'), value: currency.format(calculateOutstandingInvoiceBalance(activeInvoices)), helper: t('invoiceOutstandingHelper'), icon: DollarSign },
   ]
 
 

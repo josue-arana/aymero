@@ -13,16 +13,19 @@ Set these values in `Authentication -> URL Configuration`:
 
 - `Site URL`
   - Local: `http://localhost:5174`
-  - Production: `https://YOUR-NETLIFY-SITE.netlify.app`
+  - Production: `https://app.aymero.co`
 - `Redirect URLs`
   - `http://localhost:5174/*`
-  - `https://YOUR-NETLIFY-SITE.netlify.app/*`
+  - `https://app.aymero.co/*`
+  - `https://auth.aymero.co/`
+  - `https://auth.aymero.co/forgot-password`
 
 ### App Redirect Behavior
 
 - Signup confirmation and password recovery now send `redirect_to` using the current app origin at runtime.
 - Optional override: set `VITE_AUTH_REDIRECT_URL` if a deployment needs an explicit auth callback base instead of `window.location.origin`.
 - Local default fallback remains `http://localhost:5174`.
+- Production currently declares `VITE_AUTH_URL=https://auth.aymero.co`; that host must serve the Aymero SPA and its direct-route fallback before email confirmation or password recovery is considered verified.
 
 ### Private Beta Onboarding Choice
 

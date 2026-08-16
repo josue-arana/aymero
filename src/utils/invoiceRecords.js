@@ -46,6 +46,32 @@ export function getInvoiceRemainingBalance(invoice = {}) {
   return Math.max(toNumber(invoice.amount) - toNumber(invoice.amountPaid), 0)
 }
 
+export function isCollectibleInvoice(invoice = {}) {
+  const normalizedStatus = normalizeInvoiceStatus(invoice?.status, {
+    amount: toNumber(invoice?.amount),
+    amountPaid: toNumber(invoice?.amountPaid),
+    hasLinkedPayments: Array.isArray(invoice?.paymentHistory) && invoice.paymentHistory.length > 0,
+  })
+  const isArchived = normalizedStatus === 'Archived'
+    || Boolean(invoice?.archivedAt || invoice?.archived_at || invoice?.isArchived)
+
+  if (isArchived || ['Draft', 'Paid', 'Canceled'].includes(normalizedStatus)) {
+    return false
+  }
+
+  return getInvoiceRemainingBalance(invoice) > 0
+}
+
+export function calculateOutstandingInvoiceBalance(invoices = []) {
+  if (!Array.isArray(invoices)) return 0
+
+  return invoices.reduce((total, invoice) => (
+    isCollectibleInvoice(invoice)
+      ? total + getInvoiceRemainingBalance(invoice)
+      : total
+  ), 0)
+}
+
 function normalizeInvoicePaymentHistory(paymentHistory = []) {
   if (!Array.isArray(paymentHistory)) return []
 

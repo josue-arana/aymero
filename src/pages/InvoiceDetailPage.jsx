@@ -15,7 +15,7 @@ import dataProvider from '../services/dataProvider'
 import { useAuth } from '../contexts/AuthContext'
 import { getInvoicesContractorId } from '../services/system/invoicesRuntimeService'
 import { getPaymentsContractorId } from '../services/system/paymentsRuntimeService'
-import { findRelatedLeadForInvoice, normalizeInvoiceStatus } from '../utils/invoiceRecords'
+import { findRelatedLeadForInvoice, getInvoiceRemainingBalance, normalizeInvoiceStatus } from '../utils/invoiceRecords'
 import { createTranslator } from '../translations'
 import { findRelatedClient } from '../utils/clients'
 import { getLanguageLocale, resolveClientFacingLanguage } from '../utils/language'
@@ -38,10 +38,6 @@ function getAvailableContactValue(...values) {
   }
 
   return ''
-}
-
-function getRemainingBalance(invoice) {
-  return Math.max(Number(invoice.amount || 0) - Number(invoice.amountPaid || 0), 0)
 }
 
 function calculateInvoiceTotal(lineItems = []) {
@@ -406,7 +402,7 @@ export function InvoiceDetailRoute({ companySettings, leads, clients = [], invoi
   const isArchived = archivedIds.includes(syncedInvoice.id)
   const lineItems = syncedInvoice.lineItems || []
   const invoiceTotal = calculateInvoiceTotal(lineItems) || Number(syncedInvoice.amount || 0)
-  const currentInvoice = { ...syncedInvoice, amount: invoiceTotal, remainingBalance: getRemainingBalance({ ...syncedInvoice, amount: invoiceTotal }) }
+  const currentInvoice = { ...syncedInvoice, amount: invoiceTotal, remainingBalance: getInvoiceRemainingBalance({ ...syncedInvoice, amount: invoiceTotal }) }
   const balance = currentInvoice.remainingBalance
   const clientAddress = getAvailableContactValue(lead?.billingAddress, lead?.address, lead?.location, currentInvoice.clientAddress, clientRecord?.address)
   const clientEmail = getAvailableContactValue(lead?.email, currentInvoice.clientEmail, clientRecord?.email)
