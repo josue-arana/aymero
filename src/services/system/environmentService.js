@@ -1,7 +1,6 @@
 import { USE_SUPABASE, USE_SUPABASE_CLIENTS, USE_SUPABASE_CONTRACTS, USE_SUPABASE_ESTIMATES, USE_SUPABASE_EVENTS, USE_SUPABASE_INVOICES, USE_SUPABASE_LEADS, USE_SUPABASE_PAYMENTS, USE_SUPABASE_PROJECTS, USE_SUPABASE_SETTINGS } from '../../config/backendConfig'
 
 const DEFAULT_DEV_ORIGIN = 'http://localhost:5174'
-const LOCALHOST_HOSTS = new Set(['localhost', '127.0.0.1'])
 
 function readEnvValue(value) {
   return typeof value === 'string' ? value.trim() : ''
@@ -13,13 +12,11 @@ function normalizeOrigin(origin = '') {
 
   try {
     const parsedUrl = new URL(value)
-    if (LOCALHOST_HOSTS.has(parsedUrl.hostname)) {
-      return parsedUrl.origin
-    }
+    if (!['http:', 'https:'].includes(parsedUrl.protocol) || parsedUrl.username || parsedUrl.password) return ''
 
     return parsedUrl.origin
   } catch {
-    return value
+    return ''
   }
 }
 
@@ -72,6 +69,29 @@ export function getPublicEnvironmentConfig() {
     portalUrl,
     hasExplicitPortalUrl: Boolean(explicitPortalUrl),
     authUrl,
+  }
+}
+
+export function getHostnameEnvironmentConfig() {
+  const configuredValues = {
+    site: readEnvValue(import.meta.env.VITE_SITE_URL),
+    app: readEnvValue(import.meta.env.VITE_APP_URL),
+    portal: readEnvValue(import.meta.env.VITE_PORTAL_URL),
+    auth: readEnvValue(import.meta.env.VITE_AUTH_URL),
+  }
+  const origins = Object.fromEntries(
+    Object.entries(configuredValues).map(([surface, value]) => [surface, normalizeOrigin(value)])
+  )
+  const environmentKey = (surface) => `VITE_${surface.toUpperCase()}_URL`
+
+  return {
+    origins,
+    missingKeys: Object.entries(configuredValues)
+      .filter(([, value]) => !value)
+      .map(([surface]) => environmentKey(surface)),
+    invalidKeys: Object.entries(configuredValues)
+      .filter(([surface, value]) => Boolean(value) && !origins[surface])
+      .map(([surface]) => environmentKey(surface)),
   }
 }
 

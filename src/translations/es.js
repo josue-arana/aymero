@@ -360,6 +360,8 @@ export const es = {
   "projectNotFoundDescription": "No se pudo encontrar este proyecto. Regresa al panel y selecciona un proyecto activo.",
   "clientPortalNotFound": "Portal del cliente no encontrado",
   "clientPortalNotFoundHelp": "Este enlace del portal no es válido o ya no está disponible. Comunícate con tu contratista para obtener un enlace nuevo.",
+  "hostRouteUnavailable": "Esta página de Aymero no está disponible",
+  "hostRouteUnavailableHelp": "Esta dirección web no está configurada para el espacio de trabajo de Aymero solicitado. Revisa el enlace o comunícate con soporte.",
   "clientPortalUnavailable": "Portal del cliente no disponible",
   "clientPortalUnavailableHelp": "No se pudo cargar el portal en este momento. Inténtalo de nuevo más tarde o comunícate con tu contratista.",
   "loadingProject": "Cargando proyecto",

@@ -75,6 +75,7 @@ No OAuth provider flow or dedicated OAuth callback route is currently implemente
 ### Repository Ready
 
 - Public URL construction is environment-driven through `environmentService.js`.
+- Hostname routing is enforced before the contractor application tree mounts: configured app, portal, auth, and site hosts are scoped centrally, while localhost and unmatched Netlify preview hosts remain unrestricted for testing.
 - Portal Open, Copy Link, and Send Link actions normalize to `VITE_PORTAL_URL` and preserve the opaque `/portal/:token` credential.
 - `public/_redirects` contains `/* /index.html 200` for hosts that support Netlify-style redirect files.
 - Supabase credentials used by browser code are limited to the project URL and publishable/anon key.

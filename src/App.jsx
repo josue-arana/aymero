@@ -4,6 +4,7 @@ import { BriefcaseBusiness, ClipboardList, DollarSign, Settings, Users } from 'l
 import { Sidebar } from './components/layout/Sidebar'
 import { ScrollToTop } from './components/layout/ScrollToTop'
 import { Topbar } from './components/layout/Topbar'
+import { HostnameRouteBoundary } from './components/routing/HostnameRouteBoundary'
 import { initialLeads } from './data/mockLeads'
 import { mockScheduleEvents } from './data/mockScheduleEvents'
 import { ScheduleEventModal } from './components/calendar/ScheduleEventModal'
@@ -535,12 +536,14 @@ function logEstimateDevError(message, error, meta) {
 function App() {
   return (
     <BrowserRouter>
-      <ToastProvider>
-        <AuthProvider>
-          <ScrollToTop />
-          <ContractorFlowApp />
-        </AuthProvider>
-      </ToastProvider>
+      <HostnameRouteBoundary>
+        <ToastProvider>
+          <AuthProvider>
+            <ScrollToTop />
+            <ContractorFlowApp />
+          </AuthProvider>
+        </ToastProvider>
+      </HostnameRouteBoundary>
     </BrowserRouter>
   )
 }
