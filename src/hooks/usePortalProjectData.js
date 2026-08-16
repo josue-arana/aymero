@@ -10,7 +10,7 @@ import { hasEstimateData, readLinkedEstimateDraft, resolveEstimateTotal, toSafeN
 import { findPortalProject } from '../utils/portal'
 import { resolveLinkedProjectId } from '../utils/projectIdentity'
 import { calculateProjectPaymentSummary, collectProjectInvoiceIds, dedupePayments } from '../utils/projectPayments'
-import { isUpcomingClientScheduleEvent, sortScheduleEvents } from '../utils/scheduleEvents'
+import { isClientVisibleScheduleEvent, isUpcomingClientScheduleEvent, sortScheduleEvents } from '../utils/scheduleEvents'
 
 function normalizeEstimateRecord(estimate) {
   if (!hasEstimateData(estimate)) return null
@@ -606,10 +606,12 @@ export function usePortalProjectData({ portalId = '', projects = [], clients = [
   }, paymentRecords, {
     relatedInvoiceIds: collectProjectInvoiceIds(hydratedProject || {}),
   }), [contract, estimate, hydratedProject, paymentRecords, portalId, project])
-  const upcomingEvents = useMemo(() => (
-    eventRecords
-      .filter((event) => isUpcomingClientScheduleEvent(event))
+  const scheduleEvents = useMemo(() => (
+    sortScheduleEvents(eventRecords.filter((event) => isClientVisibleScheduleEvent(event)))
   ), [eventRecords])
+  const upcomingEvents = useMemo(() => (
+    scheduleEvents.filter((event) => isUpcomingClientScheduleEvent(event))
+  ), [scheduleEvents])
 
   return {
     project: hydratedProject,
@@ -617,6 +619,7 @@ export function usePortalProjectData({ portalId = '', projects = [], clients = [
     estimate,
     contract,
     paymentSummary,
+    scheduleEvents,
     upcomingEvents,
     publicCompanySettings,
     publicPortalPhotos,

@@ -381,6 +381,7 @@ export const es = {
   "noProjectPhotosUploadedYet": "Todavía no se han subido fotos del proyecto.",
   "unableToLoadProjectPhotos": "No se pueden cargar las fotos del proyecto.",
   "upcomingVisits": "Próximas visitas",
+  "pastEvent": "Anterior",
   "scheduledVisit": "Visita programada",
   "viewContract": "Ver contrato",
   "viewPhoto": "Ver foto",

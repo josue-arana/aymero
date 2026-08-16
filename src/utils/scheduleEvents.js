@@ -33,16 +33,22 @@ export function sortScheduleEvents(events = []) {
   })
 }
 
-export function isUpcomingClientScheduleEvent(event = {}, now = new Date()) {
+export function isClientVisibleScheduleEvent(event = {}) {
   if (event?.archivedAt || event?.archived_at || event?.isArchived) return false
 
   const status = normalizeScheduleEventStatus(event?.status)
   if (['cancelled', 'canceled', 'complete', 'completed', 'no_show'].includes(status)) return false
 
   const eventDate = getScheduleEventDate(event)
-  const today = toLocalDateKey(now)
+  return /^\d{4}-\d{2}-\d{2}$/.test(eventDate)
+}
 
-  if (!/^\d{4}-\d{2}-\d{2}$/.test(eventDate) || !today) return false
+export function isUpcomingClientScheduleEvent(event = {}, now = new Date()) {
+  if (!isClientVisibleScheduleEvent(event)) return false
+
+  const eventDate = getScheduleEventDate(event)
+  const today = toLocalDateKey(now)
+  if (!today) return false
 
   return eventDate >= today
 }

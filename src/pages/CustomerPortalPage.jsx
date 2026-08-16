@@ -113,6 +113,7 @@ export function CustomerPortalPage({ projects = [], clients = [], onBack, t, lan
     estimate,
     contract,
     paymentSummary,
+    scheduleEvents,
     upcomingEvents,
     isLoading,
     notFound,
@@ -335,6 +336,7 @@ export function CustomerPortalPage({ projects = [], clients = [], onBack, t, lan
           estimate={estimate}
           contract={contract}
           paymentSummary={paymentSummary}
+          scheduleEvents={scheduleEvents}
           upcomingEvents={upcomingEvents}
           projectPhotos={projectPhotos}
           isLoadingPhotos={isLoadingPhotos}

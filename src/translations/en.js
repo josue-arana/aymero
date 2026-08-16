@@ -381,6 +381,7 @@ export const en = {
   "noProjectPhotosUploadedYet": "No project photos uploaded yet.",
   "unableToLoadProjectPhotos": "Unable to load project photos.",
   "upcomingVisits": "Upcoming Visits",
+  "pastEvent": "Past",
   "scheduledVisit": "Scheduled Visit",
   "viewContract": "View Contract",
   "viewPhoto": "View Photo",

@@ -17,6 +17,7 @@ import { createTranslator } from '../../translations'
 import { tStatus } from '../../translations'
 import { getPaymentTermLabel } from '../../utils/paymentTerms'
 import { resolveEstimatePricingMode } from '../../utils/estimateDocument'
+import { isUpcomingClientScheduleEvent } from '../../utils/scheduleEvents'
 import {
   buildContractNotesAndTermsItems as buildCanonicalContractNotesAndTermsItems,
   buildContractWorkBreakdownFromEstimate,
@@ -275,6 +276,7 @@ export function PortalSummary({
   estimate,
   contract,
   paymentSummary,
+  scheduleEvents = [],
   upcomingEvents = [],
   projectPhotos = [],
   isLoadingPhotos = false,
@@ -293,7 +295,8 @@ export function PortalSummary({
   const hasEstimate = Boolean(estimate)
   const hasContract = Boolean(contract)
   const hasPayments = Boolean(paymentSummary?.payments?.length)
-  const hasUpcomingEvents = upcomingEvents.length > 0
+  const visibleScheduleEvents = scheduleEvents.length > 0 ? scheduleEvents : upcomingEvents
+  const hasScheduleEvents = visibleScheduleEvents.length > 0
   const hasProjectPhotos = projectPhotos.length > 0
   const selectedPhoto = selectedPhotoIndex >= 0 ? projectPhotos[selectedPhotoIndex] || null : null
   const hasPreviousPhoto = selectedPhotoIndex > 0
@@ -473,12 +476,17 @@ export function PortalSummary({
           </>
         </InfoCard> : null}
 
-        <InfoCard title={<SectionTitle icon={CalendarDays} tone="purple">{t('upcomingVisits')}</SectionTitle>}>
-          {hasUpcomingEvents ? (
+        <InfoCard title={<SectionTitle icon={CalendarDays} tone="purple">{t('projectSchedule')}</SectionTitle>}>
+          {hasScheduleEvents ? (
             <div className="space-y-3">
-              {upcomingEvents.map((event, index) => (
+              {visibleScheduleEvents.map((event, index) => (
                 <div key={event?.id || `${event?.date || ''}:${event?.startTime || ''}:${index}`} className="rounded-2xl border border-slate-200 bg-slate-50 p-4 sm:p-5">
-                  <p className="text-sm font-bold text-slate-950">{formatEventLabel(event, t)}</p>
+                  <div className="flex flex-wrap items-start justify-between gap-2">
+                    <p className="text-sm font-bold text-slate-950">{formatEventLabel(event, t)}</p>
+                    <span className={`rounded-full px-2.5 py-1 text-xs font-bold ${isUpcomingClientScheduleEvent(event) ? 'bg-violet-100 text-violet-700' : 'bg-slate-200 text-slate-600'}`}>
+                      {t(isUpcomingClientScheduleEvent(event) ? 'upcoming' : 'pastEvent')}
+                    </span>
+                  </div>
                   <p className="mt-1 text-sm text-slate-600">{formatEventDate(event?.date)}</p>
                   <div className="mt-3 space-y-2">
                     <DetailRow label={t('time')} value={formatEventTimeRange(event, t)} />
@@ -491,7 +499,7 @@ export function PortalSummary({
               ))}
             </div>
           ) : (
-            <CenteredEmptyState icon={CalendarDays} message={t('portalUpcomingVisitsMockupEmptyState')} tone="purple" />
+            <CenteredEmptyState icon={CalendarDays} message={t('portalUpcomingVisitsEmptyState')} tone="purple" />
           )}
         </InfoCard>
 
