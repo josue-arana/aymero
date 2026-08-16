@@ -30,6 +30,7 @@ import { calculateProjectPaymentSummary, collectProjectInvoiceIds, dedupePayment
 import { dedupeById, resolveLinkedProjectId } from '../utils/projectIdentity'
 import { getRecordDetailsTitleKey } from '../utils/recordDetailsTitle'
 import { deriveProjectStatus } from '../utils/projectLifecycle'
+import { sortScheduleEvents } from '../utils/scheduleEvents'
 import projectWorkspaceHeroBackground from '../assets/page-heroes/jobs-bg.png'
 
 function logProjectDetailDevError(message, error, meta) {
@@ -239,14 +240,6 @@ function getPaymentTypeLabelKey(payment = {}) {
   if (paymentTypeKey === 'progress') return 'progressPayment'
   if (paymentTypeKey === 'final') return 'finalPayment'
   return 'other'
-}
-
-function sortProjectEvents(events = []) {
-  return [...events].sort((left, right) => {
-    const leftStamp = `${left?.date || ''}T${left?.startTime || '00:00'}`
-    const rightStamp = `${right?.date || ''}T${right?.startTime || '00:00'}`
-    return leftStamp.localeCompare(rightStamp)
-  })
 }
 
 function createSafeProject(project, fallbackId = '') {
@@ -940,7 +933,7 @@ function ProjectDetailPageContent({ lead, companySettings, clients = [], schedul
             projectType: baseProject?.projectType || lead?.projectType || '',
           }))
 
-        setProjectEventRecords(sortProjectEvents(nextEvents))
+        setProjectEventRecords(sortScheduleEvents(nextEvents))
       } catch (error) {
         if (!isCancelled) {
           setProjectEventRecords(fallbackEvents)

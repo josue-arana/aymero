@@ -11,11 +11,30 @@ function getPortalOrigin() {
   return portalUrl || appUrl || ''
 }
 
+function hasUsableClientDeliveryOrigin() {
+  const { portalUrl, hasExplicitPortalUrl } = getPublicEnvironmentConfig()
+  if (!hasExplicitPortalUrl || !portalUrl) return false
+
+  try {
+    const parsedUrl = new URL(portalUrl)
+    return parsedUrl.protocol === 'https:' && !['localhost', '127.0.0.1', '::1'].includes(parsedUrl.hostname)
+  } catch {
+    return false
+  }
+}
+
 export function buildPortalShareUrl(portalRouteId = '') {
   const normalizedPortalRouteId = String(portalRouteId || '').trim()
   if (!normalizedPortalRouteId) return ''
 
   return buildPublicUrl(`/portal/${normalizedPortalRouteId}`, 'portal')
+}
+
+export function buildEstimateShareUrl(estimateToken = '') {
+  const normalizedToken = normalizeExplicitPublicRouteToken(estimateToken)
+  if (!normalizedToken) return ''
+
+  return buildPublicUrl(`/estimate/${normalizedToken}`, 'portal')
 }
 
 export function normalizePortalShareUrl(shareUrl = '') {
@@ -45,6 +64,75 @@ export function extractPortalRouteIdFromShareUrl(shareUrl = '') {
 
   const match = shareUrl.match(/\/portal\/([^/?#]+)/i)
   return match?.[1] || ''
+}
+
+const INTERNAL_UUID_PATTERN = /^[0-9a-f]{8}-[0-9a-f]{4}-[1-5][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i
+const PUBLIC_PORTAL_ROUTE_ID_PATTERN = /^[a-z0-9_-]+$/i
+
+function normalizeExplicitPublicRouteToken(value = '') {
+  const token = String(value || '').trim()
+
+  if (
+    token.length < 20
+    || token.length > 200
+    || INTERNAL_UUID_PATTERN.test(token)
+    || !PUBLIC_PORTAL_ROUTE_ID_PATTERN.test(token)
+  ) {
+    return ''
+  }
+
+  return token
+}
+
+function normalizeExplicitPublicPortalRouteId(value = '') {
+  return normalizeExplicitPublicRouteToken(value)
+}
+
+export function resolvePublicEstimateShareToken(record = {}) {
+  const candidates = [
+    record?.publicShareToken,
+    record?.public_share_token,
+    record?.estimate?.publicShareToken,
+    record?.estimate?.public_share_token,
+  ]
+
+  for (const candidate of candidates) {
+    const token = normalizeExplicitPublicRouteToken(candidate)
+    if (token) return token
+  }
+
+  return ''
+}
+
+export function resolvePublicEstimateShareUrl(record = {}) {
+  if (!hasUsableClientDeliveryOrigin()) return ''
+
+  const token = resolvePublicEstimateShareToken(record)
+  return token ? buildEstimateShareUrl(token) : ''
+}
+
+export function resolvePublicPortalRouteId(record = {}) {
+  const explicitCandidates = [
+    record?.portalId,
+    record?.clientPortalId,
+    record?.portal?.portalId,
+    record?.portal?.clientPortalId,
+    extractPortalRouteIdFromShareUrl(record?.portal?.shareUrl || ''),
+  ]
+
+  for (const candidate of explicitCandidates) {
+    const routeId = normalizeExplicitPublicPortalRouteId(candidate)
+    if (routeId) return routeId
+  }
+
+  return ''
+}
+
+export function resolvePublicPortalShareUrl(record = {}) {
+  if (!hasUsableClientDeliveryOrigin()) return ''
+
+  const routeId = resolvePublicPortalRouteId(record)
+  return routeId ? buildPortalShareUrl(routeId) : ''
 }
 
 export function resolvePortalRouteId(lead = {}) {

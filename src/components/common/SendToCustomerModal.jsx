@@ -22,6 +22,9 @@ export function SendToCustomerModal({ isOpen, documentType = 'invoice', customer
   const firstName = (customer.name || '').split(' ')[0] || contentT('customer')
   const typeLabel = t(documentType)
   const resolvedPortalUrl = normalizePortalShareUrl(portalUrl)
+  const resolvedDocumentLink = normalizePortalShareUrl(documentLink)
+  const requiresClientLink = documentType === 'estimate' || documentType === 'contract'
+  const hasRequiredClientLink = !requiresClientLink || Boolean(resolvedDocumentLink)
   const availableChannels = useMemo(() => (
     [
       hasPhone ? { id: 'text', label: t('textMessage') } : null,
@@ -32,8 +35,8 @@ export function SendToCustomerModal({ isOpen, documentType = 'invoice', customer
     ? (isSubmitting ? t('saving') : hasEmail ? t('sendEmailNow') : t('noEmailOnFile'))
     : (isSubmitting ? t('saving') : hasPhone ? t('sendTextNow') : t('noPhoneOnFile'))
   const messageContent = useMemo(() => {
-    const resolvedDocumentStatus = documentLink
-      ? contentT('documentLinkIncluded', { link: documentLink })
+    const resolvedDocumentStatus = resolvedDocumentLink
+      ? contentT('documentLinkIncluded', { link: resolvedDocumentLink })
       : contentT('documentLinkUnavailable')
 
     const subject = documentType === 'estimate'
@@ -43,30 +46,42 @@ export function SendToCustomerModal({ isOpen, documentType = 'invoice', customer
         : documentType === 'portalLink'
           ? contentT('sendPortalSubject', { project: projectTitle })
           : contentT('sendInvoiceSubject', { project: projectTitle })
-
-    const smsBody = documentType === 'estimate'
-      ? contentT('estimateSmsMessage', { name: firstName, project: projectTitle, total: amountValue, documentStatus: resolvedDocumentStatus })
+    const smsBody = requiresClientLink && !resolvedDocumentLink
+      ? ''
+      : documentType === 'estimate'
+      ? contentT('estimateSmsMessage', { name: firstName, project: projectTitle, total: amountValue, link: resolvedDocumentLink })
       : documentType === 'contract'
-        ? contentT('contractSmsMessage', { name: firstName, project: projectTitle, total: amountValue, documentStatus: resolvedDocumentStatus })
+        ? contentT('contractSmsMessage', { name: firstName, project: projectTitle, link: resolvedDocumentLink })
         : documentType === 'portalLink'
           ? contentT('portalSmsMessage', { name: firstName, project: projectTitle, link: resolvedPortalUrl })
           : contentT('invoiceSmsMessage', { name: firstName, project: projectTitle, amount: amountValue, dueDate, documentStatus: resolvedDocumentStatus })
 
-    const emailBody = documentType === 'estimate'
-      ? contentT('estimateEmailBody', { name: firstName, project: projectTitle, total: amountValue, documentStatus: resolvedDocumentStatus })
+    const emailBody = requiresClientLink && !resolvedDocumentLink
+      ? ''
+      : documentType === 'estimate'
+      ? contentT('estimateEmailBody', { name: firstName, project: projectTitle, total: amountValue, link: resolvedDocumentLink })
       : documentType === 'contract'
-        ? contentT('contractEmailBody', { name: firstName, project: projectTitle, total: amountValue, documentStatus: resolvedDocumentStatus })
+        ? contentT('contractEmailBody', { name: firstName, project: projectTitle, total: amountValue, link: resolvedDocumentLink })
         : documentType === 'portalLink'
           ? contentT('portalEmailBody', { name: firstName, project: projectTitle, link: resolvedPortalUrl })
           : contentT('invoiceEmailBody', { name: firstName, project: projectTitle, amount: amountValue, dueDate, documentStatus: resolvedDocumentStatus })
 
     return { subject, smsBody, emailBody, resolvedDocumentStatus }
-  }, [amountValue, contentT, documentLink, documentType, dueDate, firstName, projectTitle, resolvedPortalUrl])
+  }, [amountValue, contentT, documentType, dueDate, firstName, projectTitle, requiresClientLink, resolvedDocumentLink, resolvedPortalUrl])
+
+  const clientLinkStatus = resolvedDocumentLink
+    ? t('clientLinkReady')
+    : requiresClientLink
+      ? t('clientLinkUnavailable')
+      : messageContent.resolvedDocumentStatus
+  const clientLinkUnavailableHelpKey = documentType === 'estimate'
+    ? 'estimateShareLinkUnavailableHelp'
+    : 'clientLinkUnavailableHelp'
 
   if (!isOpen) return null
 
   async function sendText() {
-    if (submitGuardRef.current) {
+    if (submitGuardRef.current || !hasPhone || !hasRequiredClientLink) {
       return
     }
 
@@ -90,7 +105,7 @@ export function SendToCustomerModal({ isOpen, documentType = 'invoice', customer
   }
 
   async function sendEmail() {
-    if (submitGuardRef.current) {
+    if (submitGuardRef.current || !hasEmail || !hasRequiredClientLink) {
       return
     }
 
@@ -117,7 +132,7 @@ export function SendToCustomerModal({ isOpen, documentType = 'invoice', customer
       <div className="mb-5 rounded-2xl bg-blue-50 p-4 text-blue-900">
         <p className="text-xs font-bold uppercase tracking-wide text-blue-500">{t('sendToCustomer')}</p>
         <h2 className="mt-1 text-xl font-bold">{t('sendDocumentToCustomer', { document: typeLabel })}</h2>
-        <p className="mt-2 text-sm leading-6 text-blue-800">{t('sendToCustomerHelp')}</p>
+        <p className="mt-2 text-sm leading-6 text-blue-800">{t(requiresClientLink ? 'sendClientLinkHelp' : 'sendToCustomerHelp')}</p>
       </div>
 
       <div className="rounded-2xl border border-slate-200 p-4 text-sm">
@@ -125,7 +140,10 @@ export function SendToCustomerModal({ isOpen, documentType = 'invoice', customer
         <p className="mt-1 text-slate-500">{projectTitle}</p>
         {amountLabel && amountValue && <p className="mt-2 text-slate-700">{amountLabel}: <span className="font-bold">{amountValue}</span></p>}
         {resolvedPortalUrl && <p className="mt-2 break-all text-slate-700">{t('shareUrl')}: <span className="font-bold">{resolvedPortalUrl}</span></p>}
-        <p className="mt-2 text-slate-700">{t('documentStatus')}: <span className="font-bold">{messageContent.resolvedDocumentStatus}</span></p>
+        <p className="mt-2 text-slate-700">{t(requiresClientLink ? 'clientLinkStatus' : 'documentStatus')}: <span className="font-bold">{clientLinkStatus}</span></p>
+        {requiresClientLink && !resolvedDocumentLink ? (
+          <p className="mt-2 text-sm leading-6 text-amber-700">{t(clientLinkUnavailableHelpKey)}</p>
+        ) : null}
       </div>
 
       <div className="mt-5 rounded-2xl border border-slate-200 bg-slate-50 p-1">
@@ -144,7 +162,7 @@ export function SendToCustomerModal({ isOpen, documentType = 'invoice', customer
         </div>
       </div>
 
-      <div className="mt-4 rounded-2xl border border-slate-200 bg-slate-50 p-4">
+      {hasRequiredClientLink ? <div className="mt-4 rounded-2xl border border-slate-200 bg-slate-50 p-4">
         {channel === 'email' && (
           <>
             <p className="text-xs font-bold uppercase tracking-wide text-slate-400">{t('subject')}</p>
@@ -155,12 +173,12 @@ export function SendToCustomerModal({ isOpen, documentType = 'invoice', customer
         <p className="mt-1 whitespace-pre-wrap text-sm leading-6 text-slate-700">
           {channel === 'email' ? messageContent.emailBody : messageContent.smsBody}
         </p>
-      </div>
+      </div> : null}
 
       <div className="mt-5 grid gap-3 sm:grid-cols-2">
         <button
           type="button"
-          disabled={isSubmitting || (channel === 'text' ? !hasPhone : !hasEmail)}
+          disabled={isSubmitting || !hasRequiredClientLink || (channel === 'text' ? !hasPhone : !hasEmail)}
           onClick={channel === 'email' ? sendEmail : sendText}
           className="rounded-2xl bg-blue-600 px-4 py-4 text-sm font-bold text-white hover:bg-blue-700 disabled:cursor-not-allowed disabled:bg-slate-300"
         >

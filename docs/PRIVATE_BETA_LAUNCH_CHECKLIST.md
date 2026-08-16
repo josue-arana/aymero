@@ -66,6 +66,7 @@ This section is the repository-backed production checklist. An item under **Repo
 | Marketing/site | `https://aymero.co` | `VITE_SITE_URL` |
 | Contractor CRM | `https://app.aymero.co` | `VITE_APP_URL` |
 | Public Client Portal | `https://portal.aymero.co/portal/:token` | `VITE_PORTAL_URL` + `buildPortalShareUrl()` |
+| Public Estimate | `https://portal.aymero.co/estimate/:token` | `VITE_PORTAL_URL` + `buildEstimateShareUrl()` |
 | Email confirmation callback | `https://auth.aymero.co/` | `VITE_AUTH_URL` / optional `VITE_AUTH_REDIRECT_URL` |
 | Password reset callback | `https://auth.aymero.co/forgot-password` | `getAuthRedirectUrl(appRoutes.forgotPassword)` |
 | Public portal Edge Function | `https://qespkkmxaxzsfqrlghev.supabase.co/functions/v1/super-endpoint` | `VITE_SUPABASE_URL` + `publicPortalService` |
@@ -75,23 +76,24 @@ No OAuth provider flow or dedicated OAuth callback route is currently implemente
 ### Repository Ready
 
 - Public URL construction is environment-driven through `environmentService.js`.
+- Hostname routing is enforced before the contractor application tree mounts: configured app, portal, auth, and site hosts are scoped centrally, while localhost and unmatched Netlify preview hosts remain unrestricted for testing.
 - Portal Open, Copy Link, and Send Link actions normalize to `VITE_PORTAL_URL` and preserve the opaque `/portal/:token` credential.
 - `public/_redirects` contains `/* /index.html 200` for hosts that support Netlify-style redirect files.
 - Supabase credentials used by browser code are limited to the project URL and publishable/anon key.
-- The public portal frontend calls `super-endpoint` with the anonymous publishable credential; no authenticated contractor session is required.
-- The Edge Function resolves only `projects.public_portal_token`, scopes all queries by the resolved `contractor_id` and `project_id`, returns a reduced client-safe payload, and keeps `SUPABASE_SERVICE_ROLE_KEY` server-side.
-- The portal-token migration revokes direct `anon` table access to `projects`.
+- The public portal and public Estimate frontends call `super-endpoint` with the anonymous publishable credential; no authenticated contractor session is required.
+- The Edge Function resolves either one `projects.public_portal_token` or one `estimates.public_share_token`, scopes follow-up queries to the resolved tenant/record, returns a reduced client-safe payload, and keeps `SUPABASE_SERVICE_ROLE_KEY` server-side.
+- The public-token migrations revoke direct `anon` table access to `projects` and `estimates`.
 - Contractor-facing tables use authenticated membership/RLS policy scripts; anonymous visitors must not receive general CRM-table policies.
 
 ### External Platform Verification Required
 
 - [ ] Verify DNS and HTTPS for `aymero.co`, `app.aymero.co`, `portal.aymero.co`, and `auth.aymero.co`.
 - [ ] Confirm the production host serves the same SPA on the app, portal, and auth hosts, or change the URL map before release.
-- [ ] Confirm direct navigation and refresh work for `/dashboard`, `/leads`, `/projects/:id`, `/estimates`, `/contracts`, `/invoices`, `/calendar`, `/clients`, `/portal/:token`, and `/forgot-password`.
+- [ ] Confirm direct navigation and refresh work for `/dashboard`, `/leads`, `/projects/:id`, `/estimates`, `/contracts`, `/invoices`, `/calendar`, `/clients`, `/portal/:token`, `/estimate/:token`, and `/forgot-password`.
 - [ ] If the host does not consume `public/_redirects`, configure an equivalent fallback rewrite from all non-asset routes to `/index.html` with status 200.
 - [ ] In Supabase Auth, set Site URL to `https://app.aymero.co`.
 - [ ] In Supabase Auth, allow redirects for `https://app.aymero.co/*`, `https://auth.aymero.co/`, and `https://auth.aymero.co/forgot-password`.
-- [ ] Verify the latest `super-endpoint` revision is deployed and that invocation accepts the publishable anon JWT while requiring an opaque portal token in the request body.
+- [ ] Verify the latest `super-endpoint` revision is deployed and that invocation accepts the publishable anon JWT while requiring an opaque token in the request body (`{ token }` for a Project Portal or `{ token, resource: 'estimate' }` for a public Estimate).
 - [ ] Verify Edge Function secrets `SUPABASE_URL` and `SUPABASE_SERVICE_ROLE_KEY` exist. Never place the service-role key in a `VITE_*` variable.
 - [ ] Confirm production migrations and RLS scripts below have been applied in order.
 - [ ] Run the authenticated tenant-isolation and anonymous portal smoke tests below.
@@ -138,19 +140,20 @@ For a fresh environment, apply `supabase/schema.sql`, then the contractor-scoped
 - `20260725_add_company_accepted_payment_methods.sql`
 - `20260726_add_invoice_customer_notes.sql`
 - `20260812_add_public_client_portal_tokens.sql`
+- `20260816_add_public_estimate_share_tokens.sql`
 
 The two `20260622_*miguel*` migrations are account-specific seed/link operations, not general production prerequisites. Do not apply them to a new production tenant unless that exact account is intentionally being provisioned.
 
 ### Required Edge Function
 
-`super-endpoint` is the sole public Client Portal Edge Function currently called by the frontend.
+`super-endpoint` is the sole public Project Portal / Estimate Edge Function currently called by the frontend.
 
 - Call site: `src/services/publicPortalService.js`
-- Method: `POST` with `{ token }`
+- Method: `POST` with `{ token }` or `{ token, resource: 'estimate' }`
 - Visitor auth: no contractor login; request carries the Supabase publishable/anon credential
-- Data authority: opaque `projects.public_portal_token`
+- Data authority: opaque `projects.public_portal_token` or `estimates.public_share_token`
 - Server secrets: `SUPABASE_URL`, `SUPABASE_SERVICE_ROLE_KEY`
-- Response: client-safe project, client, payment, schedule, document, photo, and company-display fields only
+- Response: client-safe project-workspace fields or one client-safe Estimate plus its required client/company display fields
 
 ### Anonymous Client Portal smoke test
 

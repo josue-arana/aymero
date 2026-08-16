@@ -6,7 +6,7 @@ import { ContractPdfTemplate } from '../components/contracts/ContractPdfTemplate
 import { PaginatedContractPreview } from '../components/contracts/PaginatedContractPreview'
 import { SelectField } from '../components/ui/SelectField'
 import { currency } from '../utils/formatters'
-import { getPortalData } from '../utils/portal'
+import { getPortalData, resolvePublicPortalShareUrl } from '../utils/portal'
 import { SendToCustomerModal } from '../components/common/SendToCustomerModal'
 import { ConfirmRecordModal } from '../components/common/ConfirmRecordModal'
 import dataProvider from '../services/dataProvider'
@@ -14,11 +14,11 @@ import { ModalShell } from '../components/common/ModalShell'
 import { defaultDocumentPreviewWidth } from '../components/common/ScaledDocumentPreview'
 import { useToast } from '../components/common/ToastProvider'
 import { useAuth } from '../contexts/AuthContext'
-import { USE_SUPABASE, USE_SUPABASE_CONTRACTS } from '../config/backendConfig'
+import { USE_SUPABASE, USE_SUPABASE_CONTRACTS, USE_SUPABASE_PROJECTS } from '../config/backendConfig'
 import { getProjectsContractorId } from '../services/system/projectsRuntimeService'
 import { readLinkedContractDraft } from '../utils/contractLinks'
 import { formatContractDisplayNumber, generateContractNumber } from '../utils/contractNumber'
-import { printDocumentElement } from '../utils/printDocument'
+import { isPrintWindowBlockedError, printDocumentElement } from '../utils/printDocument'
 import { dedupeById, findLeadByProjectLookup, resolveLinkedProjectId } from '../utils/projectIdentity'
 import { createTranslator } from '../translations'
 import { findRelatedClient } from '../utils/clients'
@@ -50,6 +50,16 @@ function isArchivedContractRecord(contract = {}) {
       || contract?.archived_at
       || contract?.isArchived
       || contract?.archived
+  )
+}
+
+function isArchivedProjectRecord(project = {}) {
+  return Boolean(
+    project?.archivedAt
+    || project?.archived_at
+    || project?.isArchived
+    || project?.archived
+    || String(project?.status || '').toLowerCase() === 'archived'
   )
 }
 
@@ -95,7 +105,7 @@ function buildContractEditorState({ lead, portal, savedContract, estimate, contr
   }
 }
 
-export function ContractPreviewPage({ lead, clientRecord = null, t, appLanguage = 'en', companySettings, onBack, backLabel, onSaveContract, onMarkSigned, onMarkUnsigned, onArchiveContract }) {
+export function ContractPreviewPage({ lead, clientRecord = null, t, appLanguage = 'en', companySettings, publicPortalLink = '', onBack, backLabel, onSaveContract, onMarkSigned, onMarkUnsigned, onArchiveContract }) {
   const { showToast } = useToast()
   const pdfTemplateRef = useRef(null)
   const { contractor, company, session } = useAuth()
@@ -237,9 +247,10 @@ export function ContractPreviewPage({ lead, clientRecord = null, t, appLanguage 
         documentTitle: `${previewContractNumber} ${lead?.client || ''}`.trim(),
         pageMarginInches: ESTIMATE_PAPER_MARGIN / 72,
         safeInsetInches: 0,
+        printLabel: t('print'),
       })
     } catch (error) {
-      showToast(error?.message || t('contractPdfGenerateFailed'), 'error')
+      showToast(isPrintWindowBlockedError(error) ? t('printPreviewPopupBlocked') : t('contractPdfGenerateFailed'), 'error')
     }
   }
 
@@ -443,14 +454,14 @@ export function ContractPreviewPage({ lead, clientRecord = null, t, appLanguage 
           <button disabled={isSavingContract} onClick={cancelEditing} className="mt-4 rounded-2xl border border-slate-200 px-4 py-3 text-sm font-bold disabled:cursor-not-allowed disabled:opacity-60">{t('cancelEditing')}</button>
         ) : null}
       </section>
-      <SendToCustomerModal isOpen={showSendModal} documentType="contract" customer={{ name: lead.client, phone: lead.phone, email: lead.email }} projectTitle={lead.projectTitle || lead.projectType} amountLabel={t('projectTotal')} amountValue={currency.format(contractTotal)} onClose={() => setShowSendModal(false)} onSent={async () => {
+      <SendToCustomerModal isOpen={showSendModal} documentType="contract" customer={{ name: lead.client, phone: lead.phone, email: lead.email }} projectTitle={lead.projectTitle || lead.projectType} amountLabel={t('projectTotal')} amountValue={currency.format(contractTotal)} documentLink={publicPortalLink} onClose={() => setShowSendModal(false)} onSent={async () => {
         const result = await markSent()
         return Boolean(result)
       }} t={t} contentT={contractT} />
       <ModalShell isOpen={showPreviewModal} onBackdropClick={() => setShowPreviewModal(false)} panelClassName="p-2 sm:max-w-[64rem] sm:p-3 lg:max-w-[68rem]">
         <div className="rounded-3xl bg-white text-slate-950">
           <div className="p-1">
-            <PaginatedContractPreview t={contractT}>
+            <PaginatedContractPreview uiT={t}>
               <ContractPdfTemplate {...contractPreviewProps} />
             </PaginatedContractPreview>
           </div>
@@ -488,7 +499,7 @@ function ContractDocument({ isEditing, lead, company, contractDate, contractNumb
     <div className="space-y-5 text-sm leading-6 text-slate-700">
       {!isEditing ? (
         <div className="overflow-hidden rounded-[28px] bg-slate-50 p-2 sm:p-3">
-          <PaginatedContractPreview t={contractT}>
+          <PaginatedContractPreview uiT={t}>
             <ContractPdfTemplate
               company={company}
               lead={lead}
@@ -518,7 +529,7 @@ function ContractDocument({ isEditing, lead, company, contractDate, contractNumb
             <div className="rounded-2xl border border-slate-200 bg-slate-50 p-4">
               <p className="text-base font-bold text-slate-950">{t('workBreakdown')}</p>
               <p className="mt-2 text-sm leading-6 text-slate-500">{t('contractWorkBreakdownHelp')}</p>
-              <ContractWorkBreakdownList workBreakdown={workBreakdown} t={contractT} />
+              <ContractWorkBreakdownList workBreakdown={workBreakdown} t={t} />
             </div>
           ) : null}
           <ContractSection title={t('projectScope')} value={scope} onChange={setScope} isEditing={isEditing} highlighted />
@@ -678,6 +689,7 @@ export function ContractRoute({ companySettings, leads, clients = [], onSaveCont
   const sourceLeadId = location.state?.leadId || null
   const lead = findLeadByProjectLookup(leads, projectId)
   const [loadedContract, setLoadedContract] = useState(null)
+  const [linkedProject, setLinkedProject] = useState(null)
   const backLabel = contractSource === 'estimate' ? t('backToEstimateBuilder') : t('backToProjectWorkspace')
 
   function handleBack() {
@@ -752,6 +764,44 @@ export function ContractRoute({ companySettings, leads, clients = [], onSaveCont
     }
   }, [contractorId, lead?.estimateId, lead?.id, lead?.projectId, lead?.project_id, projectId])
 
+  useEffect(() => {
+    let isCancelled = false
+    const relatedProjectId = lead?.projectId || lead?.project_id || projectId || null
+
+    async function loadLinkedProject() {
+      if (!lead?.id || !relatedProjectId) {
+        setLinkedProject(null)
+        return
+      }
+
+      if (USE_SUPABASE || USE_SUPABASE_PROJECTS) {
+        setLinkedProject(null)
+
+        try {
+          const response = await dataProvider.projects.getById(relatedProjectId, { contractorId })
+          if (isCancelled) return
+
+          const project = response?.error ? null : response?.data
+          setLinkedProject(project?.id && !isArchivedProjectRecord(project) ? project : null)
+        } catch {
+          if (!isCancelled) {
+            setLinkedProject(null)
+          }
+        }
+        return
+      }
+
+      const relatedProject = findLeadByProjectLookup(leads, relatedProjectId)
+      setLinkedProject(relatedProject && !isArchivedProjectRecord(relatedProject) ? relatedProject : null)
+    }
+
+    loadLinkedProject()
+
+    return () => {
+      isCancelled = true
+    }
+  }, [contractorId, lead?.id, lead?.projectId, lead?.project_id, leads, projectId])
+
   if (!lead) {
     return (
       <section className="rounded-3xl border border-slate-200 bg-white p-8 text-center shadow-sm">
@@ -775,6 +825,9 @@ export function ContractRoute({ companySettings, leads, clients = [], onSaveCont
         },
       }
     : lead
+  const publicPortalLink = resolvePublicPortalShareUrl(
+    (USE_SUPABASE || USE_SUPABASE_PROJECTS) ? linkedProject : (linkedProject || lead)
+  )
 
   return (
     <ContractPreviewPage
@@ -783,6 +836,7 @@ export function ContractRoute({ companySettings, leads, clients = [], onSaveCont
       t={t}
       appLanguage={appLanguage}
       companySettings={companySettings}
+      publicPortalLink={publicPortalLink}
       onBack={handleBack}
       backLabel={backLabel}
       onSaveContract={(contract) => onSaveContract?.(lead.id, contract)}

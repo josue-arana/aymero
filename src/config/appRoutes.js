@@ -17,6 +17,7 @@ export const appRoutes = {
   projectEstimate: '/projects/:id/estimate',
   projectContract: '/projects/:id/contract',
   portal: '/portal/:portalId',
+  publicEstimate: '/estimate/:estimateToken',
   login: '/login',
   signup: '/signup',
   forgotPassword: '/forgot-password',

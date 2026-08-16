@@ -9,7 +9,9 @@
   "scripts": {
     "dev": "vite",
     "build": "vite build",
-    "preview": "vite preview"
+    "preview": "vite preview",
+    "verify:host-routing": "node scripts/verify-hostname-routing.mjs",
+    "verify:language-ownership": "node scripts/verify-language-ownership.mjs"
   },
   "dependencies": {
     "@vitejs/plugin-react": "latest",

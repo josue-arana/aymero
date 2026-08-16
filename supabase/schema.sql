@@ -250,6 +250,7 @@ create table estimates (
   materials_included boolean not null default true,
   payment_terms text,
   sample_data_key text,
+  public_share_token text not null default replace(gen_random_uuid()::text, '-', ''),
   status estimate_status not null default 'draft',
   sent_at timestamptz,
   approved_at timestamptz,
@@ -454,6 +455,7 @@ create index idx_project_photos_client_id on project_photos(client_id);
 create index idx_leads_project_id on leads(project_id);
 create index idx_estimates_project_id on estimates(project_id);
 create index idx_estimates_lead_id on estimates(lead_id);
+create unique index estimates_public_share_token_idx on estimates(public_share_token);
 create index idx_contracts_project_id on contracts(project_id);
 create index idx_invoices_project_id on invoices(project_id);
 create index idx_payments_project_id on payments(project_id);

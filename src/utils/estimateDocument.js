@@ -34,6 +34,25 @@ function normalizeText(value) {
   return typeof value === 'string' ? value : String(value || '')
 }
 
+export function resolveEstimateValidUntil(estimate = {}, estimateDate, expirationDays = 30) {
+  const explicitDate = (
+    estimate?.validUntil
+    || estimate?.valid_until
+    || estimate?.expirationDate
+    || estimate?.expiration_date
+    || estimate?.expiresAt
+    || estimate?.expires_at
+  )
+
+  if (explicitDate) return explicitDate
+
+  const parsedDate = new Date(estimateDate)
+  if (Number.isNaN(parsedDate.getTime())) return ''
+
+  parsedDate.setDate(parsedDate.getDate() + Number(expirationDays || 30))
+  return parsedDate.toISOString()
+}
+
 export function normalizeEstimateTextSize(value) {
   return ESTIMATE_TEXT_SIZE_STEPS.includes(value)
     ? value

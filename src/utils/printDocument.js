@@ -4,12 +4,46 @@ import { getEstimatePaginationModel, waitForEstimateDocumentAssets } from './est
 const defaultPrintPageMarginInches = 0.45
 const printPageWidthInches = DOCUMENT_PAPER_WIDTH_INCHES
 const defaultPrintSafeInsetInches = 0.2
+const printReadinessTimeoutMs = 3200
+const printLifecycleTimeoutMs = 1800
+
+export const PRINT_WINDOW_BLOCKED_ERROR_CODE = 'PRINT_WINDOW_BLOCKED'
+
+function createPrintError(message, code = '') {
+  const error = new Error(message)
+  error.code = code
+  return error
+}
+
+export function isPrintWindowBlockedError(error) {
+  return error?.code === PRINT_WINDOW_BLOCKED_ERROR_CODE
+}
+
+function waitForBoundedReadiness(promise, timeoutMs = printReadinessTimeoutMs) {
+  return new Promise((resolve) => {
+    let hasSettled = false
+    const finish = () => {
+      if (hasSettled) return
+      hasSettled = true
+      clearTimeout(timeoutId)
+      resolve()
+    }
+    const timeoutId = setTimeout(finish, timeoutMs)
+
+    Promise.resolve(promise).then(finish, finish)
+  })
+}
 
 async function copyDocumentStyles(targetDocument) {
   const sourceNodes = Array.from(document.querySelectorAll('style, link[rel="stylesheet"]'))
 
   const pendingLoads = sourceNodes.map((sourceNode) => {
     const clonedNode = sourceNode.cloneNode(true)
+
+    if (clonedNode.tagName === 'LINK' && sourceNode.href) {
+      clonedNode.href = sourceNode.href
+    }
+
     targetDocument.head.appendChild(clonedNode)
 
     if (clonedNode.tagName !== 'LINK') {
@@ -26,7 +60,7 @@ async function copyDocumentStyles(targetDocument) {
   await Promise.all(pendingLoads)
 
   if (targetDocument.fonts?.ready) {
-    await targetDocument.fonts.ready
+    await waitForBoundedReadiness(targetDocument.fonts.ready)
   }
 }
 
@@ -114,19 +148,96 @@ function createPaginatedPrintContent(element, targetDocument, pagination) {
   return container
 }
 
+function makePrintContextReady(printWindow, printLabel = '') {
+  const loadingNode = printWindow.document.querySelector('[data-print-loading="true"]')
+  const actionButton = printWindow.document.querySelector('[data-print-action="true"]')
+
+  if (loadingNode) {
+    loadingNode.hidden = true
+    loadingNode.style.display = 'none'
+  }
+  if (!actionButton || !printLabel) return
+
+  actionButton.textContent = printLabel
+  actionButton.hidden = false
+  actionButton.addEventListener('click', () => {
+    if (printWindow.closed) return
+    printWindow.focus()
+    printWindow.print()
+  })
+}
+
+function waitForPrintImage(image) {
+  if (image.complete) {
+    if (!image.decode) return Promise.resolve()
+
+    try {
+      return waitForBoundedReadiness(image.decode(), 1200)
+    } catch {
+      return Promise.resolve()
+    }
+  }
+
+  return new Promise((resolve) => {
+    const finish = () => {
+      clearTimeout(timeoutId)
+      image.removeEventListener('load', finish)
+      image.removeEventListener('error', finish)
+      resolve()
+    }
+    const timeoutId = setTimeout(finish, printReadinessTimeoutMs)
+
+    image.addEventListener('load', finish, { once: true })
+    image.addEventListener('error', finish, { once: true })
+  })
+}
+
+function invokePrintAndObserveLifecycle(printWindow) {
+  return new Promise((resolve, reject) => {
+    let hasSettled = false
+    const finish = (afterPrintObserved) => {
+      if (hasSettled) return
+      hasSettled = true
+      clearTimeout(timeoutId)
+      printWindow.removeEventListener('afterprint', handleAfterPrint)
+      resolve(afterPrintObserved)
+    }
+    const handleAfterPrint = () => finish(true)
+    const timeoutId = setTimeout(() => finish(false), printLifecycleTimeoutMs)
+
+    printWindow.addEventListener('afterprint', handleAfterPrint, { once: true })
+
+    try {
+      printWindow.focus()
+      printWindow.print()
+    } catch (error) {
+      clearTimeout(timeoutId)
+      printWindow.removeEventListener('afterprint', handleAfterPrint)
+      reject(error)
+    }
+  })
+}
+
 export async function printDocumentElement(element, {
   documentTitle = 'Document',
   pageMarginInches = defaultPrintPageMarginInches,
   safeInsetInches = defaultPrintSafeInsetInches,
+  printLabel = '',
 } = {}) {
   if (!element) {
     throw new Error('Document preview is not ready.')
   }
 
-  const printWindow = window.open('', '_blank', 'width=900,height=1200')
+  let printWindow = null
+
+  try {
+    printWindow = window.open('', '_blank', 'width=900,height=1200')
+  } catch {
+    throw createPrintError('Unable to open the print preview window.', PRINT_WINDOW_BLOCKED_ERROR_CODE)
+  }
 
   if (!printWindow) {
-    throw new Error('Unable to open the print preview window.')
+    throw createPrintError('Unable to open the print preview window.', PRINT_WINDOW_BLOCKED_ERROR_CODE)
   }
 
   try {
@@ -147,21 +258,15 @@ export async function printDocumentElement(element, {
     let pagination = null
     let contentNode = null
 
-    if (usesSharedPagination) {
-      await waitForEstimateDocumentAssets(element)
-      pagination = getEstimatePaginationModel(element)
-      if (!pagination?.pageCount) throw new Error('Document print pagination could not be calculated.')
-    } else {
-      contentNode = element.cloneNode(true)
-      preparePrintContentNode(contentNode)
-    }
-
+    // The shell is written before the first async boundary so iOS keeps the
+    // synchronously opened context attached to the originating user gesture.
     printWindow.document.open()
     printWindow.document.write(`
     <!doctype html>
     <html>
       <head>
         <meta charset="utf-8" />
+        <base href="${escapeHtml(document.baseURI)}" />
         <title>${escapeHtml(documentTitle)}</title>
         <style>
           @page { size: letter; margin: ${normalizedPageMargin}in; }
@@ -177,6 +282,36 @@ export async function printDocumentElement(element, {
             display: block;
             overflow: visible;
           }
+          [data-print-loading="true"] {
+            position: fixed;
+            inset: 0;
+            display: grid;
+            place-items: center;
+            background: #ffffff;
+          }
+          [data-print-loading="true"]::before {
+            content: '';
+            width: 2rem;
+            height: 2rem;
+            border: 3px solid #e2e8f0;
+            border-top-color: #2563eb;
+            border-radius: 9999px;
+            animation: aymero-print-spin 0.8s linear infinite;
+          }
+          [data-print-action="true"] {
+            position: fixed;
+            right: 1rem;
+            bottom: max(1rem, env(safe-area-inset-bottom));
+            z-index: 1000;
+            border: 0;
+            border-radius: 9999px;
+            padding: 0.8rem 1.15rem;
+            background: #0f172a;
+            color: #ffffff;
+            font: 700 0.875rem/1 ui-sans-serif, system-ui, sans-serif;
+            box-shadow: 0 12px 30px rgba(15, 23, 42, 0.24);
+          }
+          @keyframes aymero-print-spin { to { transform: rotate(360deg); } }
           [data-print-root="true"], [data-print-root="true"] * {
             box-sizing: border-box;
           }
@@ -244,6 +379,7 @@ export async function printDocumentElement(element, {
           @media print {
             html, body { background: #ffffff; }
             body { -webkit-print-color-adjust: exact; print-color-adjust: exact; }
+            [data-print-loading="true"], [data-print-action="true"] { display: none !important; }
             [data-print-root="true"] {
               width: calc(100% - ${normalizedSafeInset}in);
               max-width: ${printContentMaxWidthInches}in;
@@ -252,12 +388,26 @@ export async function printDocumentElement(element, {
         </style>
       </head>
       <body>
+        <div data-print-loading="true" aria-hidden="true"></div>
+        <button type="button" data-print-action="true" hidden></button>
         <div data-print-root="true"></div>
       </body>
     </html>
   `)
     printWindow.document.close()
-    await copyDocumentStyles(printWindow.document)
+
+    const styleReadiness = copyDocumentStyles(printWindow.document)
+
+    if (usesSharedPagination) {
+      await waitForBoundedReadiness(waitForEstimateDocumentAssets(element))
+      pagination = getEstimatePaginationModel(element)
+      if (!pagination?.pageCount) throw new Error('Document print pagination could not be calculated.')
+    } else {
+      contentNode = element.cloneNode(true)
+      preparePrintContentNode(contentNode)
+    }
+
+    await styleReadiness
 
     const layoutOverride = printWindow.document.createElement('style')
     layoutOverride.textContent = `
@@ -281,33 +431,23 @@ export async function printDocumentElement(element, {
       mountPoint.replaceChildren(contentNode)
     }
 
-    await new Promise((resolve) => printWindow.requestAnimationFrame(() => printWindow.requestAnimationFrame(resolve)))
+    await waitForBoundedReadiness(
+      new Promise((resolve) => printWindow.requestAnimationFrame(() => printWindow.requestAnimationFrame(resolve))),
+      500,
+    )
 
     const imageElements = Array.from(printWindow.document.images || [])
-    await Promise.all(imageElements.map((image) => {
-      if (image.complete) return Promise.resolve()
+    await Promise.all(imageElements.map(waitForPrintImage))
+    makePrintContextReady(printWindow, printLabel)
 
-      return new Promise((resolve) => {
-        image.addEventListener('load', resolve, { once: true })
-        image.addEventListener('error', resolve, { once: true })
-        setTimeout(resolve, 3000)
-      })
-    }))
+    const afterPrintObserved = await invokePrintAndObserveLifecycle(printWindow)
 
-    printWindow.focus()
-
-    await new Promise((resolve) => {
-      const finalize = () => {
-        printWindow.removeEventListener('afterprint', finalize)
-        resolve()
-      }
-
-      printWindow.addEventListener('afterprint', finalize, { once: true })
-      setTimeout(finalize, 1500)
-      printWindow.print()
-    })
-
-    printWindow.close()
+    // Desktop browsers reliably emit afterprint. Mobile Safari and embedded
+    // browsers may not; in that case keep the rendered preview and its Print
+    // button available instead of force-closing into a dead blank context.
+    if (afterPrintObserved && !printWindow.closed) {
+      printWindow.close()
+    }
   } catch (error) {
     if (!printWindow.closed) {
       printWindow.close()
