@@ -113,6 +113,19 @@ function mapPublicPayment(payment: Record<string, unknown>, publicProjectId: str
   }
 }
 
+function mapPublicEvent(event: Record<string, unknown>, publicProjectId: string) {
+  return {
+    projectId: publicProjectId,
+    title: event.title || '',
+    eventType: event.event_type || event.type || '',
+    status: event.status || '',
+    date: event.event_date || String(event.starts_at || '').slice(0, 10),
+    startTime: event.start_time || '',
+    endTime: event.end_time || '',
+    location: event.location || '',
+  }
+}
+
 Deno.serve(async (request) => {
   if (request.method === 'OPTIONS') return new Response('ok', { headers: corsHeaders })
   if (request.method !== 'POST') return jsonResponse({ error: 'Method not allowed.' }, 405)
@@ -173,6 +186,9 @@ Deno.serve(async (request) => {
   const showPayments = settings.show_payments_in_portal !== false
   const showPhotos = settings.show_photos_in_portal !== false
   const showDocuments = settings.show_documents_in_portal !== false
+  const eventAssociationFilter = project.lead_id
+    ? `project_id.eq.${projectId},and(project_id.is.null,lead_id.eq.${project.lead_id})`
+    : `project_id.eq.${projectId}`
 
   const [estimateResult, contractResult, paymentResult, eventResult, photoResult] = await Promise.all([
     showDocuments
@@ -184,7 +200,7 @@ Deno.serve(async (request) => {
     showPayments
       ? admin.from('payments').select('amount, payment_type, payment_date, payment_method, method, status, created_at').eq('contractor_id', contractorId).eq('project_id', projectId).is('archived_at', null).order('payment_date', { ascending: false })
       : Promise.resolve({ data: [], error: null }),
-    admin.from('events').select('title, event_type, event_date, start_time, end_time, type, status, starts_at, ends_at, location, created_at').eq('contractor_id', contractorId).eq('project_id', projectId).is('archived_at', null).neq('status', 'cancelled').order('starts_at', { ascending: true }),
+    admin.from('events').select('title, event_type, event_date, start_time, end_time, type, status, starts_at, location').eq('contractor_id', contractorId).or(eventAssociationFilter).is('archived_at', null).eq('status', 'scheduled').order('event_date', { ascending: true }).order('start_time', { ascending: true }).order('starts_at', { ascending: true }),
     showPhotos
       ? admin.from('project_photos').select('file_path, thumbnail_path, file_size, mime_type, category, caption, taken_at, created_at').eq('contractor_id', contractorId).eq('project_id', projectId).is('archived_at', null).order('created_at', { ascending: false })
       : Promise.resolve({ data: [], error: null }),
@@ -215,6 +231,7 @@ Deno.serve(async (request) => {
   const publicProjectId = project.public_portal_token
   const projectStatus = projectStatusLabels[String(project.status || '')] || project.status || ''
   const publicPayments = (paymentResult.data || []).map((payment) => mapPublicPayment(payment, publicProjectId))
+  const publicEvents = (eventResult.data || []).map((event) => mapPublicEvent(event, publicProjectId))
 
   return jsonResponse({
     project: {
@@ -242,18 +259,7 @@ Deno.serve(async (request) => {
         estimate: estimate || {},
         contract: contract || {},
         payments: publicPayments,
-        events: (eventResult.data || []).map((event) => ({
-          title: event.title || '',
-          eventType: event.event_type || event.type || '',
-          type: event.type || '',
-          status: event.status || '',
-          date: event.event_date || String(event.starts_at || '').slice(0, 10),
-          startTime: event.start_time || '',
-          endTime: event.end_time || '',
-          startsAt: event.starts_at || '',
-          endsAt: event.ends_at || '',
-          location: event.location || '',
-        })),
+        events: publicEvents,
         photos: photos.filter(Boolean),
       },
     },
@@ -270,18 +276,7 @@ Deno.serve(async (request) => {
     estimate,
     contract,
     payments: publicPayments,
-    events: (eventResult.data || []).map((event) => ({
-      title: event.title || '',
-      eventType: event.event_type || event.type || '',
-      type: event.type || '',
-      status: event.status || '',
-      date: event.event_date || String(event.starts_at || '').slice(0, 10),
-      startTime: event.start_time || '',
-      endTime: event.end_time || '',
-      startsAt: event.starts_at || '',
-      endsAt: event.ends_at || '',
-      location: event.location || '',
-    })),
+    events: publicEvents,
     photos: photos.filter(Boolean),
     companySettings: {
       company: {

@@ -10,6 +10,7 @@ import { hasEstimateData, readLinkedEstimateDraft, resolveEstimateTotal, toSafeN
 import { findPortalProject } from '../utils/portal'
 import { resolveLinkedProjectId } from '../utils/projectIdentity'
 import { calculateProjectPaymentSummary, collectProjectInvoiceIds, dedupePayments } from '../utils/projectPayments'
+import { isUpcomingClientScheduleEvent, sortScheduleEvents } from '../utils/scheduleEvents'
 
 function normalizeEstimateRecord(estimate) {
   if (!hasEstimateData(estimate)) return null
@@ -141,14 +142,6 @@ function matchesProjectScheduleEvent(event = {}, { projectId = '', relatedLeadId
   return false
 }
 
-function sortProjectEvents(events = []) {
-  return [...events].sort((left, right) => {
-    const leftStamp = `${left?.date || ''}T${left?.startTime || '00:00'}`
-    const rightStamp = `${right?.date || ''}T${right?.startTime || '00:00'}`
-    return leftStamp.localeCompare(rightStamp)
-  })
-}
-
 function dedupeProjectEvents(events = []) {
   return events.filter((event, index, collection) => {
     const key = event?.id || `${event?.title || event?.eventType || event?.type || 'event'}:${event?.date || ''}:${event?.startTime || ''}:${event?.projectId || event?.leadId || index}`
@@ -174,27 +167,20 @@ function normalizePublicPaymentRecords(payments = [], publicProjectId = '') {
   })))
 }
 
+function normalizePublicEventRecords(events = [], publicProjectId = '') {
+  return sortScheduleEvents(events.map((event) => ({
+    ...event,
+    projectId: publicProjectId,
+  })))
+}
+
 function readProjectEventFallbacks(project = {}) {
-  return sortProjectEvents(dedupeProjectEvents([
+  return sortScheduleEvents(dedupeProjectEvents([
     ...(Array.isArray(project?.scheduleEvents) ? project.scheduleEvents : []),
     ...(Array.isArray(project?.schedule) ? project.schedule : []),
     ...(Array.isArray(project?.events) ? project.events : []),
     ...(Array.isArray(project?.portal?.events) ? project.portal.events : []),
   ]))
-}
-
-function isUpcomingEvent(event = {}) {
-  if (!event?.date) return false
-
-  const eventStamp = new Date(`${event.date}T${event.startTime || '00:00'}`)
-
-  if (Number.isNaN(eventStamp.getTime())) {
-    return false
-  }
-
-  const now = new Date()
-  const todayStart = new Date(now.getFullYear(), now.getMonth(), now.getDate())
-  return eventStamp.getTime() >= todayStart.getTime()
 }
 
 export function usePortalProjectData({ portalId = '', projects = [], clients = [] } = {}) {
@@ -248,6 +234,10 @@ export function usePortalProjectData({ portalId = '', projects = [], clients = [
           Array.isArray(payload?.payments) ? payload.payments : payload?.project?.portal?.payments || [],
           publicProjectId,
         )
+        const publicEvents = normalizePublicEventRecords(
+          Array.isArray(payload?.events) ? payload.events : payload?.project?.portal?.events || [],
+          publicProjectId,
+        )
         const resolvedProject = payload?.project
           ? {
               ...payload.project,
@@ -258,7 +248,7 @@ export function usePortalProjectData({ portalId = '', projects = [], clients = [
                 estimate: payload.estimate || {},
                 contract: payload.contract || {},
                 payments: publicPayments,
-                events: Array.isArray(payload.events) ? payload.events : [],
+                events: publicEvents,
                 photos: Array.isArray(payload.photos) ? payload.photos : [],
               },
             }
@@ -270,7 +260,7 @@ export function usePortalProjectData({ portalId = '', projects = [], clients = [
           setEstimate(normalizeEstimateRecord(payload?.estimate || resolvedProject?.portal?.estimate))
           setContract(normalizeContractRecord(payload?.contract || resolvedProject?.portal?.contract))
           setPaymentRecords(publicPayments.length ? publicPayments : readProjectPaymentFallbacks(resolvedProject))
-          setEventRecords(sortProjectEvents(dedupeProjectEvents(payload?.events || readProjectEventFallbacks(resolvedProject))))
+          setEventRecords(publicEvents.length ? publicEvents : readProjectEventFallbacks(resolvedProject))
           setPublicPortalPhotos(Array.isArray(payload?.photos) ? payload.photos : [])
           setPublicCompanySettings(payload?.companySettings || null)
           setPortalLoadError(response?.error || null)
@@ -585,7 +575,7 @@ export function usePortalProjectData({ portalId = '', projects = [], clients = [
           projectType: project?.projectType || '',
         }))
 
-        setEventRecords(sortProjectEvents(nextEvents))
+        setEventRecords(sortScheduleEvents(nextEvents))
       } catch {
         if (!isCancelled) {
           setEventRecords(fallbackEvents)
@@ -618,8 +608,7 @@ export function usePortalProjectData({ portalId = '', projects = [], clients = [
   }), [contract, estimate, hydratedProject, paymentRecords, portalId, project])
   const upcomingEvents = useMemo(() => (
     eventRecords
-      .filter((event) => !event?.archivedAt)
-      .filter(isUpcomingEvent)
+      .filter((event) => isUpcomingClientScheduleEvent(event))
   ), [eventRecords])
 
   return {
