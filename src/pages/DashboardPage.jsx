@@ -9,6 +9,7 @@ import { currency, formatDisplayDate } from '../utils/formatters'
 import { getLeadNextStepKey, getLeadPipelineStage, leadPipelineStageOrder, leadPipelineStages } from '../utils/leadPipeline'
 import { getPortalData } from '../utils/portal'
 import { deriveProjectStatus } from '../utils/projectLifecycle'
+import { calculateOutstandingInvoiceBalance, getInvoiceRemainingBalance } from '../utils/invoiceRecords'
 import heroBackground from '../assets/portal/blue-bg.png'
 
 function buildDateKey(value = new Date()) {
@@ -52,10 +53,6 @@ function resolveDisplayTitle(lead, fallback = '') {
 
 function resolveClientName(lead, fallback = '') {
   return lead?.client || lead?.clientName || lead?.customerName || fallback
-}
-
-function remainingInvoiceBalance(invoice = {}) {
-  return Math.max(Number(invoice.amount || 0) - Number(invoice.amountPaid || 0), 0)
 }
 
 function DashboardSection({ title, icon: Icon, emptyText, items = [], renderItem }) {
@@ -452,7 +449,7 @@ export function DashboardPage({
     })
 
     invoices.forEach((invoice) => {
-      const remaining = remainingInvoiceBalance(invoice)
+      const remaining = getInvoiceRemainingBalance(invoice)
       if (remaining <= 0) return
 
       const isOverdue = invoice.status === 'Overdue'
@@ -564,10 +561,7 @@ export function DashboardPage({
   const dashboardSummary = useMemo(() => {
     const activeJobsMetric = metrics.find((metric) => metric.label === t('metricJobsInProgress'))
     const pendingEstimatesMetric = metrics.find((metric) => metric.label === t('metricActiveEstimates'))
-    const outstandingBalance = invoices.reduce((sum, invoice) => {
-      if (!['Sent', 'Overdue'].includes(invoice.status)) return sum
-      return sum + remainingInvoiceBalance(invoice)
-    }, 0)
+    const outstandingBalance = calculateOutstandingInvoiceBalance(invoices)
 
     return {
       newLeads: metrics.find((metric) => metric.label === t('metricNewLeads'))?.value ?? 0,
@@ -630,10 +624,10 @@ export function DashboardPage({
               <h1 className="mt-3 break-words text-3xl font-bold leading-tight tracking-tight sm:text-4xl lg:text-5xl">{t('welcomeBack', { name: firstName })}</h1>
               <p className="mt-4 max-w-2xl text-sm leading-6 text-slate-300 sm:text-base">{t('dashboardWorkspaceHelp')}</p>
             </div>
-            <dl className="grid min-w-0 grid-cols-2 gap-px overflow-hidden rounded-2xl border border-white/10 bg-white/10 backdrop-blur-sm">
+            <dl className={`grid min-w-0 gap-px overflow-hidden rounded-2xl border border-white/10 bg-white/10 backdrop-blur-sm ${isAnalyticsMode ? 'grid-cols-2' : 'grid-cols-3'}`}>
               <div className="min-w-0 bg-slate-950/35 p-4"><dt className="text-[0.68rem] font-bold uppercase tracking-[0.14em] text-slate-400">{t('activeJobs')}</dt><dd className="mt-2 break-words text-2xl font-bold text-white">{dashboardSummary.activeJobs}</dd></div>
               <div className="min-w-0 bg-slate-950/35 p-4"><dt className="text-[0.68rem] font-bold uppercase tracking-[0.14em] text-slate-400">{t('pendingEstimates')}</dt><dd className="mt-2 break-words text-2xl font-bold text-white">{dashboardSummary.pendingEstimates}</dd></div>
-              <div className="min-w-0 bg-slate-950/35 p-4"><dt className="text-[0.68rem] font-bold uppercase tracking-[0.14em] text-slate-400">{t('outstandingBalance')}</dt><dd className="mt-2 break-words text-xl font-bold text-white">{currency.format(dashboardSummary.outstandingBalance)}</dd></div>
+              {isAnalyticsMode ? <div className="min-w-0 bg-slate-950/35 p-4"><dt className="text-[0.68rem] font-bold uppercase tracking-[0.14em] text-slate-400">{t('outstandingBalance')}</dt><dd className="mt-2 break-words text-xl font-bold text-white">{currency.format(dashboardSummary.outstandingBalance)}</dd></div> : null}
               <div className="min-w-0 bg-slate-950/35 p-4"><dt className="text-[0.68rem] font-bold uppercase tracking-[0.14em] text-slate-400">{t('upcomingVisitsToday')}</dt><dd className="mt-2 break-words text-2xl font-bold text-white">{dashboardSummary.visitsToday}</dd></div>
             </dl>
           </div>
