@@ -10,7 +10,7 @@ export const technicalDebtRegistry = {
     },
     productionDeployment: {
       sourceHint: 'docs/PRIVATE_BETA_LAUNCH_CHECKLIST.md#production-deployment-readiness',
-      verifiedAt: '2026-08-15T17:23:47-04:00',
+      verifiedAt: '2026-08-15T21:40:10-04:00',
       verificationChecks: [
         { id: 'siteDomain', labelKey: 'releaseCheckSiteDomain', status: 'PASS', evidenceKey: 'releaseEvidenceSiteDomain' },
         { id: 'appDomain', labelKey: 'releaseCheckAppDomain', status: 'PASS', evidenceKey: 'releaseEvidenceAppDomain' },
@@ -23,7 +23,8 @@ export const technicalDebtRegistry = {
         { id: 'rls', labelKey: 'releaseCheckRls', status: 'PENDING', evidenceKey: 'releaseEvidenceRls' },
         { id: 'edgeFunction', labelKey: 'releaseCheckEdgeFunction', status: 'PENDING', evidenceKey: 'releaseEvidenceEdgeFunction' },
         { id: 'portalIsolation', labelKey: 'releaseCheckPortalIsolation', status: 'PENDING', evidenceKey: 'releaseEvidencePortalIsolation' },
-        { id: 'productionEnvironment', labelKey: 'releaseCheckProductionEnvironment', status: 'PENDING', evidenceKey: 'releaseEvidenceProductionEnvironment' },
+        { id: 'productionEnvironment', labelKey: 'releaseCheckProductionEnvironment', status: 'PASS', evidenceKey: 'releaseEvidenceProductionEnvironment' },
+        { id: 'developerRoutes', labelKey: 'releaseCheckDeveloperRoutes', status: 'PASS', evidenceKey: 'releaseEvidenceDeveloperRoutes' },
       ],
     },
   },

@@ -176,7 +176,7 @@ The two `20260622_*miguel*` migrations are account-specific seed/link operations
 
 ## Production Verification Evidence — 2026-08-15
 
-Evidence captured at `2026-08-15T17:23:47-04:00` from a clean local verification environment using `curl 8.7.1` with certificate verification and `Google Chrome 151` in headless mode. No credentials, portal tokens, customer records, or response payload data were recorded.
+Evidence last updated at `2026-08-15T21:40:10-04:00` from a clean local verification environment using `curl 8.7.1`, deployed-asset inspection, and `Google Chrome 151` in headless mode. No credentials, portal tokens, customer records, or response payload data were recorded.
 
 | Check | Status | Non-sensitive evidence |
 | --- | --- | --- |
@@ -188,19 +188,20 @@ Evidence captured at `2026-08-15T17:23:47-04:00` from a clean local verification
 | CRM SPA routing | PASS | `/dashboard`, `/leads`, `/estimates`, `/contracts`, `/invoices`, `/jobs`, `/calendar`, `/clients`, and `/projects/production-routing-check` each returned HTTP 200, the SPA root, and a hydrated auth state. |
 | Portal invalid-token state | PASS | Invalid opaque token returned a safe not-found page without contractor navigation or CRM data. |
 | Supabase Auth API | PASS | Public Auth health returned HTTP 200; signup is enabled and email auto-confirm is disabled. This does not verify redirect settings. |
-| Supabase Auth redirect allowlist | PENDING | Site URL and redirect allowlist are dashboard-only configuration and were not available through the public Auth API. |
-| Deployed frontend origins | PARTIAL | The production bundle contains the declared Supabase, site, app, portal, and auth origins and no service-role marker. The remaining localhost string belongs to the bundled router's no-window fallback, not Aymero production configuration. |
-| Production platform variables | PENDING | Hosting dashboard access was unavailable; `VITE_ENABLE_DEVELOPER_ROUTES=false` and individual platform variable values require dashboard confirmation. |
-| Anonymous CRM-table boundary | PASS | Anonymous REST probes returned no rows for contractors, memberships, settings, clients, leads, estimates, contracts, invoices, payments, events, and photos; projects returned permission denied. |
+| Supabase Auth redirect allowlist | PENDING | Repository callback construction resolves email confirmation to `https://auth.aymero.co/` and recovery to `https://auth.aymero.co/forgot-password`, but the live Site URL and redirect allowlist require authenticated Supabase management access. The CLI reported that no access token is available in this verification environment. |
+| Deployed frontend origins | PASS | Five deployed JS/CSS assets contain the declared Supabase, site, app, portal, and auth origins plus the publishable browser-key marker. No service-role/secret-key marker or configured localhost origin was found. Legacy portal hosts remain only in the source normalization denylist and are not active configured origins. |
+| Production platform variables | PASS | The effective Vite values embedded in the deployed assets resolve to the six required production settings. Direct `/dev/health` navigation rendered the auth shell, confirming developer routes are disabled in the deployed build. |
+| Developer route exposure | PASS | A clean headless session at `https://app.aymero.co/dev/health` did not render Developer Health or the Engineering Command Center; it rendered the normal authentication shell. |
+| Anonymous CRM-table boundary | PASS | Fresh anonymous REST probes returned zero rows for contractors, memberships, settings, clients, leads, estimates, contracts, invoices, payments, events, and photos; projects returned permission denied. |
 | Authenticated tenant isolation | PENDING | Two safe contractor test accounts and representative cross-tenant IDs were unavailable. |
-| Applied migrations | PENDING | Supabase migration history requires dashboard/CLI project access; repository files alone are not live evidence. |
-| RLS policy inventory | PENDING | Anonymous denial was verified, but authenticated contractor-scoped policies require live A/B testing or privileged metadata inspection. |
-| Edge Function invalid-token behavior | PASS | Invalid opaque token and a random UUID-shaped token both returned HTTP 404 with the safe portal-not-found response. |
-| Edge Function deployed revision | PENDING | No deployed revision identifier or real project UUID was available to prove the token-only source revision is live. Redeploy the current repository function before release. |
+| Applied migrations | PENDING | All 19 required general migration files are present locally; production history still requires authenticated dashboard/CLI project access. Account-specific Miguel migrations remain excluded. |
+| RLS policy inventory | PENDING | Anonymous denial was reverified, but authenticated contractor-scoped policy metadata and Contractor A/B reads require privileged access and two safe test accounts. |
+| Edge Function invalid-token behavior | PASS | A fresh invalid opaque token and a random UUID-shaped token both returned HTTP 404 with exactly the safe portal-not-found response. |
+| Edge Function deployed revision | PENDING | The current repository function could not be deployed or revision-checked because the Supabase CLI has no management access token in this environment. No deployment was claimed. |
 | Valid anonymous portal | PENDING | A safe valid production portal token was not available. |
 | Portal parity, visibility, documents, and PDFs | PENDING | Requires a valid test project plus contractor-side access for comparison. |
 | Cross-token isolation | PENDING | Two safe production portal tokens were not available. |
 
 ### Verification conclusion
 
-Production Domain remains **PENDING**. The public domains, HTTPS, CRM SPA routing, auth page, invalid portal state, public Auth health, anonymous CRM boundary, and safe invalid Edge Function behavior are verified. The release candidate is **NOT READY** until every pending dashboard, migration, authenticated-isolation, valid-portal, parity, visibility, document, and cross-token check is completed.
+Production Domain remains **PENDING**. The public domains, HTTPS, CRM SPA routing, auth page, invalid portal state, public Auth health, effective production frontend environment, developer-route lockout, anonymous CRM boundary, and safe invalid Edge Function behavior are verified. The release candidate is **NOT READY** until Supabase management configuration, deployed migrations/policies/function revision, authenticated isolation, valid-portal isolation/parity/visibility, and public document workflows are verified.
