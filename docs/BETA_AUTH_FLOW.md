@@ -17,13 +17,14 @@ Auth redirect behavior:
 
 - Runtime redirect base is resolved by `getAuthRedirectUrl()` in [src/services/system/environmentService.js](/Users/josuearana/Documents/contractorflow-crm/src/services/system/environmentService.js:9).
 - If `VITE_AUTH_REDIRECT_URL` is set, it is used.
-- Otherwise the app uses `window.location.origin`.
+- Otherwise the app uses `VITE_AUTH_URL`, then the current application origin.
 - Final fallback is `http://localhost:5174`.
 
 Supabase dashboard configuration:
 
 - Set `Site URL` to the app origin for the environment.
-- Add wildcard redirect URLs for local and deployed environments.
+- Set production `Site URL` to `https://app.aymero.co`.
+- Allow `https://app.aymero.co/*`, `https://auth.aymero.co/`, and `https://auth.aymero.co/forgot-password` as production redirects.
 - Existing setup notes are in [docs/SUPABASE_SETUP.md](/Users/josuearana/Documents/contractorflow-crm/docs/SUPABASE_SETUP.md:1).
 
 Minimum backend expectations:

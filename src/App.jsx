@@ -62,7 +62,7 @@ import { normalizeClientPreferredLanguageFields, normalizeDocumentLanguageOverri
 import { buildLeadPipelineTransition, getLeadPipelineStage, getLeadPipelineStageCounts, leadPipelineStageOrder, leadPipelineStages, normalizeLeadPipelineStage } from './utils/leadPipeline'
 import { calculateProjectPaymentSummary, dedupePayments, normalizePaymentRecord } from './utils/projectPayments'
 import { createLocalRecordId, dedupeById, findLeadByProjectLookup, resolveLinkedLeadId, resolveLinkedProjectId } from './utils/projectIdentity'
-import { resolvePortalRouteId } from './utils/portal'
+import { buildPortalShareUrl, resolvePortalRouteId } from './utils/portal'
 import { buildContractWorkBreakdownFromEstimate, isGeneratedContractScopeText } from './utils/contractDocument'
 import { SAMPLE_GUIDE_ITEM_KEYS, SAMPLE_WORKSPACE_VERSION, createSampleWorkspace, removeSampleWorkspace, updateSampleWorkspaceGuide, upgradeSampleWorkspace as upgradeSampleWorkspaceRecords } from './services/sampleWorkspaceService'
 
@@ -4159,8 +4159,11 @@ function buildWorkspaceJobRecord(job, clientRecord = null) {
   function openPortal(leadId) {
     const matchingLead = findLeadByProjectLookup(visibleLeads, leadId)
     const portalId = resolvePortalRouteId(matchingLead || { id: leadId })
+    const portalUrl = buildPortalShareUrl(portalId)
 
-    navigate(appRoutes.portal.replace(':portalId', portalId))
+    if (portalUrl) {
+      window.open(portalUrl, '_blank', 'noopener,noreferrer')
+    }
     setSidebarOpen(false)
   }
 

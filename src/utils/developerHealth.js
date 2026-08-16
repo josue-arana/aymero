@@ -623,6 +623,11 @@ export function buildDeveloperHealthSnapshot() {
     // explicit and traceable without attempting filesystem access in-browser.
     const rlsPoliciesDrafted = Boolean(technicalDebtRegistry.releaseReadinessEvidence?.rlsPoliciesDrafted?.complete)
     const storagePlanCreated = Boolean(technicalDebtRegistry.releaseReadinessEvidence?.storagePlanCreated?.complete)
+    const productionDeployment = technicalDebtRegistry.releaseReadinessEvidence?.productionDeployment || {}
+    const productionVerificationChecks = productionDeployment.verificationChecks || []
+    const productionVerificationFailed = productionVerificationChecks.some((check) => check.status === 'FAIL')
+    const productionVerificationComplete = productionVerificationChecks.length > 0
+      && productionVerificationChecks.every((check) => check.status === 'PASS')
     const entityBackendStatuses = [
       getSettingsBackendStatus(),
       getClientsBackendStatus(),
@@ -647,7 +652,14 @@ export function buildDeveloperHealthSnapshot() {
       { id: 'storagePlanCreated', labelKey: 'check.storagePlanCreated', status: storagePlanCreated ? 'Complete' : 'Pending' },
       { id: 'realCrudConnected', labelKey: 'check.realCrudConnected', status: realCrudConnected ? 'Complete' : 'Pending' },
       { id: 'photoUploadsConnected', labelKey: 'check.photoUploadsConnected', status: photoUploadsConnected ? 'Complete' : 'Pending' },
-      { id: 'productionDomainReady', labelKey: 'check.productionDomainReady', status: 'Pending' },
+      {
+        id: 'productionDomainReady',
+        labelKey: 'check.productionDomainReady',
+        status: productionVerificationFailed ? 'Failed' : productionVerificationComplete ? 'Complete' : 'Pending',
+        verificationChecks: productionVerificationChecks,
+        verifiedAt: productionDeployment.verifiedAt || '',
+        sourceHint: productionDeployment.sourceHint || '',
+      },
     ]
 
     return checklist

@@ -207,6 +207,19 @@ function combineStatus(statuses) {
   return 'PASS'
 }
 
+function getChecklistStatusKey(status) {
+  if (status === 'Complete') return 'complete'
+  if (status === 'Failed') return 'failed'
+  if (status === 'Pending') return 'pending'
+  return 'notStarted'
+}
+
+function getChecklistAuditStatus(status) {
+  if (status === 'Complete') return 'PASS'
+  if (status === 'Failed') return 'FAIL'
+  return 'WARNING'
+}
+
 function searchableText(t, ...values) {
   return values.flat(Infinity).map((value) => {
     if (value?.key) return translateDiagnosticValue(t, value)
@@ -321,8 +334,8 @@ export function TranslationAuditPage({ t }) {
   const failCount = snapshot.applicationHealth.filter((check) => check.status === 'FAIL').length
   const warningCount = snapshot.applicationHealth.filter((check) => check.status === 'WARNING').length
   const applicationStatus = combineStatus(snapshot.applicationHealth.map((check) => check.status))
-  const releasePending = snapshot.privateBetaChecklist.filter((item) => item.status === 'Pending')
-  const releaseStatus = releasePending.length ? 'WARNING' : applicationStatus
+  const releasePending = snapshot.privateBetaChecklist.filter((item) => item.status !== 'Complete')
+  const releaseStatus = releasePending.some((item) => item.status === 'Failed') ? 'FAIL' : releasePending.length ? 'WARNING' : applicationStatus
   const productionDomain = snapshot.privateBetaChecklist.find((item) => item.id === 'productionDomainReady')
   const releaseCapabilityFlags = snapshot.featureFlagAudit.flags.filter((flag) => ['USE_STORAGE', 'USE_REAL_EMAIL', 'USE_REAL_SMS'].includes(flag.key))
 
@@ -336,7 +349,7 @@ export function TranslationAuditPage({ t }) {
     ...translationIssueGroups.flatMap(([labelKey, items]) => items.map((key) => ({ id: `translation-${labelKey}-${key}`, tab: 'translations', accordionId: `translations-${labelKey}`, title: key, detail: t(labelKey), text: searchableText(t, key, labelKey, t(labelKey)) }))),
     ...snapshot.modalAudit.modals.map((modal) => ({ id: `modal-${modal.id}`, tab: 'modals', accordionId: `modal-${modal.id}`, title: t(modal.labelKey), detail: modal.componentName, text: searchableText(t, modal, t(modal.labelKey)) })),
     ...snapshot.featureFlagAudit.flags.map((flag) => ({ id: `flag-${flag.key}`, tab: 'featureFlags', title: flag.key, detail: t(flag.enabled ? 'enabled' : 'disabled'), text: searchableText(t, flag) })),
-    ...snapshot.privateBetaChecklist.map((item) => ({ id: `release-${item.id}`, tab: 'release', title: t(item.labelKey), detail: t(`checkStatus.${item.status === 'Complete' ? 'complete' : item.status === 'Pending' ? 'pending' : 'notStarted'}`), text: searchableText(t, item, t(item.labelKey)) })),
+    ...snapshot.privateBetaChecklist.map((item) => ({ id: `release-${item.id}`, tab: 'release', title: t(item.labelKey), detail: t(`checkStatus.${getChecklistStatusKey(item.status)}`), text: searchableText(t, item, t(item.labelKey)) })),
     ...snapshot.technicalDebtAudit.items.map((item) => ({ id: `debt-${item.id}`, tab: 'technicalDebt', title: item.titleKey ? t(item.titleKey) : item.title, detail: item.descriptionKey ? t(item.descriptionKey) : item.description, text: searchableText(t, item, item.titleKey ? t(item.titleKey) : item.title, item.descriptionKey ? t(item.descriptionKey) : item.description) })),
   ]
   const normalizedQuery = searchQuery.trim().toLowerCase()
@@ -422,9 +435,9 @@ export function TranslationAuditPage({ t }) {
       {!normalizedQuery && activeTab === 'featureFlags' ? <SectionCard title={t('futureBackendReadiness')} action={<StatusBadge status={snapshot.featureFlagAudit.status} />}><div className="space-y-2">{snapshot.featureFlagAudit.flags.map((flag) => <div key={flag.key} className="flex min-w-0 items-center justify-between gap-3 rounded-xl border border-slate-200 px-3 py-3"><code className="min-w-0 break-all font-bold text-slate-950">{flag.key}</code><div className="flex shrink-0 items-center gap-2"><span className={`rounded-full px-3 py-1 text-xs font-bold ${flag.enabled ? STATUS_STYLES.PASS : 'bg-slate-100 text-slate-700'}`}>{flag.enabled ? t('enabled') : t('disabled')}</span><StatusBadge status={flag.defined ? 'PASS' : 'FAIL'} /></div></div>)}</div></SectionCard> : null}
 
       {!normalizedQuery && activeTab === 'release' ? <div className="space-y-4" role="tabpanel">
-        {productionDomain?.status === 'Pending' ? <div className="rounded-3xl border border-amber-300 bg-amber-50 p-5"><div className="flex items-start justify-between gap-3"><div><p className="text-xs font-bold uppercase tracking-[0.16em] text-amber-700">{t('primaryReleaseBlocker')}</p><h2 className="mt-2 text-xl font-bold text-amber-950">{t(productionDomain.labelKey)}</h2><p className="mt-2 text-sm text-amber-800">{t('productionDomainPendingHelp')}</p></div><StatusBadge status="WARNING" /></div></div> : null}
+        {productionDomain?.status !== 'Complete' ? <div className={`rounded-3xl border p-5 ${productionDomain.status === 'Failed' ? 'border-rose-300 bg-rose-50' : 'border-amber-300 bg-amber-50'}`}><div className="flex items-start justify-between gap-3"><div className="min-w-0"><p className={`text-xs font-bold uppercase tracking-[0.16em] ${productionDomain.status === 'Failed' ? 'text-rose-700' : 'text-amber-700'}`}>{t('primaryReleaseBlocker')}</p><h2 className={`mt-2 text-xl font-bold ${productionDomain.status === 'Failed' ? 'text-rose-950' : 'text-amber-950'}`}>{t(productionDomain.labelKey)}</h2><p className={`mt-2 text-sm ${productionDomain.status === 'Failed' ? 'text-rose-800' : 'text-amber-800'}`}>{t('productionDomainPendingHelp')}</p>{productionDomain.verifiedAt ? <p className="mt-2 text-xs font-semibold text-slate-600">{t('releaseEvidenceTimestamp', { timestamp: productionDomain.verifiedAt })}</p> : null}{productionDomain.verificationChecks?.length ? <div className="mt-4 space-y-2">{productionDomain.verificationChecks.map((check) => <div key={check.id} className="flex min-w-0 flex-col gap-2 rounded-xl border border-white/70 bg-white/70 p-3 sm:flex-row sm:items-start sm:justify-between"><div className="min-w-0"><p className="font-bold text-slate-950">{t(check.labelKey)}</p><p className="mt-1 break-words text-sm text-slate-600">{t(check.evidenceKey)}</p></div><StatusBadge status={check.status} /></div>)}</div> : null}{productionDomain.sourceHint ? <p className="mt-4 break-words font-mono text-xs font-semibold text-slate-600">{t('sourceHint')}: {productionDomain.sourceHint}</p> : null}</div><StatusBadge status={getChecklistAuditStatus(productionDomain.status)} /></div></div> : null}
         <section className="grid gap-4 sm:grid-cols-2 lg:grid-cols-3"><SummaryCard label={t('overallApplicationHealth')} value={applicationStatus} status={applicationStatus} /><SummaryCard label={t('backendReadiness')} value={snapshot.backendEnvironment.status} status={snapshot.backendEnvironment.status} /><SummaryCard label={t('authenticationReadiness')} value={authStatus} status={authStatus} /></section>
-        <SectionCard title={t('privateBetaBackendChecklist')} action={<StatusBadge status={releaseStatus} />}><div className="space-y-2">{snapshot.privateBetaChecklist.map((item) => <div key={item.id} className={`flex items-center justify-between gap-3 rounded-xl border px-3 py-3 ${item.id === 'productionDomainReady' && item.status === 'Pending' ? 'border-amber-300 bg-amber-50' : 'border-slate-200'}`}><p className="font-bold text-slate-950">{t(item.labelKey)}</p><span className={`rounded-full px-3 py-1 text-xs font-bold ${item.status === 'Complete' ? STATUS_STYLES.PASS : item.status === 'Pending' ? STATUS_STYLES.WARNING : 'bg-slate-100 text-slate-700'}`}>{t(`checkStatus.${item.status === 'Complete' ? 'complete' : item.status === 'Pending' ? 'pending' : 'notStarted'}`)}</span></div>)}</div></SectionCard>
+        <SectionCard title={t('privateBetaBackendChecklist')} action={<StatusBadge status={releaseStatus} />}><div className="space-y-2">{snapshot.privateBetaChecklist.map((item) => <div key={item.id} className={`flex items-center justify-between gap-3 rounded-xl border px-3 py-3 ${item.status === 'Failed' ? 'border-rose-300 bg-rose-50' : item.id === 'productionDomainReady' && item.status === 'Pending' ? 'border-amber-300 bg-amber-50' : 'border-slate-200'}`}><p className="font-bold text-slate-950">{t(item.labelKey)}</p><span className={`rounded-full px-3 py-1 text-xs font-bold ${item.status === 'Complete' ? STATUS_STYLES.PASS : item.status === 'Failed' ? STATUS_STYLES.FAIL : item.status === 'Pending' ? STATUS_STYLES.WARNING : 'bg-slate-100 text-slate-700'}`}>{t(`checkStatus.${getChecklistStatusKey(item.status)}`)}</span></div>)}</div></SectionCard>
         {releaseCapabilityFlags.length ? <SectionCard title={t('productionCapabilityFlags')}><p className="mb-4 rounded-xl bg-slate-50 p-3 text-sm font-semibold text-slate-600">{t('productionCapabilityFlagsHelp')}</p><div className="space-y-2">{releaseCapabilityFlags.map((flag) => <div key={flag.key} className="flex items-center justify-between gap-3 rounded-xl border border-slate-200 px-3 py-3"><code className="break-all font-bold text-slate-950">{flag.key}</code><span className={`rounded-full px-3 py-1 text-xs font-bold ${flag.enabled ? STATUS_STYLES.PASS : 'bg-slate-100 text-slate-700'}`}>{flag.enabled ? t('enabled') : t('disabled')}</span></div>)}</div></SectionCard> : null}
       </div> : null}
 

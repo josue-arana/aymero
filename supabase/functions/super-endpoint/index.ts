@@ -7,7 +7,6 @@ const corsHeaders = {
   'Cache-Control': 'no-store',
 }
 
-const uuidPattern = /^[0-9a-f]{8}-[0-9a-f]{4}-[1-5][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i
 const tokenPattern = /^[a-zA-Z0-9_-]{20,200}$/
 const projectStatusLabels: Record<string, string> = {
   lead: 'Lead',
@@ -126,7 +125,7 @@ Deno.serve(async (request) => {
     return jsonResponse({ error: 'Invalid request.' }, 400)
   }
 
-  if (!tokenPattern.test(token) && !uuidPattern.test(token)) {
+  if (!tokenPattern.test(token)) {
     return jsonResponse({ error: 'Client Portal Not Found.' }, 404)
   }
 
@@ -138,25 +137,12 @@ Deno.serve(async (request) => {
     auth: { autoRefreshToken: false, persistSession: false },
   })
 
-  let projectQuery = admin
+  const { data: project, error: projectError } = await admin
     .from('projects')
     .select('id, contractor_id, client_id, lead_id, public_portal_token, title, project_type, address, status, estimated_value, contract_value, start_date, target_end_date, created_at, updated_at')
     .eq('public_portal_token', token)
     .is('archived_at', null)
     .maybeSingle()
-  let { data: project, error: projectError } = await projectQuery
-
-  // Compatibility for links issued before opaque portal tokens were added.
-  if (!project && !projectError && uuidPattern.test(token)) {
-    const legacyResult = await admin
-      .from('projects')
-      .select('id, contractor_id, client_id, lead_id, public_portal_token, title, project_type, address, status, estimated_value, contract_value, start_date, target_end_date, created_at, updated_at')
-      .eq('id', token)
-      .is('archived_at', null)
-      .maybeSingle()
-    project = legacyResult.data
-    projectError = legacyResult.error
-  }
 
   if (projectError) return jsonResponse({ error: 'Portal service unavailable.' }, 500)
   if (!project) return jsonResponse({ error: 'Client Portal Not Found.' }, 404)
