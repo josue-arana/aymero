@@ -1029,6 +1029,7 @@ export const en = {
   "sendToCustomerHelp": "Choose text or email. The message preview shows whether a document link is actually available in this environment.",
   "textMessage": "Text Message",
   "print": "Print",
+  "printPreviewPopupBlocked": "Unable to open the print preview. Please allow pop-ups and try again.",
   "documentStatus": "Document status",
   "documentLinkUnavailable": "PDF attachment/link support is not available yet in this environment.",
   "documentLinkIncluded": "Document link included: {{link}}",

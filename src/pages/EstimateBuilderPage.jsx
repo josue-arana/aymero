@@ -20,7 +20,7 @@ import { USE_SUPABASE, USE_SUPABASE_ESTIMATES } from '../config/backendConfig'
 import { getProjectsContractorId } from '../services/system/projectsRuntimeService'
 import { readLinkedEstimateDraft, writeLinkedEstimateDrafts } from '../utils/estimateLinks'
 import { formatEstimateDisplayNumber, generateEstimateNumber } from '../utils/estimateNumber'
-import { printDocumentElement } from '../utils/printDocument'
+import { isPrintWindowBlockedError, printDocumentElement } from '../utils/printDocument'
 import { createTranslator, tStatus } from '../translations'
 import { findLeadByProjectLookup } from '../utils/projectIdentity'
 import { findRelatedClient } from '../utils/clients'
@@ -583,9 +583,10 @@ export function EstimateBuilderPage({ lead, clientRecord = null, t, appLanguage 
         documentTitle: `${previewEstimateNumber} ${lead?.client || ''}`.trim(),
         pageMarginInches: ESTIMATE_PAPER_MARGIN / 72,
         safeInsetInches: 0,
+        printLabel: t('print'),
       })
     } catch (error) {
-      showToast(error?.message || t('estimatePdfGenerateFailed'), 'error')
+      showToast(isPrintWindowBlockedError(error) ? t('printPreviewPopupBlocked') : t('estimatePdfGenerateFailed'), 'error')
     }
   }
 
@@ -595,9 +596,10 @@ export function EstimateBuilderPage({ lead, clientRecord = null, t, appLanguage 
         documentTitle: `${previewEstimateNumber} ${lead?.client || ''}`.trim(),
         pageMarginInches: ESTIMATE_PAPER_MARGIN / 72,
         safeInsetInches: 0,
+        printLabel: t('print'),
       })
     } catch (error) {
-      showToast(error?.message || t('estimatePdfGenerateFailed'), 'error')
+      showToast(isPrintWindowBlockedError(error) ? t('printPreviewPopupBlocked') : t('estimatePdfGenerateFailed'), 'error')
     }
   }
 
@@ -870,7 +872,7 @@ export function EstimateBuilderPage({ lead, clientRecord = null, t, appLanguage 
           )}
           <button onClick={handlePrint} className="w-full rounded-2xl bg-slate-950 px-4 py-4 text-sm font-bold text-white hover:bg-slate-800">{t('print')}</button>
           <button onClick={() => setShowPreviewModal(true)} className="hidden w-full rounded-2xl border border-slate-200 bg-white px-4 py-4 text-sm font-bold text-slate-800 hover:bg-slate-50 sm:block">{t('previewPdf')}</button>
-          <button onClick={handleDownloadPdf} className="hidden w-full rounded-2xl border border-slate-200 bg-white px-4 py-4 text-sm font-bold text-slate-800 hover:bg-slate-50 sm:block">{t('saveAsPdf')}</button>
+          <button onClick={handleDownloadPdf} className="w-full rounded-2xl border border-slate-200 bg-white px-4 py-4 text-sm font-bold text-slate-800 hover:bg-slate-50">{t('saveAsPdf')}</button>
           <button disabled={isEstimateActionPending} onClick={() => setShowSendModal(true)} className="w-full rounded-2xl border border-blue-200 bg-blue-50 px-4 py-4 text-sm font-bold text-blue-700 hover:bg-blue-100 disabled:cursor-not-allowed disabled:opacity-60">{t('sendToCustomer')}</button>
           {projectAvailable && (hasLinkedContract ? (
             <>

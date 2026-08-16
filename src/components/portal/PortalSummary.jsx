@@ -12,7 +12,7 @@ import { useToast } from '../common/ToastProvider'
 import { currency } from '../../utils/formatters'
 import { getContractDisplayNumber } from '../../utils/contractNumber'
 import { getEstimateDisplayNumber } from '../../utils/estimateNumber'
-import { printDocumentElement } from '../../utils/printDocument'
+import { isPrintWindowBlockedError, printDocumentElement } from '../../utils/printDocument'
 import { createTranslator } from '../../translations'
 import { tStatus } from '../../translations'
 import { getPaymentTermLabel } from '../../utils/paymentTerms'
@@ -380,9 +380,10 @@ export function PortalSummary({
         documentTitle: `${estimateNumber} ${previewLead.client || ''}`.trim(),
         pageMarginInches: ESTIMATE_PAPER_MARGIN / 72,
         safeInsetInches: 0,
+        printLabel: t('print'),
       })
     } catch (error) {
-      showToast(error?.message || t('estimatePdfGenerateFailed'), 'error')
+      showToast(isPrintWindowBlockedError(error) ? t('printPreviewPopupBlocked') : t('estimatePdfGenerateFailed'), 'error')
     }
   }
 
@@ -392,9 +393,10 @@ export function PortalSummary({
         documentTitle: `${estimateNumber} ${previewLead.client || ''}`.trim(),
         pageMarginInches: ESTIMATE_PAPER_MARGIN / 72,
         safeInsetInches: 0,
+        printLabel: t('print'),
       })
     } catch (error) {
-      showToast(error?.message || t('estimatePdfGenerateFailed'), 'error')
+      showToast(isPrintWindowBlockedError(error) ? t('printPreviewPopupBlocked') : t('estimatePdfGenerateFailed'), 'error')
     }
   }
 
@@ -406,9 +408,10 @@ export function PortalSummary({
         documentTitle: `${contractNumber} ${previewLead.client || ''}`.trim(),
         pageMarginInches: ESTIMATE_PAPER_MARGIN / 72,
         safeInsetInches: 0,
+        printLabel: t('print'),
       })
     } catch (error) {
-      showToast(error?.message || t('contractPdfGenerateFailed'), 'error')
+      showToast(isPrintWindowBlockedError(error) ? t('printPreviewPopupBlocked') : t('contractPdfGenerateFailed'), 'error')
     }
   }
 

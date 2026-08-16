@@ -18,7 +18,7 @@ import { USE_SUPABASE, USE_SUPABASE_CONTRACTS } from '../config/backendConfig'
 import { getProjectsContractorId } from '../services/system/projectsRuntimeService'
 import { readLinkedContractDraft } from '../utils/contractLinks'
 import { formatContractDisplayNumber, generateContractNumber } from '../utils/contractNumber'
-import { printDocumentElement } from '../utils/printDocument'
+import { isPrintWindowBlockedError, printDocumentElement } from '../utils/printDocument'
 import { dedupeById, findLeadByProjectLookup, resolveLinkedProjectId } from '../utils/projectIdentity'
 import { createTranslator } from '../translations'
 import { findRelatedClient } from '../utils/clients'
@@ -237,9 +237,10 @@ export function ContractPreviewPage({ lead, clientRecord = null, t, appLanguage 
         documentTitle: `${previewContractNumber} ${lead?.client || ''}`.trim(),
         pageMarginInches: ESTIMATE_PAPER_MARGIN / 72,
         safeInsetInches: 0,
+        printLabel: t('print'),
       })
     } catch (error) {
-      showToast(error?.message || t('contractPdfGenerateFailed'), 'error')
+      showToast(isPrintWindowBlockedError(error) ? t('printPreviewPopupBlocked') : t('contractPdfGenerateFailed'), 'error')
     }
   }
 

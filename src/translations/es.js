@@ -1029,6 +1029,7 @@ export const es = {
   "sendToCustomerHelp": "Elige mensaje de texto o correo. La vista previa indica si el enlace del documento realmente está disponible en este entorno.",
   "textMessage": "Mensaje de texto",
   "print": "Imprimir",
+  "printPreviewPopupBlocked": "No se pudo abrir la vista previa de impresión. Permite las ventanas emergentes e inténtalo de nuevo.",
   "documentStatus": "Estado del documento",
   "documentLinkUnavailable": "El soporte para adjuntar o enlazar el PDF todavía no está disponible en este entorno.",
   "documentLinkIncluded": "Enlace del documento incluido: {{link}}",
