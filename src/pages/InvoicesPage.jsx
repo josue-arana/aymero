@@ -19,6 +19,7 @@ import invoicesHeroBackground from '../assets/page-heroes/invoices-bg.png'
 import { buildHeroBackgroundStyle } from '../utils/heroBackground'
 import { findRelatedClient } from '../utils/clients'
 import { getLanguageLocale, resolveClientFacingLanguage } from '../utils/language'
+import { isRecordArchived } from '../utils/archiveLifecycle'
 
 const invoiceFilters = ['All', 'Archived', 'Draft', 'Sent', 'Paid', 'Overdue', 'Canceled']
 
@@ -55,8 +56,9 @@ export function InvoicesPage({ leads, clients = [], invoices: invoiceRecords = [
       client: invoice.client || lead?.client || t('unknownClient'),
       projectTitle: invoice.projectTitle || lead?.projectTitle || lead?.projectType || t('project'),
       remainingBalance: getInvoiceRemainingBalance(invoice),
+      isArchived: isRecordArchived(invoice, archivedIds),
     }
-  }), [invoiceRecords, leads, t, deletedIds])
+  }), [archivedIds, invoiceRecords, leads, t, deletedIds])
   const sendInvoiceLead = useMemo(
     () => (sendInvoice ? findRelatedLeadForInvoice(leads, sendInvoice) : null),
     [leads, sendInvoice]
@@ -77,11 +79,11 @@ export function InvoicesPage({ leads, clients = [], invoices: invoiceRecords = [
     [sendInvoice?.dueDate, sendInvoiceLanguage]
   )
 
-  const activeInvoices = invoices.filter((invoice) => !archivedIds.includes(invoice.id))
+  const activeInvoices = invoices.filter((invoice) => !invoice.isArchived)
   const filteredInvoices = selectedFilter === 'All'
     ? activeInvoices
     : selectedFilter === 'Archived'
-      ? invoices.filter((invoice) => archivedIds.includes(invoice.id))
+      ? invoices.filter((invoice) => invoice.isArchived)
       : activeInvoices.filter((invoice) => invoice.status === selectedFilter)
 
   const summaryCards = [
@@ -146,7 +148,7 @@ export function InvoicesPage({ leads, clients = [], invoices: invoiceRecords = [
   }
 
   function renderInvoiceActions(invoice, compact = false) {
-    const isArchived = archivedIds.includes(invoice.id)
+    const isArchived = invoice.isArchived
     const isInvoiceActionPending = activeInvoiceActionId === invoice.id
     const moreMenuItems = isArchived
       ? [
@@ -290,7 +292,7 @@ export function InvoicesPage({ leads, clients = [], invoices: invoiceRecords = [
                   <td className="px-4 py-4 text-right font-medium text-slate-700">{currency.format(invoice.amountPaid)}</td>
                   <td className="px-4 py-4 text-right font-bold text-slate-900">{currency.format(invoice.remainingBalance)}</td>
                   <td className="px-4 py-4 font-medium text-slate-700">{invoice.dueDate}</td>
-                  <td className="px-4 py-4"><StatusBadge status={archivedIds.includes(invoice.id) ? 'Archived' : invoice.status} t={t} /></td>
+                  <td className="px-4 py-4"><StatusBadge status={invoice.isArchived ? 'Archived' : invoice.status} t={t} /></td>
                   <td className="px-4 py-4 text-right">{renderInvoiceActions(invoice)}</td>
                 </tr>
               ))}
@@ -307,7 +309,7 @@ export function InvoicesPage({ leads, clients = [], invoices: invoiceRecords = [
                   <h3 className="mt-1 font-bold text-slate-950">{invoice.client}</h3>
                   <p className="text-sm text-slate-500">{invoice.projectTitle}</p>
                 </div>
-                <StatusBadge status={archivedIds.includes(invoice.id) ? 'Archived' : invoice.status} t={t} />
+                <StatusBadge status={invoice.isArchived ? 'Archived' : invoice.status} t={t} />
               </div>
               <div className="grid gap-2 rounded-2xl bg-slate-50 p-3 text-sm sm:grid-cols-3">
                 <div><p className="text-xs font-semibold uppercase tracking-wide text-slate-400">{t('invoiceAmount')}</p><p className="font-bold text-slate-950">{currency.format(invoice.amount)}</p></div>

@@ -1,5 +1,6 @@
 import { useEffect, useMemo, useRef, useState } from 'react'
-import { ArrowLeft, ArrowRight, Building2, Check, CheckCircle2, Clock3, Database, ImageUp, LoaderCircle, Palette, PartyPopper, SlidersHorizontal, X } from 'lucide-react'
+import { ArrowLeft, ArrowRight, Building2, Check, CheckCircle2, Clock3, Database, ImageUp, Palette, PartyPopper, SlidersHorizontal, X } from 'lucide-react'
+import { AymeroLoader } from '../components/common/AymeroLoader'
 import { BrandLogo } from '../components/common/BrandLogo'
 import { LanguageToggleButton } from '../components/common/LanguageToggleButton'
 import { useToast } from '../components/common/ToastProvider'
@@ -487,7 +488,7 @@ export function AuthOnboardingPage({
               <footer className="rounded-3xl border border-blue-200 bg-white p-5 shadow-lg shadow-slate-950/5" role="status" aria-live="polite">
                 <div className="flex items-start gap-3">
                   <span className="flex h-10 w-10 shrink-0 items-center justify-center rounded-2xl bg-blue-100 text-blue-700">
-                    {sampleDataState.mode === 'loading' ? <LoaderCircle className="h-5 w-5 animate-spin" /> : <Database className="h-5 w-5" />}
+                    {sampleDataState.mode === 'loading' ? <AymeroLoader variant="inline" accessibleLabel={t('sampleDataCreatingTitle')} /> : <Database className="h-5 w-5" />}
                   </span>
                   <div>
                     <h2 className="font-bold text-slate-950">{t(sampleDataState.mode === 'duplicate' ? 'sampleDataDuplicateTitle' : sampleDataState.mode === 'error' ? 'sampleDataErrorTitle' : sampleDataState.mode === 'loading' ? 'sampleDataCreatingTitle' : 'sampleDataConfirmTitle')}</h2>

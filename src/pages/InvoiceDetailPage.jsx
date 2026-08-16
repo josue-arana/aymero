@@ -1,6 +1,6 @@
 import { useEffect, useMemo, useRef, useState } from 'react'
 import { useNavigate, useParams } from 'react-router-dom'
-import { Archive, ArrowLeft, Building2, CalendarDays, CheckCircle2, ChevronRight, CreditCard, DollarSign, Download, Eye, FileText, LoaderCircle, Pencil, Printer, RotateCcw, Save, Send, Trash2, UserRound, Wallet } from 'lucide-react'
+import { Archive, ArrowLeft, Building2, CalendarDays, CheckCircle2, ChevronRight, CreditCard, DollarSign, Download, Eye, FileText, Pencil, Printer, RotateCcw, Save, Send, Trash2, UserRound, Wallet } from 'lucide-react'
 import { StatusBadge } from '../components/ui/StatusBadge'
 import { InvoiceDocumentPreview } from '../components/invoices/InvoiceDocumentPreview'
 import { contractorCompany } from '../data/mockInvoices'
@@ -11,6 +11,7 @@ import { SendToCustomerModal } from '../components/common/SendToCustomerModal'
 import { ModalShell } from '../components/common/ModalShell'
 import { useToast } from '../components/common/ToastProvider'
 import ActionMenu from '../components/common/ActionMenu'
+import { AymeroLoader } from '../components/common/AymeroLoader'
 import dataProvider from '../services/dataProvider'
 import { useAuth } from '../contexts/AuthContext'
 import { getInvoicesContractorId } from '../services/system/invoicesRuntimeService'
@@ -23,6 +24,7 @@ import { getPaymentTermOptions, isKnownPaymentTermValue } from '../utils/payment
 import { resolveInvoiceCustomerNote } from '../utils/invoiceCustomerNotes'
 import { printDocumentElement } from '../utils/printDocument'
 import { appRoutes } from '../config/appRoutes'
+import { isRecordArchived } from '../utils/archiveLifecycle'
 
 const paymentMethods = ['Cash', 'Check', 'Zelle', 'Credit Card', 'Bank Transfer', 'Other']
 const paymentTypes = ['Deposit', 'Progress Payment', 'Final Payment', 'Other']
@@ -380,10 +382,13 @@ export function InvoiceDetailRoute({ companySettings, leads, clients = [], invoi
 
   if (!resolvedInvoice && (!invoicesLoaded || routeInvoiceState.loading)) {
     return (
-      <section className="rounded-3xl border border-slate-200 bg-white p-8 text-center shadow-sm">
-        <h1 className="text-2xl font-bold text-slate-950">{t('loading')}</h1>
-        <p className="mx-auto mt-3 max-w-xl text-sm leading-6 text-slate-500">{t('invoiceDetailHelp')}</p>
-      </section>
+      <AymeroLoader
+        variant="section"
+        title={t('loading')}
+        message={t('invoiceDetailHelp')}
+        accessibleLabel={t('loading')}
+        className="rounded-3xl border border-slate-200 bg-white shadow-sm"
+      />
     )
   }
 
@@ -399,7 +404,7 @@ export function InvoiceDetailRoute({ companySettings, leads, clients = [], invoi
     )
   }
 
-  const isArchived = archivedIds.includes(syncedInvoice.id)
+  const isArchived = isRecordArchived(syncedInvoice, archivedIds)
   const lineItems = syncedInvoice.lineItems || []
   const invoiceTotal = calculateInvoiceTotal(lineItems) || Number(syncedInvoice.amount || 0)
   const currentInvoice = { ...syncedInvoice, amount: invoiceTotal, remainingBalance: getInvoiceRemainingBalance({ ...syncedInvoice, amount: invoiceTotal }) }
@@ -1137,8 +1142,8 @@ export function InvoiceDetailRoute({ companySettings, leads, clients = [], invoi
                   onClick={printInvoiceDocument}
                   className="inline-flex min-h-11 items-center justify-center gap-2 rounded-2xl border border-slate-200 bg-white px-4 py-2.5 text-sm font-bold text-slate-700 transition hover:border-blue-200 hover:bg-blue-50 hover:text-blue-700 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-blue-500 focus-visible:ring-offset-2 disabled:cursor-not-allowed disabled:opacity-60"
                 >
-                  {isPreparingInvoicePrint ? <LoaderCircle className="h-4 w-4 animate-spin" aria-hidden="true" /> : <Printer className="h-4 w-4" aria-hidden="true" />}
-                  <span role={isPreparingInvoicePrint ? 'status' : undefined} aria-live={isPreparingInvoicePrint ? 'polite' : undefined}>
+                  {isPreparingInvoicePrint ? <AymeroLoader variant="inline" accessibleLabel={t('preparingPrint')} /> : <Printer className="h-4 w-4" aria-hidden="true" />}
+                  <span>
                     {isPreparingInvoicePrint ? t('preparingPrint') : t('printInvoice')}
                   </span>
                 </button>
@@ -1148,8 +1153,8 @@ export function InvoiceDetailRoute({ companySettings, leads, clients = [], invoi
                   onClick={downloadInvoiceDocument}
                   className="inline-flex min-h-11 items-center justify-center gap-2 rounded-2xl bg-blue-600 px-4 py-2.5 text-sm font-bold text-white shadow-sm transition hover:bg-blue-700 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-blue-500 focus-visible:ring-offset-2 disabled:cursor-not-allowed disabled:bg-blue-400"
                 >
-                  {isGeneratingInvoicePdf ? <LoaderCircle className="h-4 w-4 animate-spin" aria-hidden="true" /> : <Download className="h-4 w-4" aria-hidden="true" />}
-                  <span role={isGeneratingInvoicePdf ? 'status' : undefined} aria-live={isGeneratingInvoicePdf ? 'polite' : undefined}>
+                  {isGeneratingInvoicePdf ? <AymeroLoader variant="inline" accessibleLabel={t('generatingPdf')} tone="dark" /> : <Download className="h-4 w-4" aria-hidden="true" />}
+                  <span>
                     {isGeneratingInvoicePdf ? t('generatingPdf') : t('downloadPdf')}
                   </span>
                 </button>

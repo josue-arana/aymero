@@ -2,6 +2,7 @@ import { useEffect, useMemo, useRef, useState } from 'react'
 import { useLocation, useNavigate, useParams } from 'react-router-dom'
 import { Archive, ArrowLeft, ChevronDown, MapPin, Trash2, Undo2, UserRound } from 'lucide-react'
 import { SelectField } from '../components/ui/SelectField'
+import { AymeroLoader } from '../components/common/AymeroLoader'
 import { InfoCard } from '../components/ui/InfoCard'
 import { EstimatePdfTemplate } from '../components/estimates/EstimatePdfTemplate'
 import { EstimateFormattedText } from '../components/estimates/EstimateFormattedText'
@@ -24,6 +25,7 @@ import { isPrintWindowBlockedError, printDocumentElement } from '../utils/printD
 import { createTranslator, tStatus } from '../translations'
 import { findLeadByProjectLookup } from '../utils/projectIdentity'
 import { findRelatedClient } from '../utils/clients'
+import { resolveEstimateArchiveState } from '../utils/archiveLifecycle'
 import {
   ESTIMATE_PRICING_DETAILED,
   ESTIMATE_PRICING_SIMPLE,
@@ -156,7 +158,7 @@ function buildEstimateDraftState({ savedEstimate = {}, lead, companySettings, t 
   }
 }
 
-export function EstimateBuilderPage({ lead, clientRecord = null, t, appLanguage = 'en', companySettings, isArchived = false, projectAvailable = true, publicEstimateLink = '', isOrphanedProject = false, onBack, backLabel, onSaveEstimate, onConvert, onSyncContract, onOpenContract, onArchiveEstimate, onRestoreEstimate, onDeleteEstimate }) {
+export function EstimateBuilderPage({ lead, clientRecord = null, t, appLanguage = 'en', companySettings, isArchived = false, archiveSource = null, projectAvailable = true, publicEstimateLink = '', isOrphanedProject = false, onBack, backLabel, onSaveEstimate, onConvert, onSyncContract, onOpenContract, onArchiveEstimate, onRestoreEstimate, onDeleteEstimate }) {
   const { showToast } = useToast()
   const pdfTemplateRef = useRef(null)
   const draftDirtyRef = useRef(false)
@@ -325,7 +327,7 @@ export function EstimateBuilderPage({ lead, clientRecord = null, t, appLanguage 
     || builderOpenedAtRef.current
   )
   const estimateUpdatedDate = formatReliableDate(savedEstimate.updatedAt || savedEstimate.updated_at)
-  const estimateStatus = tStatus(t, isArchived ? 'Archived' : (savedEstimate.status || 'Draft'))
+  const estimateStatus = tStatus(t, savedEstimate.status || 'Draft')
   const jobLocation = lead?.address || lead?.location || ''
   const estimateDocumentModel = useMemo(() => normalizeEstimateDocument({
     pricingMode,
@@ -880,7 +882,7 @@ export function EstimateBuilderPage({ lead, clientRecord = null, t, appLanguage 
           ))}
           {isArchived ? (
             <>
-              <button disabled={isEstimateActionPending} onClick={onRestoreEstimate} className="w-full rounded-2xl border border-emerald-200 bg-emerald-50 px-4 py-4 text-sm font-bold text-emerald-700 hover:bg-emerald-100 disabled:cursor-not-allowed disabled:opacity-60"><Undo2 className="mr-2 inline h-4 w-4" />{t('restore')}</button>
+              <button disabled={isEstimateActionPending} onClick={onRestoreEstimate} className="w-full rounded-2xl border border-emerald-200 bg-emerald-50 px-4 py-4 text-sm font-bold text-emerald-700 hover:bg-emerald-100 disabled:cursor-not-allowed disabled:opacity-60"><Undo2 className="mr-2 inline h-4 w-4" />{t(archiveSource === 'lead' ? 'restoreLeadAndEstimate' : 'restore')}</button>
               <button disabled={isEstimateActionPending} onClick={() => setConfirmAction({ mode: 'delete' })} className="w-full rounded-2xl border border-red-200 bg-red-50 px-4 py-4 text-sm font-bold text-red-700 hover:bg-red-100 disabled:cursor-not-allowed disabled:opacity-60"><Trash2 className="mr-2 inline h-4 w-4" />{t('deletePermanently')}</button>
             </>
           ) : (
@@ -1191,7 +1193,15 @@ export function EstimateBuilderRoute({ companySettings, leads, clients = [], est
   }, [contractorId, isDirectEstimateRoute, leads, projectId, routeLead?.id, routeLead?.projectId, routeLead?.project_id])
 
   if (isDirectEstimateRoute && directLoadState.loading && !resolvedEstimate) {
-    return <div className="min-h-64 rounded-3xl border border-slate-200 bg-white shadow-sm" aria-busy="true" />
+    return (
+      <AymeroLoader
+        variant="section"
+        title={t('loadingEstimate')}
+        message={t('loadingEstimateHelp')}
+        accessibleLabel={t('loadingEstimate')}
+        className="rounded-3xl border border-slate-200 bg-white shadow-sm"
+      />
+    )
   }
 
   if (!lead) {
@@ -1220,6 +1230,12 @@ export function EstimateBuilderRoute({ companySettings, leads, clients = [], est
       }
     : lead
   const publicEstimateLink = resolvePublicEstimateShareUrl(resolvedEstimate || loadedEstimate || lead?.portal?.estimate || {})
+  const estimateArchiveState = resolveEstimateArchiveState({
+    estimate: resolvedEstimate || loadedEstimate || lead?.portal?.estimate || {},
+    lead,
+    contract: lead?.portal?.contract || null,
+    archivedLeadIds: archivedIds,
+  })
 
   return (
     <EstimateBuilderPage
@@ -1230,7 +1246,8 @@ export function EstimateBuilderRoute({ companySettings, leads, clients = [], est
       companySettings={companySettings}
       onBack={handleBack}
       backLabel={backLabel}
-      isArchived={Boolean(resolvedEstimate?.archivedAt || resolvedEstimate?.archived_at || archivedIds.includes(lead.id))}
+      isArchived={estimateArchiveState.isArchived}
+      archiveSource={estimateArchiveState.source}
       projectAvailable={isDirectEstimateRoute ? projectAvailable : true}
       publicEstimateLink={publicEstimateLink}
       isOrphanedProject={isDirectEstimateRoute ? isOrphanedProject : false}
@@ -1244,8 +1261,20 @@ export function EstimateBuilderRoute({ companySettings, leads, clients = [], est
       onConvert={async (estimate) => onConvertEstimate?.(lead.id, estimate)}
       onSyncContract={async (estimate, options = {}) => onSyncEstimateContract?.(lead.id, estimate, options)}
       onOpenContract={() => navigate(`/projects/${lead.projectId || lead.id}/contract`, { state: { source: 'estimate', projectId: lead.projectId || lead.id, leadId: lead.id } })}
-      onArchiveEstimate={() => onArchiveEstimate?.(resolvedEstimate?.id || lead.id, resolvedEstimate || lead.portal?.estimate || null)}
-      onRestoreEstimate={() => onRestoreEstimate?.(resolvedEstimate?.id || lead.id, resolvedEstimate || lead.portal?.estimate || null)}
+      onArchiveEstimate={async () => {
+        const result = await onArchiveEstimate?.(resolvedEstimate?.id || lead.id, resolvedEstimate || lead.portal?.estimate || null)
+        if (result) setLoadedEstimate(result)
+        return result
+      }}
+      onRestoreEstimate={async () => {
+        const result = await onRestoreEstimate?.(
+          resolvedEstimate?.id || lead.id,
+          resolvedEstimate || lead.portal?.estimate || null,
+          { archiveSource: estimateArchiveState.source },
+        )
+        if (result && estimateArchiveState.source !== 'lead') setLoadedEstimate(result)
+        return result
+      }}
       onDeleteEstimate={() => onDeleteEstimate?.(resolvedEstimate?.id || lead.id, resolvedEstimate || lead.portal?.estimate || null)}
     />
   )

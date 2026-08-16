@@ -2,6 +2,7 @@ import { useEffect, useMemo, useRef, useState } from 'react'
 import { Archive, ArrowLeft, BriefcaseBusiness, CheckCircle2, ChevronRight, ClipboardList, Copy, Edit3, FileText, Send, Trash2, Undo2, UserRoundPlus } from 'lucide-react'
 import { useNavigate, useParams } from 'react-router-dom'
 import { ActionMenu } from '../components/common/ActionMenu'
+import { AymeroLoader } from '../components/common/AymeroLoader'
 import { ConfirmRecordModal } from '../components/common/ConfirmRecordModal'
 import { useToast } from '../components/common/ToastProvider'
 import { LeadFormModal } from '../components/leads/LeadFormModal'
@@ -445,10 +446,13 @@ export function LeadDetailPage({
 
   if (USE_SUPABASE_LEADS && isLoading) {
     return (
-      <section className="rounded-3xl border border-slate-200 bg-white p-8 text-center shadow-sm">
-        <h1 className="text-2xl font-bold text-slate-950">{t('loadingLead')}</h1>
-        <p className="mx-auto mt-3 max-w-xl text-sm leading-6 text-slate-500">{t('loadingLeadHelp')}</p>
-      </section>
+      <AymeroLoader
+        variant="section"
+        title={t('loadingLead')}
+        message={t('loadingLeadHelp')}
+        accessibleLabel={t('loadingLead')}
+        className="rounded-3xl border border-slate-200 bg-white shadow-sm"
+      />
     )
   }
 
@@ -887,7 +891,7 @@ export function LeadDetailPage({
         isOpen={Boolean(confirmAction)}
         mode={confirmAction?.mode}
         title={confirmAction?.mode === 'delete' ? t('confirmPermanentDelete') : t('confirmArchive')}
-        message={confirmAction?.mode === 'delete' ? t('permanentDeleteHelp') : t('archiveHelp')}
+        message={confirmAction?.mode === 'delete' ? t('permanentDeleteHelp') : t('archiveLeadHelp')}
         confirmLabel={confirmAction?.mode === 'delete' ? t('deletePermanently') : t('archive')}
         onCancel={() => setConfirmAction(null)}
         onConfirm={runConfirmAction}

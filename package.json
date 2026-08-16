@@ -11,7 +11,10 @@
     "build": "vite build",
     "preview": "vite preview",
     "verify:host-routing": "node scripts/verify-hostname-routing.mjs",
-    "verify:language-ownership": "node scripts/verify-language-ownership.mjs"
+    "verify:language-ownership": "node scripts/verify-language-ownership.mjs",
+    "verify:document-print-layout": "node scripts/verify-document-print-layout.mjs",
+    "verify:aymero-loader": "node scripts/verify-aymero-loader.mjs",
+    "verify:archive-workflow": "node scripts/verify-archive-workflow.mjs"
   },
   "dependencies": {
     "@vitejs/plugin-react": "latest",

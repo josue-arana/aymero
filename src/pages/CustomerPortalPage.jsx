@@ -2,6 +2,7 @@ import { useEffect, useMemo, useRef, useState } from 'react'
 import { ArrowLeft, MapPin, Phone } from 'lucide-react'
 import { useParams } from 'react-router-dom'
 import { PortalSummary } from '../components/portal/PortalSummary'
+import { AymeroLoader } from '../components/common/AymeroLoader'
 import { usePortalProjectData } from '../hooks/usePortalProjectData'
 import './customerPortalPage.css'
 import heroBackground from '../assets/portal/blue-bg.png'
@@ -62,10 +63,10 @@ function logPortalPhotoLoadError(error, meta = {}) {
   })
 }
 
-function ClientPortalPageContainer({ children, loading = false }) {
+function ClientPortalPageContainer({ children }) {
   return (
-    <main className={`client-portal-page${loading ? ' client-portal-page--loading' : ''}`}>
-      <div className={`client-portal-page__container${loading ? ' client-portal-page__container--loading' : ''}`}>
+    <main className="client-portal-page">
+      <div className="client-portal-page__container">
         {children}
       </div>
     </main>
@@ -90,17 +91,12 @@ function CustomerPortalNotFound({ onBack, canGoBack = false, isUnavailable = fal
 
 function CustomerPortalLoading({ t }) {
   return (
-    <ClientPortalPageContainer loading>
-      <div className="client-portal-loader" role="status" aria-live="polite">
-        <span className="client-portal-loader__mark" aria-hidden="true">
-          <span className="client-portal-loader__core" />
-        </span>
-        <div>
-          <h1 className="client-portal-loader__title">{t('loadingClientPortal')}</h1>
-          <p className="client-portal-loader__message">{t('loadingClientPortalHelp')}</p>
-        </div>
-      </div>
-    </ClientPortalPageContainer>
+    <AymeroLoader
+      variant="page"
+      title={t('loadingClientPortal')}
+      message={t('loadingClientPortalHelp')}
+      accessibleLabel={t('loadingClientPortal')}
+    />
   )
 }
 
