@@ -25,6 +25,7 @@ import {
   normalizeBrandColor,
   parseBrandColor,
 } from '../data/brandColors'
+import { normalizeSupportedLanguage } from '../utils/language'
 
 function getSettingsUiErrorMessage(error, t) {
   if (error?.code === 'ANALYTICS_MODE_COLUMN_MISSING') {
@@ -35,7 +36,7 @@ function getSettingsUiErrorMessage(error, t) {
 }
 
 export function SettingsPage({ settings, onSaveSettings, onOpenCompanySetup, onCreateSampleData, onUpdateSampleData, onRemoveSampleData, onReopenSampleGuide, onOpenSampleWorkspace, language, setLanguage, portalLanguage, setPortalLanguage, t }) {
-  const { contractor, company: authCompany, contractorAccess, session } = useAuth()
+  const { contractor, company: authCompany, session } = useAuth()
   const { showToast } = useToast()
   const [draft, setDraft] = useState(settings)
   const [successMessage, setSuccessMessage] = useState('')
@@ -65,48 +66,6 @@ export function SettingsPage({ settings, onSaveSettings, onOpenCompanySetup, onC
     setBrandColorError('')
   }, [draft?.company?.primaryColor])
 
-  // Try to load canonical settings from the data provider (no-op in local
-  // mode). If the data provider returns a value, use it; otherwise keep the
-  // `settings` prop provided by App.jsx as the source of truth.
-  useEffect(() => {
-    let mounted = true
-    async function loadSettings() {
-      if (!dataProvider?.settings?.getSettings) return
-      if (USE_SUPABASE_SETTINGS && contractorAccess?.membershipStatus !== 'active') {
-        setSettingsLoadError(t('authContractorSetupRequiredMessage'))
-        return
-      }
-
-      try {
-        const res = await dataProvider.settings.getSettings({ contractorId })
-        if (!mounted) return
-
-        if (res?.error) {
-          setSettingsLoadError(getSettingsUiErrorMessage(res.error, t))
-          return
-        }
-
-        if (res && res.data) {
-          setSettingsLoadError('')
-          setDraft(res.data)
-          if (res.data.appLanguage) {
-            setLanguage(res.data.appLanguage)
-          }
-          if (res.data.portal?.defaultLanguage) {
-            setPortalLanguage(res.data.portal.defaultLanguage)
-          }
-        }
-      } catch {
-        if (!mounted) return
-        setSettingsLoadError(t('settingsLoadFailed'))
-      }
-    }
-    loadSettings()
-    return () => {
-      mounted = false
-    }
-  }, [contractorAccess?.membershipStatus, contractorId, setLanguage, setPortalLanguage])
-
   function updateSection(section, field, value) {
     setDraft((current) => ({
       ...current,
@@ -134,6 +93,18 @@ export function SettingsPage({ settings, onSaveSettings, onOpenCompanySetup, onC
       ...(current || {}),
       [field]: value,
     }))
+  }
+
+  function changeApplicationLanguage(nextLanguage) {
+    const normalizedLanguage = normalizeSupportedLanguage(nextLanguage, language)
+    updateRootField('appLanguage', normalizedLanguage)
+    setLanguage(normalizedLanguage)
+  }
+
+  function changePortalDefaultLanguage(nextLanguage) {
+    const normalizedLanguage = normalizeSupportedLanguage(nextLanguage, portalLanguage)
+    updatePortal('defaultLanguage', normalizedLanguage)
+    setPortalLanguage(normalizedLanguage)
   }
 
   function handleLogoUpload(event) {
@@ -568,8 +539,8 @@ export function SettingsPage({ settings, onSaveSettings, onOpenCompanySetup, onC
 
           <InfoCard title={t('languageSettings')} icon={Languages}>
             <div className="grid gap-4 sm:grid-cols-2">
-              <LanguageSelect label={t('contractorAppLanguage')} value={language} onChange={setLanguage} t={t} />
-              <LanguageSelect label={t('customerPortalDefaultLanguage')} value={portalLanguage} onChange={setPortalLanguage} t={t} />
+              <LanguageSelect label={t('contractorAppLanguage')} value={language} onChange={changeApplicationLanguage} t={t} />
+              <LanguageSelect label={t('customerPortalDefaultLanguage')} value={portalLanguage} onChange={changePortalDefaultLanguage} t={t} />
             </div>
           </InfoCard>
 

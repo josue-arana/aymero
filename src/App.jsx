@@ -639,7 +639,11 @@ function ContractorFlowApp() {
     contractorAccess?.membership?.preferred_language || user?.user_metadata?.preferred_language || ''
   )
   const storedAppLanguage = readStoredSupportedLanguage('contractorflow.language')
-  const resolvedAuthenticatedLanguage = localProfilePreferredLanguage
+  const persistedSettingsAppLanguage = companySettings?.contractorId === settingsContractorId
+    ? normalizeSupportedLanguageOrEmpty(companySettings?.appLanguage)
+    : ''
+  const resolvedAuthenticatedLanguage = persistedSettingsAppLanguage
+    || localProfilePreferredLanguage
     || remotePreferredLanguage
     || storedAppLanguage
     || resolveInitialSupportedLanguage('contractorflow.language', 'en')
@@ -981,8 +985,16 @@ function ContractorFlowApp() {
     const normalizedAppLanguage = normalizeSupportedLanguage(nextAppLanguage, language)
 
     if (USE_SUPABASE_SETTINGS && (!settingsContractorId || contractorAccess?.membershipStatus !== 'active')) {
-      return
+      return {
+        data: null,
+        error: {
+          message: t('authContractorSetupRequiredMessage'),
+          code: 'MISSING_CONTRACTOR_ID',
+        },
+      }
     }
+
+    settingsMutationVersionRef.current += 1
 
     try {
       const response = await dataProvider?.settings?.updateSettings?.(
@@ -1004,23 +1016,45 @@ function ContractorFlowApp() {
           // eslint-disable-next-line no-console
           console.warn('[dev] App language persistence failed.', response.error)
         }
-        return
+        return response
       }
 
       if (response?.data) {
         setCompanySettings(createDefaultCompanySettings(response.data))
       }
+
+      return response || { data: null, error: null, skipped: true }
     } catch (error) {
       if (import.meta.env.DEV) {
         // eslint-disable-next-line no-console
         console.warn('[dev] App language persistence threw unexpectedly.', error)
       }
+
+      return {
+        data: null,
+        error: {
+          message: error?.message || t('settingsSaveFailed'),
+          code: error?.code || 'SETTINGS_LANGUAGE_SAVE_FAILED',
+        },
+      }
+    } finally {
+      settingsMutationVersionRef.current += 1
     }
   }
 
-  function handleAppLanguageChange(nextLanguage) {
+  async function handleAppLanguageChange(nextLanguage) {
     const normalizedLanguage = normalizeSupportedLanguage(nextLanguage, language)
+    const lastConfirmedLanguage = persistedSettingsAppLanguage || normalizeSupportedLanguage(language, 'en')
     setLanguage(normalizedLanguage)
+
+    const settingsResponse = await syncStoredLanguageSettings(normalizedLanguage)
+
+    if (settingsResponse?.error) {
+      setLanguage(lastConfirmedLanguage)
+      showToast(settingsResponse.error.message || t('settingsSaveFailed'), 'error')
+      return settingsResponse
+    }
+
     syncActiveUserProfileLanguage(normalizedLanguage)
 
     if (isAuthenticated || !USE_AUTH) {
@@ -1028,7 +1062,7 @@ function ContractorFlowApp() {
       void persistPreferredLanguage(normalizedLanguage)
     }
 
-    void syncStoredLanguageSettings(normalizedLanguage)
+    return settingsResponse
   }
 
   function upsertPersistedEstimateRecord(estimateRecord) {
@@ -1109,14 +1143,11 @@ function ContractorFlowApp() {
     }
 
     const normalizedLanguage = normalizeSupportedLanguage(resolvedAuthenticatedLanguage, 'en')
-
-    if (normalizedLanguage === language) {
-      return
-    }
-
-    setLanguage(normalizedLanguage)
+    setLanguage((currentLanguage) => (
+      currentLanguage === normalizedLanguage ? currentLanguage : normalizedLanguage
+    ))
     syncActiveUserProfileLanguage(normalizedLanguage)
-  }, [isAuthenticated, isLoading, language, resolvedAuthenticatedLanguage])
+  }, [isAuthenticated, isLoading, resolvedAuthenticatedLanguage])
 
   useEffect(() => {
     if (!USE_AUTH || !isAuthenticated || isLoading) {
@@ -1153,17 +1184,6 @@ function ContractorFlowApp() {
     if (USE_SUPABASE_CLIENTS) return
     writeStoredCustomClients(customClients)
   }, [customClients])
-
-  useEffect(() => {
-    setCompanySettings((current) => createDefaultCompanySettings({
-      ...(current || {}),
-      appLanguage: normalizeSupportedLanguage(language, current?.appLanguage || 'en'),
-      portal: {
-        ...(current?.portal || {}),
-        defaultLanguage: normalizeSupportedLanguage(portalLanguage, current?.portal?.defaultLanguage || 'en'),
-      },
-    }))
-  }, [language, portalLanguage])
 
   useEffect(() => {
     if (!USE_AUTH || contractorAccess?.membershipStatus !== 'active' || !settingsContractorId) {
@@ -1209,7 +1229,9 @@ function ContractorFlowApp() {
       }
 
       if (response?.data) {
-        setCompanySettings(createDefaultCompanySettings(response.data))
+        const persistedSettings = createDefaultCompanySettings(response.data)
+        setCompanySettings(persistedSettings)
+        setLanguage(normalizeSupportedLanguage(persistedSettings.appLanguage, 'en'))
         if (response.data.portal?.defaultLanguage) {
           setPortalLanguage(normalizeSupportedLanguage(response.data.portal.defaultLanguage, 'en'))
         }
