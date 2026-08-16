@@ -8,6 +8,7 @@ const corsHeaders = {
 }
 
 const tokenPattern = /^[a-zA-Z0-9_-]{20,200}$/
+const internalUuidPattern = /^[0-9a-f]{8}-[0-9a-f]{4}-[1-5][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i
 const projectStatusLabels: Record<string, string> = {
   lead: 'Lead',
   estimate: 'Estimate',
@@ -50,6 +51,7 @@ function mapEstimate(row: Record<string, unknown> | null) {
       : Number(row.deposit_percentage),
     materialsIncluded: row.materials_included !== false,
     paymentTerms: row.payment_terms || '',
+    estimateLanguage: row.estimate_language || '',
     status: row.status || '',
     dateCreated: row.created_at || '',
     createdAt: row.created_at || '',
@@ -144,15 +146,17 @@ Deno.serve(async (request) => {
   if (request.method !== 'POST') return jsonResponse({ error: 'Method not allowed.' }, 405)
 
   let token = ''
+  let resource = 'portal'
   try {
     const body = await request.json()
     token = String(body?.token || '').trim()
+    resource = body?.resource === 'estimate' ? 'estimate' : 'portal'
   } catch {
     return jsonResponse({ error: 'Invalid request.' }, 400)
   }
 
-  if (!tokenPattern.test(token)) {
-    return jsonResponse({ error: 'Client Portal Not Found.' }, 404)
+  if (!tokenPattern.test(token) || internalUuidPattern.test(token)) {
+    return jsonResponse({ error: resource === 'estimate' ? 'Estimate Not Found.' : 'Client Portal Not Found.' }, 404)
   }
 
   const supabaseUrl = Deno.env.get('SUPABASE_URL') || ''
@@ -162,6 +166,99 @@ Deno.serve(async (request) => {
   const admin = createClient(supabaseUrl, serviceRoleKey, {
     auth: { autoRefreshToken: false, persistSession: false },
   })
+
+  if (resource === 'estimate') {
+    const { data: estimateRow, error: estimateError } = await admin
+      .from('estimates')
+      .select('contractor_id, client_id, lead_id, estimate_number, title, scope_of_work, line_items, subtotal, discount_amount, tax_amount, total_amount, deposit_percentage, materials_included, payment_terms, estimate_language, status, created_at, updated_at')
+      .eq('public_share_token', token)
+      .is('archived_at', null)
+      .maybeSingle()
+
+    if (estimateError) return jsonResponse({ error: 'Estimate service unavailable.' }, 500)
+    if (!estimateRow) return jsonResponse({ error: 'Estimate Not Found.' }, 404)
+
+    const contractorId = estimateRow.contractor_id
+    const [settingsResult, leadResult] = await Promise.all([
+      admin
+        .from('company_settings')
+        .select('company_name, owner_name, phone, email, business_address, website, license_number, logo_file_path, primary_brand_color, accepted_payment_methods, default_payment_terms, default_estimate_expiration_days, customer_portal_language')
+        .eq('contractor_id', contractorId)
+        .is('archived_at', null)
+        .maybeSingle(),
+      estimateRow.lead_id
+        ? admin
+            .from('leads')
+            .select('client_id, name, address, service_type')
+            .eq('contractor_id', contractorId)
+            .eq('id', estimateRow.lead_id)
+            .is('archived_at', null)
+            .maybeSingle()
+        : Promise.resolve({ data: null, error: null }),
+    ])
+
+    if (settingsResult.error || leadResult.error) return jsonResponse({ error: 'Estimate service unavailable.' }, 500)
+
+    const lead = leadResult.data || {}
+    const clientId = estimateRow.client_id || lead.client_id || null
+    const clientResult = clientId
+      ? await admin
+          .from('clients')
+          .select('display_name, address, city, state, postal_code, preferred_language')
+          .eq('contractor_id', contractorId)
+          .eq('id', clientId)
+          .is('archived_at', null)
+          .maybeSingle()
+      : { data: null, error: null }
+
+    if (clientResult.error) return jsonResponse({ error: 'Estimate service unavailable.' }, 500)
+
+    const settings = settingsResult.data || {}
+    const client = clientResult.data || {}
+    const { status: internalEstimateStatus, ...publicEstimate } = mapEstimate(estimateRow)!
+    void internalEstimateStatus
+
+    return jsonResponse({
+      resource: 'estimate',
+      estimate: publicEstimate,
+      client: {
+        name: client.display_name || lead.name || '',
+        displayName: client.display_name || lead.name || '',
+        address: client.address || lead.address || '',
+        city: client.city || '',
+        state: client.state || '',
+        postalCode: client.postal_code || '',
+        preferredLanguage: client.preferred_language || '',
+      },
+      project: {
+        title: publicEstimate?.title || lead.service_type || '',
+        projectTitle: publicEstimate?.title || lead.service_type || '',
+        projectType: lead.service_type || '',
+        address: client.address || lead.address || '',
+      },
+      companySettings: {
+        company: {
+          name: settings.company_name || '',
+          ownerName: settings.owner_name || '',
+          phone: settings.phone || '',
+          email: settings.email || '',
+          address: settings.business_address || '',
+          website: settings.website || '',
+          licenseNumber: settings.license_number || '',
+          logo: settings.logo_file_path || '',
+          primaryColor: settings.primary_brand_color || '',
+          acceptedPaymentMethods: settings.accepted_payment_methods || { methods: [], otherLabel: '' },
+        },
+        defaults: {
+          paymentTerms: settings.default_payment_terms || '',
+          estimateExpirationDays: Number(settings.default_estimate_expiration_days || 30),
+        },
+        portal: {
+          defaultLanguage: settings.customer_portal_language || client.preferred_language || 'en',
+        },
+      },
+    })
+  }
 
   const { data: project, error: projectError } = await admin
     .from('projects')
@@ -205,7 +302,7 @@ Deno.serve(async (request) => {
 
   const [estimateResult, contractResult, paymentResult, eventResult, photoResult] = await Promise.all([
     showDocuments
-      ? admin.from('estimates').select('estimate_number, title, scope_of_work, line_items, subtotal, discount_amount, tax_amount, total_amount, deposit_percentage, materials_included, payment_terms, status, created_at, updated_at').eq('contractor_id', contractorId).eq('project_id', projectId).is('archived_at', null).order('created_at', { ascending: false }).limit(1).maybeSingle()
+      ? admin.from('estimates').select('estimate_number, title, scope_of_work, line_items, subtotal, discount_amount, tax_amount, total_amount, deposit_percentage, materials_included, payment_terms, estimate_language, status, created_at, updated_at').eq('contractor_id', contractorId).eq('project_id', projectId).is('archived_at', null).order('created_at', { ascending: false }).limit(1).maybeSingle()
       : Promise.resolve({ data: null, error: null }),
     showDocuments
       ? admin.from('contracts').select('contract_number, title, scope_of_work, terms, total_amount, deposit_amount, payment_terms, status, sent_at, signed_at, signed_by, created_at, updated_at').eq('contractor_id', contractorId).eq('project_id', projectId).is('archived_at', null).order('created_at', { ascending: false }).limit(1).maybeSingle()

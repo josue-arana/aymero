@@ -44,6 +44,10 @@ export function isPublicPortalPath(pathname = '') {
   return /^\/portal\/[^/]+\/?$/.test(String(pathname || ''))
 }
 
+export function isPublicEstimatePath(pathname = '') {
+  return /^\/estimate\/[^/]+\/?$/.test(String(pathname || ''))
+}
+
 export function isAuthenticationPath(pathname = '') {
   return AUTH_PATHS.has(normalizePathname(pathname))
 }
@@ -109,7 +113,9 @@ export function resolveHostnameRoute({
   const location = { pathname, search, hash }
 
   if (host.mode === 'unrestricted') {
-    return { action: 'allow', surface: host.surface, reason: host.reason }
+    return isPublicEstimatePath(pathname)
+      ? { action: 'public-estimate', surface: host.surface, reason: 'public-estimate-route' }
+      : { action: 'allow', surface: host.surface, reason: host.reason }
   }
 
   if (host.mode === 'blocked') {
@@ -117,12 +123,16 @@ export function resolveHostnameRoute({
   }
 
   if (host.surface === 'app') {
-    return isPublicPortalPath(pathname)
+    return isPublicPortalPath(pathname) || isPublicEstimatePath(pathname)
       ? redirectDecision('portal', origins, location, 'portal-route-on-app-host')
       : { action: 'allow', surface: 'app', reason: 'app-route' }
   }
 
   if (host.surface === 'portal') {
+    if (isPublicEstimatePath(pathname)) {
+      return { action: 'public-estimate', surface: 'portal', reason: 'public-estimate-route' }
+    }
+
     return isPublicPortalPath(pathname)
       ? { action: 'allow', surface: 'portal', reason: 'public-portal-route' }
       : { action: 'portal-not-found', surface: 'portal', reason: 'route-not-allowed-on-portal-host' }
@@ -137,14 +147,14 @@ export function resolveHostnameRoute({
       }
     }
 
-    if (isPublicPortalPath(pathname)) {
+    if (isPublicPortalPath(pathname) || isPublicEstimatePath(pathname)) {
       return redirectDecision('portal', origins, location, 'portal-route-on-auth-host')
     }
 
     return redirectDecision('app', origins, location, 'contractor-route-on-auth-host')
   }
 
-  if (isPublicPortalPath(pathname)) {
+  if (isPublicPortalPath(pathname) || isPublicEstimatePath(pathname)) {
     return redirectDecision('portal', origins, location, 'portal-route-on-site-host')
   }
 

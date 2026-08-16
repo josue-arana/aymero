@@ -206,6 +206,8 @@ function toAppEstimate(row) {
     materialsIncluded: Boolean(row?.materials_included),
     paymentTerms: row?.payment_terms || '',
     sampleDataKey: row?.sample_data_key || '',
+    publicShareToken: row?.public_share_token || '',
+    public_share_token: row?.public_share_token || '',
     estimateLanguage: normalizeSupportedLanguageOrEmpty(row?.estimate_language),
     status: mapStatusToUi(row?.status),
     sentAt: row?.sent_at || null,

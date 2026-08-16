@@ -30,6 +30,13 @@ export function buildPortalShareUrl(portalRouteId = '') {
   return buildPublicUrl(`/portal/${normalizedPortalRouteId}`, 'portal')
 }
 
+export function buildEstimateShareUrl(estimateToken = '') {
+  const normalizedToken = normalizeExplicitPublicRouteToken(estimateToken)
+  if (!normalizedToken) return ''
+
+  return buildPublicUrl(`/estimate/${normalizedToken}`, 'portal')
+}
+
 export function normalizePortalShareUrl(shareUrl = '') {
   const value = String(shareUrl || '').trim()
   if (!value) return ''
@@ -62,14 +69,46 @@ export function extractPortalRouteIdFromShareUrl(shareUrl = '') {
 const INTERNAL_UUID_PATTERN = /^[0-9a-f]{8}-[0-9a-f]{4}-[1-5][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i
 const PUBLIC_PORTAL_ROUTE_ID_PATTERN = /^[a-z0-9_-]+$/i
 
-function normalizeExplicitPublicPortalRouteId(value = '') {
-  const routeId = String(value || '').trim()
+function normalizeExplicitPublicRouteToken(value = '') {
+  const token = String(value || '').trim()
 
-  if (!routeId || INTERNAL_UUID_PATTERN.test(routeId) || !PUBLIC_PORTAL_ROUTE_ID_PATTERN.test(routeId)) {
+  if (
+    token.length < 20
+    || token.length > 200
+    || INTERNAL_UUID_PATTERN.test(token)
+    || !PUBLIC_PORTAL_ROUTE_ID_PATTERN.test(token)
+  ) {
     return ''
   }
 
-  return routeId
+  return token
+}
+
+function normalizeExplicitPublicPortalRouteId(value = '') {
+  return normalizeExplicitPublicRouteToken(value)
+}
+
+export function resolvePublicEstimateShareToken(record = {}) {
+  const candidates = [
+    record?.publicShareToken,
+    record?.public_share_token,
+    record?.estimate?.publicShareToken,
+    record?.estimate?.public_share_token,
+  ]
+
+  for (const candidate of candidates) {
+    const token = normalizeExplicitPublicRouteToken(candidate)
+    if (token) return token
+  }
+
+  return ''
+}
+
+export function resolvePublicEstimateShareUrl(record = {}) {
+  if (!hasUsableClientDeliveryOrigin()) return ''
+
+  const token = resolvePublicEstimateShareToken(record)
+  return token ? buildEstimateShareUrl(token) : ''
 }
 
 export function resolvePublicPortalRouteId(record = {}) {

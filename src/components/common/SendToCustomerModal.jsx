@@ -46,10 +46,8 @@ export function SendToCustomerModal({ isOpen, documentType = 'invoice', customer
         : documentType === 'portalLink'
           ? contentT('sendPortalSubject', { project: projectTitle })
           : contentT('sendInvoiceSubject', { project: projectTitle })
-    const clientLinkUnavailableMessage = contentT('clientMessageLinkUnavailable')
-
     const smsBody = requiresClientLink && !resolvedDocumentLink
-      ? clientLinkUnavailableMessage
+      ? ''
       : documentType === 'estimate'
       ? contentT('estimateSmsMessage', { name: firstName, project: projectTitle, total: amountValue, link: resolvedDocumentLink })
       : documentType === 'contract'
@@ -59,7 +57,7 @@ export function SendToCustomerModal({ isOpen, documentType = 'invoice', customer
           : contentT('invoiceSmsMessage', { name: firstName, project: projectTitle, amount: amountValue, dueDate, documentStatus: resolvedDocumentStatus })
 
     const emailBody = requiresClientLink && !resolvedDocumentLink
-      ? clientLinkUnavailableMessage
+      ? ''
       : documentType === 'estimate'
       ? contentT('estimateEmailBody', { name: firstName, project: projectTitle, total: amountValue, link: resolvedDocumentLink })
       : documentType === 'contract'
@@ -76,6 +74,9 @@ export function SendToCustomerModal({ isOpen, documentType = 'invoice', customer
     : requiresClientLink
       ? t('clientLinkUnavailable')
       : messageContent.resolvedDocumentStatus
+  const clientLinkUnavailableHelpKey = documentType === 'estimate'
+    ? 'estimateShareLinkUnavailableHelp'
+    : 'clientLinkUnavailableHelp'
 
   if (!isOpen) return null
 
@@ -141,7 +142,7 @@ export function SendToCustomerModal({ isOpen, documentType = 'invoice', customer
         {resolvedPortalUrl && <p className="mt-2 break-all text-slate-700">{t('shareUrl')}: <span className="font-bold">{resolvedPortalUrl}</span></p>}
         <p className="mt-2 text-slate-700">{t(requiresClientLink ? 'clientLinkStatus' : 'documentStatus')}: <span className="font-bold">{clientLinkStatus}</span></p>
         {requiresClientLink && !resolvedDocumentLink ? (
-          <p className="mt-2 text-sm leading-6 text-amber-700">{t('clientLinkUnavailableHelp')}</p>
+          <p className="mt-2 text-sm leading-6 text-amber-700">{t(clientLinkUnavailableHelpKey)}</p>
         ) : null}
       </div>
 
@@ -161,7 +162,7 @@ export function SendToCustomerModal({ isOpen, documentType = 'invoice', customer
         </div>
       </div>
 
-      <div className="mt-4 rounded-2xl border border-slate-200 bg-slate-50 p-4">
+      {hasRequiredClientLink ? <div className="mt-4 rounded-2xl border border-slate-200 bg-slate-50 p-4">
         {channel === 'email' && (
           <>
             <p className="text-xs font-bold uppercase tracking-wide text-slate-400">{t('subject')}</p>
@@ -172,7 +173,7 @@ export function SendToCustomerModal({ isOpen, documentType = 'invoice', customer
         <p className="mt-1 whitespace-pre-wrap text-sm leading-6 text-slate-700">
           {channel === 'email' ? messageContent.emailBody : messageContent.smsBody}
         </p>
-      </div>
+      </div> : null}
 
       <div className="mt-5 grid gap-3 sm:grid-cols-2">
         <button

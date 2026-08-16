@@ -117,7 +117,7 @@ function AuthHostBridge({ decision, environment, location }) {
   return null
 }
 
-export function HostnameRouteBoundary({ children }) {
+export function HostnameRouteBoundary({ children, publicEstimateElement = null }) {
   const location = useLocation()
   const hasLoggedConfigurationError = useRef(false)
   const { decision, environment } = useMemo(
@@ -155,6 +155,10 @@ export function HostnameRouteBoundary({ children }) {
 
   if (decision.action === 'configuration-error') {
     return <BoundaryMessage />
+  }
+
+  if (decision.action === 'public-estimate') {
+    return publicEstimateElement
   }
 
   return children

@@ -37,6 +37,7 @@ import { InvoicesPage } from './pages/InvoicesPage'
 import { InvoiceDetailRoute } from './pages/InvoiceDetailPage'
 import { CalendarPage } from './pages/CalendarPage'
 import { AuthSetupPage } from './pages/AuthSetupPage'
+import { PublicEstimatePage } from './pages/PublicEstimatePage'
 import { buildClientProfiles, getClientSlug } from './utils/clients'
 import { appRoutes } from './config/appRoutes'
 import { AuthProvider } from './contexts/AuthContext'
@@ -536,7 +537,7 @@ function logEstimateDevError(message, error, meta) {
 function App() {
   return (
     <BrowserRouter>
-      <HostnameRouteBoundary>
+      <HostnameRouteBoundary publicEstimateElement={<PublicEstimatePage />}>
         <ToastProvider>
           <AuthProvider>
             <ScrollToTop />

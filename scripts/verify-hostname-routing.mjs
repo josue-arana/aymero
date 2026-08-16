@@ -14,6 +14,7 @@ function decision(hostname, pathname, options = {}) {
 
 assert.equal(decision('app.aymero.co', '/dashboard').action, 'allow')
 assert.equal(decision('portal.aymero.co', '/portal/test-token').action, 'allow')
+assert.equal(decision('portal.aymero.co', '/estimate/test-estimate-token-123').action, 'public-estimate')
 assert.equal(decision('portal.aymero.co', '/dashboard').action, 'portal-not-found')
 assert.equal(decision('portal.aymero.co', '/settings').action, 'portal-not-found')
 assert.equal(decision('portal.aymero.co', '/').action, 'portal-not-found')
@@ -25,8 +26,10 @@ assert.equal(decision('aymero.co', '/dashboard').target, 'https://app.aymero.co/
 assert.equal(decision('aymero.co', '/').target, 'https://app.aymero.co/')
 assert.equal(decision('aymero.co', '/login').target, 'https://auth.aymero.co/login')
 assert.equal(decision('app.aymero.co', '/portal/test-token').target, 'https://portal.aymero.co/portal/test-token')
+assert.equal(decision('app.aymero.co', '/estimate/test-estimate-token-123').target, 'https://portal.aymero.co/estimate/test-estimate-token-123')
 assert.equal(decision('localhost', '/dashboard').action, 'allow')
 assert.equal(decision('127.0.0.1', '/portal/test-token').action, 'allow')
+assert.equal(decision('localhost', '/estimate/test-estimate-token-123').action, 'public-estimate')
 assert.equal(decision('deploy-preview-42--aymero.netlify.app', '/dashboard').action, 'allow')
 assert.equal(resolveHostnameRoute({
   hostname: 'deploy-preview-42--aymero.netlify.app',
