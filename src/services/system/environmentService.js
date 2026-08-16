@@ -62,13 +62,15 @@ export function getSupabaseEnvironmentConfig() {
 export function getPublicEnvironmentConfig() {
   const appUrl = normalizeOrigin(import.meta.env.VITE_APP_URL) || readWindowOrigin() || (import.meta.env.DEV ? DEFAULT_DEV_ORIGIN : '')
   const siteUrl = normalizeOrigin(import.meta.env.VITE_SITE_URL) || appUrl
-  const portalUrl = normalizeOrigin(import.meta.env.VITE_PORTAL_URL) || appUrl
+  const explicitPortalUrl = normalizeOrigin(import.meta.env.VITE_PORTAL_URL)
+  const portalUrl = explicitPortalUrl || appUrl
   const authUrl = normalizeOrigin(import.meta.env.VITE_AUTH_URL) || appUrl
 
   return {
     siteUrl,
     appUrl,
     portalUrl,
+    hasExplicitPortalUrl: Boolean(explicitPortalUrl),
     authUrl,
   }
 }

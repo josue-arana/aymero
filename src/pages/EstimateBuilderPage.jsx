@@ -8,7 +8,7 @@ import { EstimateFormattedText } from '../components/estimates/EstimateFormatted
 import { LightweightFormattedTextarea } from '../components/estimates/LightweightFormattedTextarea'
 import { PaginatedEstimatePreview } from '../components/estimates/PaginatedEstimatePreview'
 import { currency, formatDisplayDate } from '../utils/formatters'
-import { getPortalData } from '../utils/portal'
+import { getPortalData, resolvePublicPortalShareUrl } from '../utils/portal'
 import { archivePanelButtonClasses } from '../utils/buttonStyles'
 import { ConfirmRecordModal } from '../components/common/ConfirmRecordModal'
 import { SendToCustomerModal } from '../components/common/SendToCustomerModal'
@@ -16,7 +16,7 @@ import { ModalShell } from '../components/common/ModalShell'
 import { useToast } from '../components/common/ToastProvider'
 import dataProvider from '../services/dataProvider'
 import { useAuth } from '../contexts/AuthContext'
-import { USE_SUPABASE, USE_SUPABASE_ESTIMATES } from '../config/backendConfig'
+import { USE_SUPABASE, USE_SUPABASE_ESTIMATES, USE_SUPABASE_PROJECTS } from '../config/backendConfig'
 import { getProjectsContractorId } from '../services/system/projectsRuntimeService'
 import { readLinkedEstimateDraft, writeLinkedEstimateDrafts } from '../utils/estimateLinks'
 import { formatEstimateDisplayNumber, generateEstimateNumber } from '../utils/estimateNumber'
@@ -174,7 +174,7 @@ function buildEstimateDraftState({ savedEstimate = {}, lead, companySettings, t 
   }
 }
 
-export function EstimateBuilderPage({ lead, clientRecord = null, t, appLanguage = 'en', companySettings, isArchived = false, projectAvailable = true, isOrphanedProject = false, onBack, backLabel, onSaveEstimate, onSendEstimate, onConvert, onSyncContract, onOpenContract, onArchiveEstimate, onRestoreEstimate, onDeleteEstimate }) {
+export function EstimateBuilderPage({ lead, clientRecord = null, t, appLanguage = 'en', companySettings, isArchived = false, projectAvailable = true, publicPortalLink = '', isOrphanedProject = false, onBack, backLabel, onSaveEstimate, onSendEstimate, onConvert, onSyncContract, onOpenContract, onArchiveEstimate, onRestoreEstimate, onDeleteEstimate }) {
   const { showToast } = useToast()
   const pdfTemplateRef = useRef(null)
   const draftDirtyRef = useRef(false)
@@ -893,7 +893,7 @@ export function EstimateBuilderPage({ lead, clientRecord = null, t, appLanguage 
         </aside>
       </div>
       <ConfirmRecordModal isOpen={Boolean(confirmAction)} mode={confirmAction?.mode === 'delete' ? 'delete' : 'archive'} title={confirmAction?.mode === 'delete' ? t('confirmPermanentDelete') : confirmAction?.mode === 'sync-contract' ? t('confirmSyncSignedContract') : t('confirmArchive')} message={confirmAction?.mode === 'delete' ? t('permanentDeleteHelp') : confirmAction?.mode === 'sync-contract' ? t('signedContractSyncWarning') : t('archiveHelp')} confirmLabel={confirmAction?.mode === 'delete' ? t('deletePermanently') : confirmAction?.mode === 'sync-contract' ? t('syncContractFromEstimate') : t('archive')} onCancel={() => setConfirmAction(null)} onConfirm={async () => { if (confirmAction?.mode === 'archive') { await onArchiveEstimate?.() } if (confirmAction?.mode === 'delete') { await onDeleteEstimate?.(); onBack?.() } if (confirmAction?.mode === 'sync-contract') { await handleSyncContract(true) } setConfirmAction(null) }} t={t} />
-      <SendToCustomerModal isOpen={showSendModal} documentType="estimate" customer={{ name: lead.client, phone: lead.phone, email: lead.email }} projectTitle={lead.projectTitle || lead.projectType} amountLabel={t('estimatedTotal')} amountValue={currency.format(estimateTotal)} onClose={() => setShowSendModal(false)} onSent={async () => {
+      <SendToCustomerModal isOpen={showSendModal} documentType="estimate" customer={{ name: lead.client, phone: lead.phone, email: lead.email }} projectTitle={lead.projectTitle || lead.projectType} amountLabel={t('estimatedTotal')} amountValue={currency.format(estimateTotal)} documentLink={publicPortalLink} onClose={() => setShowSendModal(false)} onSent={async () => {
         const result = await persistEstimate({ status: 'Sent' }, { closeSendModal: true })
         return Boolean(result)
       }} t={t} contentT={estimateT} />
@@ -951,6 +951,7 @@ export function EstimateBuilderRoute({ companySettings, leads, clients = [], est
   const sourceLeadId = location.state?.leadId
   const sourceProjectId = location.state?.projectId || projectId
   const [loadedEstimate, setLoadedEstimate] = useState(cachedDirectEstimate)
+  const [linkedProject, setLinkedProject] = useState(null)
   const [directLoadState, setDirectLoadState] = useState({ loading: isDirectEstimateRoute, error: '' })
   const [projectAvailable, setProjectAvailable] = useState(!isDirectEstimateRoute)
   const [isOrphanedProject, setIsOrphanedProject] = useState(false)
@@ -1007,6 +1008,7 @@ export function EstimateBuilderRoute({ companySettings, leads, clients = [], est
 
     async function loadEstimate() {
       if (isDirectEstimateRoute) {
+        setLinkedProject(null)
         setDirectLoadState({ loading: true, error: '' })
         let directEstimate = cachedDirectEstimate
 
@@ -1027,6 +1029,7 @@ export function EstimateBuilderRoute({ companySettings, leads, clients = [], est
         setLoadedEstimate(directEstimate)
 
         if (!directEstimate) {
+          setLinkedProject(null)
           setProjectAvailable(false)
           setIsOrphanedProject(false)
           setDirectLoadState({ loading: false, error: t('estimateNotFound') })
@@ -1035,18 +1038,29 @@ export function EstimateBuilderRoute({ companySettings, leads, clients = [], est
 
         const relatedProjectId = directEstimate.projectId || directEstimate.project_id || null
         if (!relatedProjectId) {
+          setLinkedProject(null)
           setProjectAvailable(false)
           setIsOrphanedProject(false)
-        } else if (USE_SUPABASE || USE_SUPABASE_ESTIMATES) {
-          const projectResponse = await dataProvider.projects.getById(relatedProjectId, { contractorId })
-          if (!isCancelled) {
-            const hasActiveProject = Boolean(!projectResponse?.error && projectResponse?.data?.id && !isArchivedProject(projectResponse.data))
-            setProjectAvailable(hasActiveProject)
-            setIsOrphanedProject(Boolean(!projectResponse?.error && !hasActiveProject))
+        } else if (USE_SUPABASE || USE_SUPABASE_PROJECTS) {
+          try {
+            const projectResponse = await dataProvider.projects.getById(relatedProjectId, { contractorId })
+            if (!isCancelled) {
+              const hasActiveProject = Boolean(!projectResponse?.error && projectResponse?.data?.id && !isArchivedProject(projectResponse.data))
+              setLinkedProject(hasActiveProject ? projectResponse.data : null)
+              setProjectAvailable(hasActiveProject)
+              setIsOrphanedProject(Boolean(!projectResponse?.error && !hasActiveProject))
+            }
+          } catch {
+            if (!isCancelled) {
+              setLinkedProject(null)
+              setProjectAvailable(false)
+              setIsOrphanedProject(false)
+            }
           }
         } else {
           const relatedProject = findLeadByProjectLookup(leads, relatedProjectId)
           const hasActiveProject = Boolean(relatedProject && !isArchivedProject(relatedProject))
+          setLinkedProject(hasActiveProject ? relatedProject : null)
           setProjectAvailable(hasActiveProject)
           setIsOrphanedProject(!hasActiveProject)
         }
@@ -1130,6 +1144,56 @@ export function EstimateBuilderRoute({ companySettings, leads, clients = [], est
     }
   }, [cachedDirectEstimate, contractorId, estimateId, isDirectEstimateRoute, leads, projectId, routeLead?.estimateId, routeLead?.id, routeLead?.portal?.estimate?.id, routeLead?.projectId, routeLead?.project_id, sourceLeadId, t])
 
+  useEffect(() => {
+    if (isDirectEstimateRoute) return undefined
+
+    let isCancelled = false
+    const relatedProjectId = routeLead?.projectId || routeLead?.project_id || projectId || null
+
+    async function loadLinkedProject() {
+      if (!routeLead?.id || !relatedProjectId) {
+        setLinkedProject(null)
+        setProjectAvailable(false)
+        setIsOrphanedProject(false)
+        return
+      }
+
+      if (USE_SUPABASE || USE_SUPABASE_PROJECTS) {
+        setLinkedProject(null)
+        setProjectAvailable(false)
+
+        try {
+          const response = await dataProvider.projects.getById(relatedProjectId, { contractorId })
+          if (isCancelled) return
+
+          const hasActiveProject = Boolean(!response?.error && response?.data?.id && !isArchivedProject(response.data))
+          setLinkedProject(hasActiveProject ? response.data : null)
+          setProjectAvailable(hasActiveProject)
+          setIsOrphanedProject(Boolean(!response?.error && !hasActiveProject))
+        } catch {
+          if (!isCancelled) {
+            setLinkedProject(null)
+            setProjectAvailable(false)
+            setIsOrphanedProject(false)
+          }
+        }
+        return
+      }
+
+      const relatedProject = findLeadByProjectLookup(leads, relatedProjectId)
+      const hasActiveProject = Boolean(relatedProject && !isArchivedProject(relatedProject))
+      setLinkedProject(hasActiveProject ? relatedProject : null)
+      setProjectAvailable(hasActiveProject)
+      setIsOrphanedProject(!hasActiveProject)
+    }
+
+    loadLinkedProject()
+
+    return () => {
+      isCancelled = true
+    }
+  }, [contractorId, isDirectEstimateRoute, leads, projectId, routeLead?.id, routeLead?.projectId, routeLead?.project_id])
+
   if (isDirectEstimateRoute && directLoadState.loading && !resolvedEstimate) {
     return <div className="min-h-64 rounded-3xl border border-slate-200 bg-white shadow-sm" aria-busy="true" />
   }
@@ -1159,6 +1223,9 @@ export function EstimateBuilderRoute({ companySettings, leads, clients = [], est
         },
       }
     : lead
+  const publicPortalLink = projectAvailable
+    ? resolvePublicPortalShareUrl((USE_SUPABASE || USE_SUPABASE_PROJECTS) ? linkedProject : (linkedProject || lead))
+    : ''
 
   return (
     <EstimateBuilderPage
@@ -1171,6 +1238,7 @@ export function EstimateBuilderRoute({ companySettings, leads, clients = [], est
       backLabel={backLabel}
       isArchived={Boolean(resolvedEstimate?.archivedAt || resolvedEstimate?.archived_at || archivedIds.includes(lead.id))}
       projectAvailable={isDirectEstimateRoute ? projectAvailable : true}
+      publicPortalLink={publicPortalLink}
       isOrphanedProject={isDirectEstimateRoute ? isOrphanedProject : false}
       onSaveEstimate={async (estimate) => {
         const result = await onSaveEstimate?.(lead.id, estimate)
