@@ -2622,18 +2622,24 @@ function buildWorkspaceJobRecord(job, clientRecord = null) {
         : null
     const linkedEstimate = persistedEstimates.find((item) => matchesLinkedEstimate(sourceLead, item))
       || (hasEstimateData(sourceLead?.portal?.estimate) ? sourceLead.portal.estimate : readLinkedEstimateDraft(sourceLead || leadId, leadId))
+    let transitionedEstimate = linkedEstimate || null
 
     if (nextEstimateStatus && linkedEstimate?.id) {
       try {
+        const transitionTimestamp = new Date().toISOString()
         const estimateResponse = await dataProvider.estimates.update(linkedEstimate.id, {
           ...linkedEstimate,
           status: nextEstimateStatus,
+          ...(nextEstimateStatus === 'Sent'
+            ? { sentAt: linkedEstimate.sentAt || linkedEstimate.sent_at || transitionTimestamp }
+            : { approvedAt: linkedEstimate.approvedAt || linkedEstimate.approved_at || transitionTimestamp }),
         }, {
           contractorId: projectsContractorId,
         })
 
         if (!estimateResponse?.error && estimateResponse?.data) {
-          upsertPersistedEstimateRecord(estimateResponse.data)
+          transitionedEstimate = { ...linkedEstimate, ...estimateResponse.data }
+          upsertPersistedEstimateRecord(transitionedEstimate)
         }
       } catch (error) {
         logEstimateDevError('[dev] Failed to sync estimate status during lead stage transition.', error, {
@@ -2652,6 +2658,12 @@ function buildWorkspaceJobRecord(job, clientRecord = null) {
       archivedAt: null,
       archived_at: null,
       isArchived: false,
+      ...(transitionedEstimate ? {
+        portal: {
+          ...(sourceLead.portal || {}),
+          estimate: transitionedEstimate,
+        },
+      } : {}),
     })
 
     setLeads((current) => current.map((lead) => (lead.id === leadId ? persistedLead : lead)))

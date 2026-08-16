@@ -158,7 +158,7 @@ function buildEstimateDraftState({ savedEstimate = {}, lead, companySettings, t 
   }
 }
 
-export function EstimateBuilderPage({ lead, clientRecord = null, t, appLanguage = 'en', companySettings, isArchived = false, archiveSource = null, projectAvailable = true, publicEstimateLink = '', isOrphanedProject = false, onBack, backLabel, onSaveEstimate, onConvert, onSyncContract, onOpenContract, onArchiveEstimate, onRestoreEstimate, onDeleteEstimate }) {
+export function EstimateBuilderPage({ lead, clientRecord = null, t, appLanguage = 'en', companySettings, isArchived = false, archiveSource = null, projectAvailable = true, publicEstimateLink = '', isOrphanedProject = false, openSendOnLoad = false, onOpenSendConsumed, onBack, backLabel, onSaveEstimate, onConvert, onSyncContract, onOpenContract, onArchiveEstimate, onRestoreEstimate, onDeleteEstimate }) {
   const { showToast } = useToast()
   const pdfTemplateRef = useRef(null)
   const draftDirtyRef = useRef(false)
@@ -195,6 +195,7 @@ export function EstimateBuilderPage({ lead, clientRecord = null, t, appLanguage 
   const [isEditing, setIsEditing] = useState(true)
   const [isSavingEstimate, setIsSavingEstimate] = useState(false)
   const estimateSaveGuardRef = useRef(false)
+  const autoSendAttemptedRef = useRef(false)
   const [isConvertingEstimate, setIsConvertingEstimate] = useState(false)
   const estimateConvertGuardRef = useRef(false)
   const [lineItemAmountInputs, setLineItemAmountInputs] = useState(initialDraftState.lineItemAmountInputs)
@@ -275,6 +276,14 @@ export function EstimateBuilderPage({ lead, clientRecord = null, t, appLanguage 
       setIsSettingsOpen(false)
     }
   }, [hasExistingEstimate])
+
+  useEffect(() => {
+    if (!openSendOnLoad || !hasExistingEstimate || isArchived || autoSendAttemptedRef.current) return
+
+    autoSendAttemptedRef.current = true
+    onOpenSendConsumed?.()
+    handleOpenSendModal()
+  }, [hasExistingEstimate, isArchived, openSendOnLoad])
 
   const lineTotal = lineItems.reduce((sum, item) => sum + Number(item.amount || 0), 0)
   const isDetailedPricing = pricingMode === detailedPricingMode
@@ -892,7 +901,7 @@ export function EstimateBuilderPage({ lead, clientRecord = null, t, appLanguage 
       </div>
       <ConfirmRecordModal isOpen={Boolean(confirmAction)} mode={confirmAction?.mode === 'delete' ? 'delete' : 'archive'} title={confirmAction?.mode === 'delete' ? t('confirmPermanentDelete') : confirmAction?.mode === 'sync-contract' ? t('confirmSyncSignedContract') : t('confirmArchive')} message={confirmAction?.mode === 'delete' ? t('permanentDeleteHelp') : confirmAction?.mode === 'sync-contract' ? t('signedContractSyncWarning') : t('archiveHelp')} confirmLabel={confirmAction?.mode === 'delete' ? t('deletePermanently') : confirmAction?.mode === 'sync-contract' ? t('syncContractFromEstimate') : t('archive')} onCancel={() => setConfirmAction(null)} onConfirm={async () => { if (confirmAction?.mode === 'archive') { await onArchiveEstimate?.() } if (confirmAction?.mode === 'delete') { await onDeleteEstimate?.(); onBack?.() } if (confirmAction?.mode === 'sync-contract') { await handleSyncContract(true) } setConfirmAction(null) }} t={t} />
       <SendToCustomerModal isOpen={showSendModal} documentType="estimate" customer={{ name: lead.client, phone: lead.phone, email: lead.email }} projectTitle={lead.projectTitle || lead.projectType} amountLabel={t('estimatedTotal')} amountValue={currency.format(estimateTotal)} documentLink={sendDocumentLink} onClose={() => setShowSendModal(false)} onSent={async () => {
-        const result = await persistEstimate({ status: 'Sent' }, { closeSendModal: true })
+        const result = await persistEstimate({ status: 'Sent', sentAt: savedEstimate.sentAt || savedEstimate.sent_at || new Date().toISOString() }, { closeSendModal: true })
         return Boolean(result)
       }} t={t} contentT={estimateT} />
       <ModalShell isOpen={showPreviewModal} onBackdropClick={() => setShowPreviewModal(false)} panelClassName="p-2 sm:max-w-[64rem] sm:p-3 lg:max-w-[68rem]">
@@ -948,6 +957,7 @@ export function EstimateBuilderRoute({ companySettings, leads, clients = [], est
   const estimateSource = location.state?.source
   const sourceLeadId = location.state?.leadId
   const sourceProjectId = location.state?.projectId || projectId
+  const openSendOnLoad = location.state?.openSendEstimate === true
   const [loadedEstimate, setLoadedEstimate] = useState(cachedDirectEstimate)
   const [linkedProject, setLinkedProject] = useState(null)
   const [directLoadState, setDirectLoadState] = useState({ loading: isDirectEstimateRoute, error: '' })
@@ -999,6 +1009,12 @@ export function EstimateBuilderRoute({ companySettings, leads, clients = [], est
     }
 
     navigate(-1)
+  }
+
+  function handleOpenSendConsumed() {
+    const nextState = { ...(location.state || {}) }
+    delete nextState.openSendEstimate
+    navigate(location.pathname, { replace: true, state: nextState })
   }
 
   useEffect(() => {
@@ -1251,6 +1267,8 @@ export function EstimateBuilderRoute({ companySettings, leads, clients = [], est
       projectAvailable={isDirectEstimateRoute ? projectAvailable : true}
       publicEstimateLink={publicEstimateLink}
       isOrphanedProject={isDirectEstimateRoute ? isOrphanedProject : false}
+      openSendOnLoad={openSendOnLoad}
+      onOpenSendConsumed={handleOpenSendConsumed}
       onSaveEstimate={async (estimate) => {
         const result = await onSaveEstimate?.(lead.id, estimate)
         if (result) {

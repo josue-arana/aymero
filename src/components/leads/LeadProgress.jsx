@@ -3,16 +3,16 @@ import { leadPipelineStages } from '../../utils/leadPipeline'
 
 const leadProgressSteps = [
   { id: 'inquiry', labelKey: 'leadProgressInquiry' },
+  { id: 'estimate', labelKey: 'leadProgressEstimate' },
   { id: 'estimate-sent', labelKey: 'leadProgressEstimateSent' },
-  { id: 'follow-up', labelKey: 'leadProgressFollowUp' },
   { id: 'approved', labelKey: 'leadProgressApproved' },
-  { id: 'converted-to-job', labelKey: 'leadProgressConvertedToJob' },
+  { id: 'job-created', labelKey: 'leadProgressJobCreated' },
 ]
 
 const progressIndexByStage = {
   [leadPipelineStages.NEW_LEAD]: 0,
-  [leadPipelineStages.ESTIMATE_CREATED]: 0,
-  [leadPipelineStages.ESTIMATE_SENT]: 1,
+  [leadPipelineStages.ESTIMATE_CREATED]: 1,
+  [leadPipelineStages.ESTIMATE_SENT]: 2,
   [leadPipelineStages.FOLLOW_UP]: 2,
   [leadPipelineStages.ESTIMATE_APPROVED]: 3,
   [leadPipelineStages.READY_FOR_JOB]: 3,

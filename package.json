@@ -14,7 +14,8 @@
     "verify:language-ownership": "node scripts/verify-language-ownership.mjs",
     "verify:document-print-layout": "node scripts/verify-document-print-layout.mjs",
     "verify:aymero-loader": "node scripts/verify-aymero-loader.mjs",
-    "verify:archive-workflow": "node scripts/verify-archive-workflow.mjs"
+    "verify:archive-workflow": "node scripts/verify-archive-workflow.mjs",
+    "verify:lead-lifecycle": "node scripts/verify-lead-lifecycle.mjs"
   },
   "dependencies": {
     "@vitejs/plugin-react": "latest",
