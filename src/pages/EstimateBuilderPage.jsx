@@ -300,7 +300,7 @@ export function EstimateBuilderPage({ lead, clientRecord = null, t, appLanguage 
   const linkedContract = lead?.portal?.contract || portal.contract || {}
   const linkedContractIsArchived = Boolean(linkedContract?.archivedAt || linkedContract?.archived_at || linkedContract?.isArchived || linkedContract?.archived)
   const estimateT = useMemo(() => createTranslator(estimateOutputLanguage), [estimateOutputLanguage])
-  const paymentTermOptions = useMemo(() => getPaymentTermOptions(estimateT, paymentTerms), [estimateT, paymentTerms])
+  const paymentTermOptions = useMemo(() => getPaymentTermOptions(t, paymentTerms), [paymentTerms, t])
   const previewEstimateNumber = formatEstimateDisplayNumber(
     savedEstimate.number || savedEstimate.estimateNumber || generateEstimateNumber(lead),
     lead
@@ -691,7 +691,7 @@ export function EstimateBuilderPage({ lead, clientRecord = null, t, appLanguage 
                       <textarea value={paymentTerms} onChange={(event) => { markDraftDirty(); setPaymentTerms(event.target.value) }} rows={4} className="w-full rounded-2xl border border-slate-200 bg-slate-50 p-4 text-sm leading-6 outline-none focus:border-blue-500 focus:ring-4 focus:ring-blue-100" />
                     )
                   ) : (
-                    <div className="rounded-2xl bg-slate-50 p-4 text-sm leading-6 text-slate-700 whitespace-pre-line">{getPaymentTermLabel(paymentTerms, estimateT)}</div>
+                    <div className="rounded-2xl bg-slate-50 p-4 text-sm leading-6 text-slate-700 whitespace-pre-line">{getPaymentTermLabel(paymentTerms, t)}</div>
                   )}
                 </div>
                 {!isDetailedPricing ? (
@@ -863,7 +863,7 @@ export function EstimateBuilderPage({ lead, clientRecord = null, t, appLanguage 
         </section>
 
         <aside className="min-w-0 space-y-4 lg:sticky lg:top-24 lg:self-start">
-          <EstimatePreviewCard {...estimatePreviewProps} />
+          <EstimatePreviewCard {...estimatePreviewProps} uiT={t} />
           {!isEditing && (
             <button disabled={isEstimateActionPending} onClick={() => setIsEditing(true)} className="w-full rounded-2xl border border-slate-200 bg-white px-4 py-4 text-sm font-bold text-slate-800 hover:bg-slate-50 disabled:cursor-not-allowed disabled:opacity-60">{t('editEstimate')}</button>
           )}
@@ -900,7 +900,7 @@ export function EstimateBuilderPage({ lead, clientRecord = null, t, appLanguage 
       <ModalShell isOpen={showPreviewModal} onBackdropClick={() => setShowPreviewModal(false)} panelClassName="p-2 sm:max-w-[64rem] sm:p-3 lg:max-w-[68rem]">
         <div className="rounded-3xl bg-white text-slate-950">
           <div className="p-1">
-            <PaginatedEstimatePreview t={estimateT}>
+            <PaginatedEstimatePreview uiT={t}>
               <EstimatePdfTemplate {...estimatePreviewProps} />
             </PaginatedEstimatePreview>
           </div>
@@ -923,12 +923,12 @@ export function EstimateBuilderPage({ lead, clientRecord = null, t, appLanguage 
   )
 }
 
-function EstimatePreviewCard(props) {
+function EstimatePreviewCard({ uiT, t: documentT, ...documentProps }) {
   return (
-    <InfoCard title={props.t('previewEstimate')} bodyClassName="min-w-0 overflow-hidden">
+    <InfoCard title={uiT('previewEstimate')} bodyClassName="min-w-0 overflow-hidden">
       <div className="rounded-[28px] bg-slate-50 p-2 sm:p-3">
-        <PaginatedEstimatePreview t={props.t}>
-          <EstimatePdfTemplate {...props} />
+        <PaginatedEstimatePreview uiT={uiT}>
+          <EstimatePdfTemplate {...documentProps} t={documentT} />
         </PaginatedEstimatePreview>
       </div>
     </InfoCard>

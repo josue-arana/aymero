@@ -461,7 +461,7 @@ export function ContractPreviewPage({ lead, clientRecord = null, t, appLanguage 
       <ModalShell isOpen={showPreviewModal} onBackdropClick={() => setShowPreviewModal(false)} panelClassName="p-2 sm:max-w-[64rem] sm:p-3 lg:max-w-[68rem]">
         <div className="rounded-3xl bg-white text-slate-950">
           <div className="p-1">
-            <PaginatedContractPreview t={contractT}>
+            <PaginatedContractPreview uiT={t}>
               <ContractPdfTemplate {...contractPreviewProps} />
             </PaginatedContractPreview>
           </div>
@@ -499,7 +499,7 @@ function ContractDocument({ isEditing, lead, company, contractDate, contractNumb
     <div className="space-y-5 text-sm leading-6 text-slate-700">
       {!isEditing ? (
         <div className="overflow-hidden rounded-[28px] bg-slate-50 p-2 sm:p-3">
-          <PaginatedContractPreview t={contractT}>
+          <PaginatedContractPreview uiT={t}>
             <ContractPdfTemplate
               company={company}
               lead={lead}
@@ -529,7 +529,7 @@ function ContractDocument({ isEditing, lead, company, contractDate, contractNumb
             <div className="rounded-2xl border border-slate-200 bg-slate-50 p-4">
               <p className="text-base font-bold text-slate-950">{t('workBreakdown')}</p>
               <p className="mt-2 text-sm leading-6 text-slate-500">{t('contractWorkBreakdownHelp')}</p>
-              <ContractWorkBreakdownList workBreakdown={workBreakdown} t={contractT} />
+              <ContractWorkBreakdownList workBreakdown={workBreakdown} t={t} />
             </div>
           ) : null}
           <ContractSection title={t('projectScope')} value={scope} onChange={setScope} isEditing={isEditing} highlighted />
