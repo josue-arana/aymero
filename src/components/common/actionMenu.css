@@ -1,0 +1,67 @@
+.aymero-action-menu {
+  animation: aymero-action-menu-enter 140ms ease-out;
+  overscroll-behavior: contain;
+  transform-origin: top right;
+}
+
+.aymero-action-menu[data-placement^="top"] {
+  transform-origin: bottom right;
+}
+
+.aymero-action-menu[data-placement$="start"] {
+  transform-origin: top left;
+}
+
+.aymero-action-menu[data-placement="top-start"] {
+  transform-origin: bottom left;
+}
+
+.aymero-action-menu [role="menuitem"] > svg {
+  flex-shrink: 0;
+  margin-right: 0 !important;
+}
+
+.aymero-action-menu [role="menuitem"][data-tone="destructive"] {
+  color: #b91c1c !important;
+}
+
+.aymero-action-menu [role="menuitem"][data-tone="destructive"]:hover,
+.aymero-action-menu [role="menuitem"][data-tone="destructive"]:focus-visible {
+  background: #fef2f2 !important;
+}
+
+.aymero-action-menu [role="menuitem"][data-tone="positive"] {
+  color: #047857 !important;
+}
+
+.aymero-action-menu [role="menuitem"][data-tone="positive"]:hover,
+.aymero-action-menu [role="menuitem"][data-tone="positive"]:focus-visible {
+  background: #ecfdf5 !important;
+}
+
+.aymero-action-menu [role="menuitem"][data-tone="warning"] {
+  color: #b45309 !important;
+}
+
+.aymero-action-menu [role="menuitem"][data-tone="warning"]:hover,
+.aymero-action-menu [role="menuitem"][data-tone="warning"]:focus-visible {
+  background: #fffbeb !important;
+}
+
+@keyframes aymero-action-menu-enter {
+  from {
+    opacity: 0;
+    transform: translateY(-3px) scale(0.98);
+  }
+
+  to {
+    opacity: 1;
+    transform: translateY(0) scale(1);
+  }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .aymero-action-menu {
+    animation: none;
+  }
+}

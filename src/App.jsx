@@ -640,7 +640,6 @@ function ContractorFlowApp() {
   const isPortalRoute = Boolean(matchPath(appRoutes.portal, location.pathname))
   const isDeveloperRoute = ENABLE_DEVELOPER_ROUTES
     && [appRoutes.developerHealth, appRoutes.developerTranslations].includes(location.pathname)
-  const isMobileClientProfileRoute = Boolean(matchPath(appRoutes.clientProfile, location.pathname))
   const localProfilePreferredLanguage = normalizeSupportedLanguageOrEmpty(userProfilesByUserId[activeUserProfileKey]?.preferredLanguage || '')
   const remotePreferredLanguage = normalizeSupportedLanguageOrEmpty(
     contractorAccess?.membership?.preferred_language || user?.user_metadata?.preferred_language || ''
@@ -654,9 +653,7 @@ function ContractorFlowApp() {
     || remotePreferredLanguage
     || storedAppLanguage
     || resolveInitialSupportedLanguage('contractorflow.language', 'en')
-  const mainLayoutClassName = isMobileClientProfileRoute
-    ? 'px-0 py-0 lg:px-8 lg:py-6'
-    : 'px-4 py-6 sm:px-6 lg:px-8'
+  const mainLayoutClassName = 'px-4 py-6 sm:px-6 lg:px-8'
 
   const hasResolvedOnboardingSettings = Boolean(
     contractorAccess?.membershipStatus === 'active'
@@ -4438,7 +4435,7 @@ function buildWorkspaceJobRecord(job, clientRecord = null) {
       <Route path={appRoutes.jobs} element={<JobsPage leads={visibleLeads} clients={clients} archivedIds={archives.projectIds} sampleWorkspace={companySettings?.sampleWorkspace} onViewJob={openCalendarProject} onViewLead={openLead} onCreateJob={() => openJobModal()} onArchiveJob={archiveRecord.job} onRestoreJob={restoreRecord.job} onDeleteJob={deleteRecord.job} t={t} />} />
       <Route path={appRoutes.calendar} element={<CalendarPage leads={activeLeads} scheduleEvents={activeScheduleEvents} onCreateEvent={(event) => createScheduleEvent(event, 'event')} onExportEvent={exportScheduleEvent} onViewProject={openCalendarProject} onViewLead={openLead} onMarkComplete={markScheduleEventComplete} t={t} language={language} />} />
       <Route path={appRoutes.clients} element={<ClientsPage leads={visibleLeads} customClients={customClients} archivedClientIds={archives.clientIds} onOpenClient={openClient} onCreateClient={createClient} onArchiveClient={archiveRecord.client} onRestoreClient={restoreRecord.client} onDeleteClient={deleteRecord.client} language={language} t={t} />} />
-      <Route path={appRoutes.clientProfile} element={<ClientProfilePage leads={visibleLeads} customClients={customClients} archivedClientIds={archives.clientIds} onBack={() => navigate('/clients')} onOpenProject={openProject} onOpenLead={openLead} onOpenEstimate={openEstimateForLead} onOpenContract={openContractForLead} onCreateJob={(client) => openJobModal({ clientId: client?.id, client })} onUpdateClient={updateClient} onArchiveClient={archiveRecord.client} onRestoreClient={restoreRecord.client} onDeleteClient={deleteRecord.client} language={language} setLanguage={handleAppLanguageChange} t={t} />} />
+      <Route path={appRoutes.clientProfile} element={<ClientProfilePage leads={visibleLeads} customClients={customClients} archivedClientIds={archives.clientIds} onBack={() => navigate('/clients')} onOpenProject={openProject} onOpenLead={openLead} onOpenEstimate={openEstimateForLead} onOpenContract={openContractForLead} onCreateJob={(client) => openJobModal({ clientId: client?.id, client })} onUpdateClient={updateClient} onArchiveClient={archiveRecord.client} onRestoreClient={restoreRecord.client} onDeleteClient={deleteRecord.client} language={language} t={t} />} />
       <Route path={appRoutes.invoices} element={<InvoicesPage leads={visibleLeads} clients={clients} invoices={invoices} archivedIds={archives.invoiceIds} deletedIds={archives.deletedInvoiceIds} onViewInvoice={(invoiceId) => navigate(`/invoices/${invoiceId}`)} onRecordPayment={(invoiceId) => navigate(`/invoices/${invoiceId}`)} onArchiveInvoice={archiveRecord.invoice} onRestoreInvoice={restoreRecord.invoice} onDeleteInvoice={deleteRecord.invoice} onInvoiceSent={markInvoiceSent} t={t} appLanguage={language} />} />
       <Route path={appRoutes.invoiceDetail} element={<InvoiceDetailRoute companySettings={companySettings} leads={visibleLeads} clients={clients} invoices={invoices} invoicesLoaded={areInvoicesLoaded} archivedIds={archives.invoiceIds} deletedIds={archives.deletedInvoiceIds} onUpdateInvoice={updateInvoice} onRecordInvoicePayment={recordInvoicePayment} onMarkInvoicePaid={markInvoicePaid} onInvoiceSent={markInvoiceSent} onArchiveInvoice={archiveRecord.invoice} onRestoreInvoice={restoreRecord.invoice} onDeleteInvoice={deleteRecord.invoice} t={t} appLanguage={language} />} />
       <Route path={appRoutes.settings} element={<SettingsPage settings={companySettings} onSaveSettings={(settings) => { setCompanySettings(settings); showToast(t('settingsSaved')) }} onOpenCompanySetup={() => { setIsCompanySetupReopen(true); setOnboardingSessionActive(true) }} onCreateSampleData={installSampleWorkspace} onUpdateSampleData={updateInstalledSampleWorkspace} onRemoveSampleData={uninstallSampleWorkspace} onReopenSampleGuide={async () => { const result = await persistSampleGuide({ ...(companySettings?.sampleWorkspace?.guide || {}), dismissed: false }); if (!result?.error) navigate(appRoutes.dashboard); return result }} onOpenSampleWorkspace={() => navigate(appRoutes.dashboard)} language={language} setLanguage={setLanguage} portalLanguage={portalLanguage} setPortalLanguage={setPortalLanguage} t={t} />} />
@@ -4541,7 +4538,7 @@ function buildWorkspaceJobRecord(job, clientRecord = null) {
         <Sidebar isOpen={sidebarOpen} onClose={() => setSidebarOpen(false)} t={t} companySettings={companySettings} todaySummary={mobileTodaySummary} />
 
         <div className="lg:pl-[280px]">
-          <div className={isMobileClientProfileRoute ? 'hidden lg:block' : ''}>
+          <div>
             <Topbar
               onMenuClick={() => setSidebarOpen(true)}
               language={language}

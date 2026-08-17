@@ -421,7 +421,6 @@ function ProjectDetailPageContent({ lead, companySettings, clients = [], schedul
   const [showPaymentModal, setShowPaymentModal] = useState(false)
   const [editingPayment, setEditingPayment] = useState(null)
   const [paymentConfirmAction, setPaymentConfirmAction] = useState(null)
-  const [openPaymentMenuId, setOpenPaymentMenuId] = useState(null)
   const [showPhotoModal, setShowPhotoModal] = useState(false)
   const [projectPhotos, setProjectPhotos] = useState([])
   const [isLoadingPhotos, setIsLoadingPhotos] = useState(false)
@@ -432,7 +431,6 @@ function ProjectDetailPageContent({ lead, companySettings, clients = [], schedul
   const [failedPhotoIds, setFailedPhotoIds] = useState([])
   const [hiddenFallbackPhotoIds, setHiddenFallbackPhotoIds] = useState([])
   const [showPortalLinkModal, setShowPortalLinkModal] = useState(false)
-  const [openScheduleMenuId, setOpenScheduleMenuId] = useState(null)
   const [scheduleConfirmAction, setScheduleConfirmAction] = useState(null)
   const baseProject = useMemo(() => (
     USE_SUPABASE_PROJECTS
@@ -1294,7 +1292,6 @@ function ProjectDetailPageContent({ lead, companySettings, clients = [], schedul
       if (!onDeletePayment) {
         showToast(t('paymentDeleted'), 'success')
       }
-      setOpenPaymentMenuId(null)
       setPaymentConfirmAction(null)
     } catch (error) {
       showToast(error?.message || t('paymentDeleteFailed'), 'error')
@@ -1708,40 +1705,35 @@ function ProjectDetailPageContent({ lead, companySettings, clients = [], schedul
                       {payment.paymentMethod && <span>{t('paymentMethod')}: {payment.paymentMethod}</span>}
                     </div>
                   </div>
-                  <div className="relative flex shrink-0 items-start gap-2">
+                  <div className="flex shrink-0 items-start gap-2">
                     <p className="text-right text-base font-bold text-slate-950">{currency.format(Number(payment.amount || 0))}</p>
-                    <button
-                      onClick={() => setOpenPaymentMenuId((current) => current === payment.id ? null : payment.id)}
-                      className="rounded-2xl border border-slate-200 bg-white p-2 text-slate-600 hover:bg-slate-50"
-                      aria-label={t('paymentActions')}
-                    >
-                      <MoreVertical className="h-4 w-4" />
-                    </button>
-                    {openPaymentMenuId === payment.id && (
-                      <div className="absolute right-0 top-11 z-10 min-w-44 rounded-2xl border border-slate-200 bg-white p-2 shadow-lg">
-                        <button
-                          onClick={() => {
+                    <ActionMenu
+                      label={<MoreVertical className="h-4 w-4" aria-hidden="true" />}
+                      ariaLabel={t('paymentActions')}
+                      showChevron={false}
+                      buttonClassName="inline-flex min-h-11 min-w-11 items-center justify-center rounded-2xl border border-slate-200 bg-white p-2 text-slate-600 transition hover:bg-slate-50 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-blue-500 focus-visible:ring-offset-2"
+                      items={[
+                        {
+                          id: `edit-payment-${payment.id}`,
+                          label: t('editPayment'),
+                          icon: <Edit3 className="h-4 w-4" aria-hidden="true" />,
+                          onClick: () => {
                             setEditingPayment(payment)
                             setShowPaymentModal(true)
-                            setOpenPaymentMenuId(null)
-                          }}
-                          className="flex w-full items-center rounded-xl px-3 py-2 text-left text-sm font-semibold text-slate-700 hover:bg-slate-50"
-                        >
-                          <Edit3 className="mr-2 h-4 w-4" />
-                          {t('editPayment')}
-                        </button>
-                        <button
-                          onClick={() => {
+                          },
+                        },
+                        {
+                          id: `delete-payment-${payment.id}`,
+                          label: t('deletePayment'),
+                          icon: <Trash2 className="h-4 w-4" aria-hidden="true" />,
+                          tone: 'destructive',
+                          onClick: () => {
                             setPaymentConfirmAction({ payment })
-                            setOpenPaymentMenuId(null)
-                          }}
-                          className="flex w-full items-center rounded-xl px-3 py-2 text-left text-sm font-semibold text-red-700 hover:bg-red-50"
-                        >
-                          <Trash2 className="mr-2 h-4 w-4" />
-                          {t('deletePayment')}
-                        </button>
-                      </div>
-                    )}
+                          },
+                          className: 'text-red-700 hover:bg-red-50 focus-visible:bg-red-50',
+                        },
+                      ]}
+                    />
                   </div>
                 </div>
                 {payment.notes && (
@@ -1874,24 +1866,31 @@ function ProjectDetailPageContent({ lead, companySettings, clients = [], schedul
                   </div>
                   {event.notes && <p className="mt-2 text-sm text-slate-500">{event.notes}</p>}
                 </div>
-                <div className="relative flex shrink-0 items-start gap-2">
+                <div className="flex shrink-0 items-start gap-2">
                   <button onClick={() => onExportEvent?.(event)} className="inline-flex items-center justify-center gap-2 rounded-2xl border border-blue-200 bg-blue-50 px-3 py-2 text-xs font-bold text-blue-700 hover:bg-blue-100">
                     <Download className="h-4 w-4" /> {t('exportToCalendar')}
                   </button>
-                  <button onClick={() => setOpenScheduleMenuId((current) => current === event.id ? null : event.id)} className="rounded-2xl border border-slate-200 bg-white p-2 text-slate-600 hover:bg-slate-50" aria-label={t('eventActions')}>
-                    <MoreVertical className="h-4 w-4" />
-                  </button>
-                  {openScheduleMenuId === event.id && (
-                    <div className="absolute right-0 top-12 z-10 min-w-44 rounded-2xl border border-slate-200 bg-white p-2 shadow-lg">
-                      <button onClick={() => { onEditScheduleEvent?.(event); setOpenScheduleMenuId(null) }} className="flex w-full items-center rounded-xl px-3 py-2 text-left text-sm font-semibold text-slate-700 hover:bg-slate-50">
-                        {t('edit')}
-                      </button>
-                      <button onClick={() => { setScheduleConfirmAction({ mode: 'archive', event }); setOpenScheduleMenuId(null) }} className={archiveMenuItemClasses}>
-                        <Archive className="mr-2 h-4 w-4" />
-                        {t('archive')}
-                      </button>
-                    </div>
-                  )}
+                  <ActionMenu
+                    label={<MoreVertical className="h-4 w-4" aria-hidden="true" />}
+                    ariaLabel={t('eventActions')}
+                    showChevron={false}
+                    buttonClassName="inline-flex min-h-11 min-w-11 items-center justify-center rounded-2xl border border-slate-200 bg-white p-2 text-slate-600 transition hover:bg-slate-50 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-blue-500 focus-visible:ring-offset-2"
+                    items={[
+                      {
+                        id: `edit-event-${event.id}`,
+                        label: t('edit'),
+                        icon: <Edit3 className="h-4 w-4" aria-hidden="true" />,
+                        onClick: () => onEditScheduleEvent?.(event),
+                      },
+                      {
+                        id: `archive-event-${event.id}`,
+                        label: t('archive'),
+                        icon: <Archive className="h-4 w-4" aria-hidden="true" />,
+                        onClick: () => setScheduleConfirmAction({ mode: 'archive', event }),
+                        className: archiveMenuItemClasses,
+                      },
+                    ]}
+                  />
                 </div>
               </div>
             </article>
@@ -1918,38 +1917,40 @@ function ProjectDetailPageContent({ lead, companySettings, clients = [], schedul
                     </div>
                     <p className="mt-1 text-sm text-slate-600">{event.displayDate || event.date} · {event.location || currentLead.address || currentLead.location}</p>
                   </div>
-                  <div className="relative">
-                    <button onClick={() => setOpenScheduleMenuId((current) => current === event.id ? null : event.id)} className="rounded-2xl border border-slate-200 bg-white p-2 text-slate-600 hover:bg-slate-50" aria-label={t('eventActions')}>
-                      <MoreVertical className="h-4 w-4" />
-                    </button>
-                    {openScheduleMenuId === event.id && (
-                      <div className="absolute right-0 top-12 z-10 min-w-44 rounded-2xl border border-slate-200 bg-white p-2 shadow-lg">
-                        <button onClick={async () => {
+                  <ActionMenu
+                    label={<MoreVertical className="h-4 w-4" aria-hidden="true" />}
+                    ariaLabel={t('eventActions')}
+                    showChevron={false}
+                    buttonClassName="inline-flex min-h-11 min-w-11 items-center justify-center rounded-2xl border border-slate-200 bg-white p-2 text-slate-600 transition hover:bg-slate-50 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-blue-500 focus-visible:ring-offset-2"
+                    items={[
+                      {
+                        id: `restore-event-${event.id}`,
+                        label: t('restore'),
+                        icon: <Undo2 className="h-4 w-4" aria-hidden="true" />,
+                        onClick: async () => {
                           try {
                             const response = await dataProvider.events.restore?.(event.id, { contractorId })
-                            if (response?.error) {
-                              throw response.error
-                            }
+                            if (response?.error) throw response.error
                           } catch (err) {
-                            // ignore local-mode persistence errors
-                            if (USE_SUPABASE_EVENTS) {
-                              return
-                            }
+                            if (USE_SUPABASE_EVENTS) return
                           }
                           setProjectEventRecords((current) => sortProjectEvents(current.map((entry) => (
                             entry.id === event.id ? { ...entry, archivedAt: null, archived_at: null } : entry
                           ))))
                           onRestoreScheduleEvent?.(event.id)
-                          setOpenScheduleMenuId(null)
-                        }} className="flex w-full items-center rounded-xl px-3 py-2 text-left text-sm font-semibold text-emerald-700 hover:bg-emerald-50">
-                          {t('restore')}
-                        </button>
-                        <button onClick={() => { setScheduleConfirmAction({ mode: 'delete', event }); setOpenScheduleMenuId(null) }} className="flex w-full items-center rounded-xl px-3 py-2 text-left text-sm font-semibold text-red-700 hover:bg-red-50">
-                          {t('deletePermanently')}
-                        </button>
-                      </div>
-                    )}
-                  </div>
+                        },
+                        className: 'text-emerald-700 hover:bg-emerald-50 focus-visible:bg-emerald-50',
+                      },
+                      {
+                        id: `delete-event-${event.id}`,
+                        label: t('deletePermanently'),
+                        icon: <Trash2 className="h-4 w-4" aria-hidden="true" />,
+                        tone: 'destructive',
+                        onClick: () => setScheduleConfirmAction({ mode: 'delete', event }),
+                        className: 'text-red-700 hover:bg-red-50 focus-visible:bg-red-50',
+                      },
+                    ]}
+                  />
                 </div>
               </article>
             ))}

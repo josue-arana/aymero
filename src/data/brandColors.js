@@ -77,3 +77,14 @@ export function getReadableBrandTextColor(value, minimumContrast = 4.5) {
 
   return '#000000'
 }
+
+// Document templates share one resolver so preview, print, and export paths
+// receive identical, validated brand tokens from either persisted field shape.
+export function resolveDocumentBrandTokens(company = {}) {
+  const accentColor = normalizeBrandColor(company?.primaryColor || company?.primary_color)
+
+  return {
+    accentColor,
+    accentTextColor: getReadableBrandTextColor(accentColor),
+  }
+}

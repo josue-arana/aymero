@@ -17,7 +17,7 @@ import {
   waitForEstimateDocumentAssets,
 } from './estimatePagination'
 import { getPaymentTermLabel } from './paymentTerms'
-import { getReadableBrandTextColor, normalizeBrandColor } from '../data/brandColors'
+import { resolveDocumentBrandTokens } from '../data/brandColors'
 
 export { calculateEstimatePageBreakOffsets } from './estimatePagination'
 
@@ -212,8 +212,7 @@ function buildFallbackPdf({
   const contractorMessage = normalizedDocument.messageFromContractor.text
   const acceptedPaymentMethods = getAcceptedPaymentMethodLabels(company?.acceptedPaymentMethods, t)
   const validUntil = resolveValidUntil(normalizedDocument.validUntil, estimateDate)
-  const accentColor = normalizeBrandColor(company?.primaryColor || company?.primary_color)
-  const accentTextColor = getReadableBrandTextColor(accentColor)
+  const { accentColor, accentTextColor } = resolveDocumentBrandTokens(company)
   const pdf = new jsPDF({
     orientation: 'portrait',
     unit: 'pt',

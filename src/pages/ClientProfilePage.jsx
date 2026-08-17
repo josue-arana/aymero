@@ -1,6 +1,6 @@
 import { useMemo, useState } from 'react'
 import { useParams } from 'react-router-dom'
-import { Archive, ArrowLeft, BarChart3, BriefcaseBusiness, CalendarDays, CarFront, ChevronRight, Clock3, CreditCard, Edit3, FileSignature, Images, Languages, Mail, MapPin, MessageSquare, MoreVertical, Phone, Plus, Sparkles, Trash2, Undo2, WalletCards } from 'lucide-react'
+import { Archive, ArrowLeft, BarChart3, BriefcaseBusiness, CalendarDays, CarFront, ChevronRight, Clock3, CreditCard, Edit3, FileSignature, Images, Mail, MessageSquare, MoreVertical, Phone, Plus, Sparkles, Trash2, Undo2, WalletCards } from 'lucide-react'
 import { DetailRow } from '../components/ui/DetailRow'
 import { InfoCard } from '../components/ui/InfoCard'
 import { StatusBadge } from '../components/ui/StatusBadge'
@@ -24,13 +24,7 @@ import { calculateProjectPaymentSummary, dedupePayments } from '../utils/project
 import { getContractForProject, getEstimateForProject, getProjectsForClient, resolveLinkedProjectId } from '../utils/projectIdentity'
 import { ActionMenu } from '../components/common/ActionMenu'
 import { deriveProjectStatus } from '../utils/projectLifecycle'
-
-const unavailableClientContactValues = new Set(['(410) 555-0100', 'Address not added'])
-
-function getAvailableClientContactValue(value) {
-  const normalizedValue = String(value ?? '').trim()
-  return normalizedValue && !unavailableClientContactValues.has(normalizedValue) ? normalizedValue : ''
-}
+import { resolveClientContactActions } from '../utils/clientContactActions'
 
 function isClientArchived(client, archivedClientIds = []) {
   return Boolean(
@@ -39,18 +33,6 @@ function isClientArchived(client, archivedClientIds = []) {
       || client?.archived_at
       || archivedClientIds.includes(client?.id)
   )
-}
-
-function normalizePhoneLink(phone = '') {
-  const value = String(phone || '').trim()
-  if (!value) return ''
-  return value.replace(/[^\d+]/g, '')
-}
-
-function buildMapsHref(address = '') {
-  const value = String(address || '').trim()
-  if (!value) return ''
-  return `https://www.google.com/maps/search/?api=1&query=${encodeURIComponent(value)}`
 }
 
 function readProjectDisplayDate(project = {}, estimate = null, contract = null) {
@@ -166,7 +148,7 @@ function formatRelativeTimestamp(value, t = (key) => key) {
   return weeks === 1 ? `1 ${t('weekAgo')}` : `${weeks} ${t('weeksAgo')}`
 }
 
-export function ClientProfilePage({ leads, customClients = [], archivedClientIds = [], onBack, onOpenProject, onOpenLead, onOpenEstimate, onOpenContract, onCreateJob, onUpdateClient, onArchiveClient, onRestoreClient, onDeleteClient, language = 'en', setLanguage, t }) {
+export function ClientProfilePage({ leads, customClients = [], archivedClientIds = [], onBack, onOpenProject, onOpenLead, onOpenEstimate, onOpenContract, onCreateJob, onUpdateClient, onArchiveClient, onRestoreClient, onDeleteClient, language = 'en', t }) {
   const { clientId } = useParams()
   const [isEditOpen, setIsEditOpen] = useState(false)
   const [confirmAction, setConfirmAction] = useState(null)
@@ -179,13 +161,14 @@ export function ClientProfilePage({ leads, customClients = [], archivedClientIds
   const clients = useMemo(() => buildClientProfiles(leads, customClients), [leads, customClients])
   const client = clients.find((item) => item.id === clientId)
   const isArchived = isClientArchived(client, archivedClientIds)
-  const clientPhone = getAvailableClientContactValue(client?.phone)
-  const clientEmail = getAvailableClientContactValue(client?.email)
-  const clientAddress = getAvailableClientContactValue(client?.address)
-  const phoneHref = normalizePhoneLink(clientPhone)
-  const smsHref = phoneHref ? `sms:${phoneHref}` : ''
-  const mapsHref = buildMapsHref(clientAddress)
-  const emailHref = clientEmail ? `mailto:${clientEmail}` : ''
+  const clientContact = resolveClientContactActions(client)
+  const clientPhone = clientContact.phone
+  const clientEmail = clientContact.email
+  const clientAddress = clientContact.address
+  const phoneHref = clientContact.phoneHref
+  const smsHref = clientContact.smsHref
+  const mapsHref = clientContact.mapsHref
+  const emailHref = clientContact.emailHref
   const clientStatus = isArchived ? 'Archived' : 'Active'
   const hasClientContactInformation = Boolean(clientPhone || clientEmail || clientAddress)
   const clientProjects = useMemo(
@@ -483,12 +466,6 @@ export function ClientProfilePage({ leads, customClients = [], archivedClientIds
           onClick: () => setIsEditOpen(true),
         },
         {
-          id: 'toggle-language',
-          label: language === 'en' ? `🇪🇸 ${t('languageNameSpanish')}` : `🇺🇸 ${t('languageNameEnglish')}`,
-          icon: <Languages className="mr-2 h-4 w-4" />,
-          onClick: () => setLanguage?.(language === 'en' ? 'es' : 'en'),
-        },
-        {
           id: 'archive-client',
           label: t('archive'),
           icon: <Archive className="mr-2 h-4 w-4" />,
@@ -496,18 +473,16 @@ export function ClientProfilePage({ leads, customClients = [], archivedClientIds
           className: archiveMenuItemClasses,
         },
       ]
-  const mobileHeroActions = [
-    { id: 'drive', href: mapsHref, label: t('drive'), icon: CarFront, external: true, visible: Boolean(mapsHref) },
-    { id: 'call', href: phoneHref ? `tel:${phoneHref}` : '', label: t('call'), icon: Phone, visible: Boolean(phoneHref) },
-    { id: 'text', href: smsHref, label: t('text'), icon: MessageSquare, visible: Boolean(smsHref) },
-    { id: 'email', href: emailHref, label: t('email'), icon: Mail, visible: Boolean(emailHref) },
-  ].filter((action) => action.visible)
-  const desktopHeroActions = [
-    { id: 'drive', href: mapsHref, label: t('drive'), icon: CarFront, external: true },
-    { id: 'call', href: phoneHref ? `tel:${phoneHref}` : '', label: t('call'), icon: Phone },
-    { id: 'text', href: smsHref, label: t('text'), icon: MessageSquare },
-    { id: 'email', href: emailHref, label: t('email'), icon: Mail },
-  ]
+  const heroContactActions = [
+    mapsHref ? { id: 'drive', href: mapsHref, label: t('drive'), icon: CarFront, external: true } : null,
+    phoneHref ? { id: 'call', href: `tel:${phoneHref}`, label: t('call'), icon: Phone } : null,
+    smsHref ? { id: 'text', href: smsHref, label: t('text'), icon: MessageSquare } : null,
+    emailHref ? { id: 'email', href: emailHref, label: t('email'), icon: Mail } : null,
+  ].filter(Boolean)
+  const mobileHeroActionCount = heroContactActions.length + 1
+  const mobileHeroActionGridClasses = mobileHeroActionCount === 1
+    ? 'grid-cols-1'
+    : `grid-cols-2 ${mobileHeroActionCount % 2 === 1 ? '[&>*:last-child]:col-span-2' : ''} sm:grid-cols-3 sm:[&>*:last-child]:col-span-1`
   const primaryClientActionId = phoneHref ? 'call' : emailHref ? 'email' : mapsHref ? 'drive' : ''
 
   function renderMobileHeroAction({ id, href = '', label, icon: Icon, external = false }) {
@@ -538,10 +513,8 @@ export function ClientProfilePage({ leads, customClients = [], archivedClientIds
     const enabledClassName = isPrimary
       ? 'border-blue-500 bg-blue-500 text-white shadow-lg shadow-blue-950/25 hover:bg-blue-400'
       : 'border-white/15 bg-white/10 text-white hover:bg-white/15'
-    const className = `inline-flex min-h-12 items-center justify-center gap-2 rounded-2xl border px-4 py-3 text-sm font-bold transition focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-blue-200 focus-visible:ring-offset-2 focus-visible:ring-offset-slate-950 ${href ? enabledClassName : 'cursor-not-allowed border-white/10 bg-white/5 text-slate-500'}`
+    const className = `inline-flex min-h-12 items-center justify-center gap-2 rounded-2xl border px-4 py-3 text-sm font-bold transition focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-blue-200 focus-visible:ring-offset-2 focus-visible:ring-offset-slate-950 ${enabledClassName}`
     const content = <><Icon className="h-4 w-4" aria-hidden="true" /> {label}</>
-
-    if (!href) return <button key={id} type="button" disabled className={className}>{content}</button>
 
     return external ? (
       <a key={id} href={href} target="_blank" rel="noreferrer" className={className}>{content}</a>
@@ -573,8 +546,11 @@ function renderMobileAccountSummary() {
   }
 
   function renderMobileProjectsList(cards = projectCards) {
-    return cards.length ? cards.map(({ project, thumbnail, projectAddress, displayDate, contract, estimate, projectPayments, projectValue, remainingBalance, remainingBalanceAmount }) => (
-      <article key={project.id} onClick={() => (project.isProjectRecord ? onOpenProject(project.id) : onOpenLead?.(project.id))} className="flex items-center gap-3 rounded-3xl border border-slate-200 bg-white p-4 shadow-sm">
+    return cards.length ? cards.map(({ project, thumbnail, projectAddress, displayDate, contract, estimate, projectPayments, projectValue, remainingBalance, remainingBalanceAmount }) => {
+      const openProjectRecord = () => (project.isProjectRecord ? onOpenProject(project.id) : onOpenLead?.(project.id))
+
+      return (
+      <article key={project.id} className="flex items-center gap-3 rounded-3xl border border-slate-200 bg-white p-4 shadow-sm">
         {thumbnail ? (
           <div className="h-24 w-24 shrink-0 overflow-hidden rounded-2xl bg-slate-100">
             <img src={thumbnail} alt={project.projectTitle || project.projectType} className="h-full w-full object-cover" />
@@ -582,21 +558,25 @@ function renderMobileAccountSummary() {
         ) : null}
         <div className="min-w-0 flex-1">
           <div className="flex flex-wrap items-center gap-2">
-            <h3 className="truncate text-lg font-bold text-slate-950">{project.projectTitle || project.projectType}</h3>
+            <h3 className="break-words text-lg font-bold text-slate-950">{project.projectTitle || project.projectType}</h3>
             {(project.isProjectRecord || hasContractData(contract) || hasEstimateData(estimate) || project.latestStatus || project.projectStatus || project.status || getLatestProjectInvoice(project)?.status) ? <StatusBadge status={getContextualProjectStatus(project, estimate, contract, projectPayments)} t={t} /> : null}
           </div>
           {projectAddress ? <p className="mt-1 line-clamp-2 text-sm text-slate-500">{projectAddress}</p> : null}
           {displayDate ? <p className="mt-1 text-sm text-slate-600">{displayDate}</p> : null}
-          <div className="mt-3 flex items-end justify-between gap-3">
+          <div className="mt-3 flex flex-col items-start gap-2">
             <div>
               <p className="text-2xl font-bold tracking-tight text-slate-950">{projectValue}</p>
               <p className="text-sm font-medium text-slate-500">{Number(remainingBalanceAmount || 0) > 0 ? `${t('remaining')} ${remainingBalance}` : t('paidInFull')}</p>
             </div>
-            <ChevronRight className="h-5 w-5 shrink-0 text-slate-400" />
+            <button type="button" onClick={openProjectRecord} className="inline-flex min-h-11 shrink-0 items-center gap-1 rounded-xl border border-slate-200 px-3 text-sm font-semibold text-slate-600 transition hover:bg-slate-100 hover:text-slate-950 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-blue-500" aria-label={`${t('openProject')}: ${project.projectTitle || project.projectType}`}>
+              <span>{project.isProjectRecord ? t('openProject') : t('view')}</span>
+              <ChevronRight className="h-4 w-4" aria-hidden="true" />
+            </button>
           </div>
         </div>
       </article>
-    )) : <div className="rounded-3xl border border-dashed border-slate-300 bg-slate-50 p-5 text-sm text-slate-500">{t('noJobs')}</div>
+      )
+    }) : <div className="rounded-3xl border border-dashed border-slate-300 bg-slate-50 p-5 text-sm text-slate-500">{t('noJobs')}</div>
   }
 
   function renderMobileActivity() {
@@ -628,20 +608,24 @@ function renderMobileAccountSummary() {
   }
 
   return (
-    <div className="space-y-6">
-      <div className="space-y-4 overflow-x-hidden bg-[#f5f7fb] pb-[calc(7.5rem+env(safe-area-inset-bottom))] lg:hidden">
-        <section className="px-4 pt-4">
+    <div className="mx-auto max-w-6xl space-y-6">
+      <nav aria-label={t('clients')} className="flex min-w-0 items-center gap-2 text-sm font-semibold">
+        <button type="button" onClick={onBack} aria-label={t('backToClients')} className="inline-flex min-h-11 shrink-0 items-center gap-2 rounded-xl px-2 text-slate-600 transition hover:bg-slate-100 hover:text-slate-950 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-blue-500 focus-visible:ring-offset-2">
+          <ArrowLeft className="h-4 w-4" aria-hidden="true" /> {t('backToClients')}
+        </button>
+        <ChevronRight className="h-4 w-4 shrink-0 text-slate-300" aria-hidden="true" />
+        <span className="min-w-0 truncate text-slate-950" aria-current="page">{client.name}</span>
+      </nav>
+
+      <div className="space-y-4 overflow-x-hidden lg:hidden">
+        <section>
           <div className="relative rounded-3xl border border-slate-800 bg-slate-950 text-white shadow-xl shadow-slate-950/15">
             <div className="pointer-events-none absolute inset-0 overflow-hidden rounded-3xl" aria-hidden="true">
               <img src={clientMobileHeroBackground} alt="" className="h-full w-full scale-[1.01] object-cover object-[56%_10%] saturate-[1.02] brightness-[1.02]" />
               <div className="absolute inset-0 bg-[linear-gradient(110deg,rgba(2,6,23,0.92)_0%,rgba(15,23,42,0.78)_56%,rgba(15,23,42,0.42)_100%)]" />
             </div>
-            <div className="relative px-5 pb-6 pt-[max(env(safe-area-inset-top),1rem)] sm:p-7">
-              <button onClick={onBack} aria-label={t('backToClients')} className="inline-flex h-11 w-11 items-center justify-center rounded-full border border-white/10 bg-white/10 text-white backdrop-blur-sm transition hover:bg-white/15 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-blue-200">
-                <ArrowLeft className="h-5 w-5" aria-hidden="true" />
-              </button>
-
-              <div className="mt-5 min-w-0">
+            <div className="relative p-5 sm:p-7">
+              <div className="min-w-0">
                 <p className="text-xs font-bold uppercase tracking-[0.24em] text-blue-200">{t('client')}</p>
                 <h1 className="mt-2 break-words text-[2rem] font-bold leading-tight tracking-tight text-white sm:text-4xl">{client.name}</h1>
                 <div className="mt-3 flex flex-wrap items-center gap-2">
@@ -678,8 +662,8 @@ function renderMobileAccountSummary() {
                 </dl>
               ) : null}
 
-              <div className="mt-6 grid grid-cols-2 gap-2.5 border-t border-white/10 pt-5 sm:grid-cols-3">
-                {mobileHeroActions.map((action) => renderMobileHeroAction(action))}
+              <div className={`mt-6 grid gap-2.5 border-t border-white/10 pt-5 ${mobileHeroActionGridClasses}`}>
+                {heroContactActions.map((action) => renderMobileHeroAction(action))}
                 <ActionMenu
                   label={<><MoreVertical className="h-4 w-4" aria-hidden="true" /> {t('more')}</>}
                   ariaLabel={t('more')}
@@ -694,7 +678,7 @@ function renderMobileAccountSummary() {
           </div>
         </section>
 
-        <section className="space-y-3.5 px-4 pt-0.5">
+        <section className="space-y-3.5 pt-0.5">
           {renderMobileAccountSummary()}
           <InfoCard
             title={
@@ -803,21 +787,13 @@ function renderMobileAccountSummary() {
       </div>
 
       <div className="hidden space-y-6 lg:block">
-        <nav aria-label={t('clients')} className="flex min-w-0 items-center gap-2 text-sm font-semibold">
-          <button onClick={onBack} className="inline-flex shrink-0 items-center gap-2 text-slate-600 transition hover:text-slate-950 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-blue-500 focus-visible:ring-offset-2">
-            <ArrowLeft className="h-4 w-4" aria-hidden="true" /> {t('backToClients')}
-          </button>
-          <ChevronRight className="h-4 w-4 shrink-0 text-slate-300" aria-hidden="true" />
-          <span className="min-w-0 truncate text-slate-950" aria-current="page">{client.name}</span>
-        </nav>
-
         <section className="relative rounded-3xl border border-slate-800 bg-slate-950 p-7 text-white shadow-xl shadow-slate-950/15 xl:p-8">
           <div className="pointer-events-none absolute inset-0 overflow-hidden rounded-3xl" aria-hidden="true">
             <img src={clientWorkspaceHeroBackground} alt="" className="h-full w-full object-cover object-center" />
             <div className="absolute inset-0 bg-[linear-gradient(110deg,rgba(2,6,23,0.96)_0%,rgba(15,23,42,0.86)_55%,rgba(15,23,42,0.62)_100%)]" />
           </div>
 
-          <div className="relative grid min-w-0 gap-8 xl:grid-cols-[minmax(0,1.15fr)_minmax(360px,0.85fr)] xl:items-end xl:gap-10">
+          <div className="relative min-w-0">
             <div className="min-w-0">
               <p className="text-sm font-bold uppercase tracking-[0.24em] text-blue-200">{t('client')}</p>
               <h1 className="mt-3 break-words text-4xl font-bold tracking-tight text-white xl:text-5xl">{client.name}</h1>
@@ -838,20 +814,10 @@ function renderMobileAccountSummary() {
               ) : null}
             </div>
 
-            <div className="flex flex-wrap gap-2 xl:justify-end">
-              {desktopHeroActions.map((action) => renderDesktopHeroAction(action))}
-              <ActionMenu
-                label={t('more')}
-                ariaLabel={t('more')}
-                buttonClassName="inline-flex min-h-12 items-center justify-center gap-2 rounded-2xl border border-white/15 bg-white/10 px-4 py-3 text-sm font-bold text-white transition hover:bg-white/15 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-blue-200 focus-visible:ring-offset-2 focus-visible:ring-offset-slate-950"
-                menuClassName="max-w-[calc(100vw-3rem)]"
-                items={moreMenuItems}
-              />
-            </div>
           </div>
 
           {hasClientContactInformation ? (
-            <dl className="relative mt-7 grid min-w-0 gap-5 border-t border-white/10 pt-5 md:grid-cols-3">
+            <dl className="relative mt-7 grid min-w-0 gap-5 md:grid-cols-3">
               {clientPhone ? (
                 <div className="min-w-0">
                   <dt className="text-xs font-bold uppercase tracking-[0.16em] text-slate-400">{t('phone')}</dt>
@@ -872,6 +838,18 @@ function renderMobileAccountSummary() {
               ) : null}
             </dl>
           ) : null}
+
+          <div className="relative mt-6 flex flex-wrap gap-2 border-t border-white/10 pt-5">
+            {heroContactActions.map((action) => renderDesktopHeroAction(action))}
+            <ActionMenu
+              label={<><MoreVertical className="h-4 w-4" aria-hidden="true" /> {t('more')}</>}
+              ariaLabel={t('more')}
+              showChevron={false}
+              buttonClassName="inline-flex min-h-12 items-center justify-center gap-2 rounded-2xl border border-white/15 bg-white/10 px-4 py-3 text-sm font-bold text-white transition hover:bg-white/15 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-blue-200 focus-visible:ring-offset-2 focus-visible:ring-offset-slate-950"
+              menuClassName="max-w-[calc(100vw-3rem)]"
+              items={moreMenuItems}
+            />
+          </div>
         </section>
 
         <section className={`grid gap-5 ${showAnalyticsSections ? 'xl:grid-cols-[1fr_1fr]' : 'xl:grid-cols-1'}`}>
@@ -932,7 +910,7 @@ function renderMobileAccountSummary() {
             }
             bodyClassName="space-y-3"
           >
-            {projectCards.length ? projectCards.map(({ project, displayDate, projectValue, remainingBalance, remainingBalanceAmount, thumbnail, projectAddress, contract, estimate, projectPayments }) => (
+            {projectCards.length ? projectCards.map(({ project, displayDate, projectValue, remainingBalance, thumbnail, projectAddress, contract, estimate, projectPayments }) => (
               <article key={project.id} className="flex items-center gap-4 rounded-3xl border border-slate-200 p-4 transition hover:border-slate-300 hover:bg-slate-50/60">
                 {thumbnail ? (
                   <div className="h-20 w-24 shrink-0 overflow-hidden rounded-2xl bg-slate-100">
@@ -941,24 +919,20 @@ function renderMobileAccountSummary() {
                 ) : null}
                 <div className="min-w-0 flex-1">
                   <div className="flex flex-wrap items-center gap-2">
-                    <h3 className="truncate text-lg font-bold text-slate-950">{project.projectTitle || project.projectType}</h3>
+                    <h3 className="break-words text-lg font-bold text-slate-950">{project.projectTitle || project.projectType}</h3>
                     {(project.isProjectRecord || hasContractData(contract) || hasEstimateData(estimate) || project.latestStatus || project.projectStatus || project.status || getLatestProjectInvoice(project)?.status) ? <StatusBadge status={getContextualProjectStatus(project, estimate, contract, projectPayments)} t={t} /> : null}
                   </div>
-                  {projectAddress ? <p className="mt-1 truncate text-sm text-slate-500">{projectAddress}</p> : null}
+                  {projectAddress ? <p className="mt-1 break-words text-sm text-slate-500">{projectAddress}</p> : null}
                   <div className="mt-3 grid gap-2 text-sm text-slate-600 sm:grid-cols-3">
                     <div><p className="text-xs font-bold uppercase tracking-wide text-slate-400">{t('date')}</p><p className="mt-1 font-semibold text-slate-900">{displayDate || t('notAdded')}</p></div>
                     <div><p className="text-xs font-bold uppercase tracking-wide text-slate-400">{t('value')}</p><p className="mt-1 font-semibold text-slate-900">{projectValue}</p></div>
                     <div><p className="text-xs font-bold uppercase tracking-wide text-slate-400">{t('remaining')}</p><p className="mt-1 font-semibold text-slate-900">{remainingBalance}</p></div>
                   </div>
                 </div>
-                <div className="min-w-[110px] shrink-0 text-right">
-                  <p className="text-3xl font-bold tracking-tight text-slate-950">{projectValue}</p>
-                  <p className="mt-1 text-sm font-medium text-slate-500">
-                    {Number(remainingBalanceAmount || 0) > 0 ? `${t('remaining')} ${remainingBalance}` : t('paidInFull')}
-                  </p>
-                  <button onClick={() => (project.isProjectRecord ? onOpenProject(project.id) : onOpenLead?.(project.id))} className="mt-3 inline-flex items-center gap-1 text-sm font-semibold text-slate-500 transition hover:text-slate-900">
-                    <span>{hasEstimateData(estimate) && !hasContractData(contract) ? t('openEstimate') : t('view')}</span>
-                    <ChevronRight className="h-4 w-4" />
+                <div className="shrink-0 text-right">
+                  <button type="button" onClick={() => (project.isProjectRecord ? onOpenProject(project.id) : onOpenLead?.(project.id))} className="inline-flex min-h-11 items-center gap-1 rounded-xl px-3 text-sm font-semibold text-slate-600 transition hover:bg-slate-100 hover:text-slate-950 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-blue-500" aria-label={`${t('openProject')}: ${project.projectTitle || project.projectType}`}>
+                    <span>{project.isProjectRecord ? t('openProject') : hasEstimateData(estimate) && !hasContractData(contract) ? t('openEstimate') : t('view')}</span>
+                    <ChevronRight className="h-4 w-4" aria-hidden="true" />
                   </button>
                 </div>
               </article>
