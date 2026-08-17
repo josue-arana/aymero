@@ -11,7 +11,7 @@ import {
   normalizeEstimateRichText,
 } from '../../utils/estimateDocument'
 import { EstimateInlineText, EstimateRichTextBlocks } from '../estimates/EstimatePdfTemplate'
-import { getReadableBrandTextColor, normalizeBrandColor } from '../../data/brandColors'
+import { resolveDocumentBrandTokens } from '../../data/brandColors'
 import { getDocumentDensityVariables } from '../../utils/documentDensity'
 import {
   ESTIMATE_DOCUMENT_BORDER_WIDTH,
@@ -30,10 +30,6 @@ const colors = {
   slate500: '#64748b',
   slate900: '#0f172a',
   ink: '#111111',
-}
-
-function resolveCompanyAccentColor(company = {}) {
-  return normalizeBrandColor(company?.primaryColor || company?.primary_color)
 }
 
 function HeaderPhoneIcon({ color }) {
@@ -258,8 +254,7 @@ export function ContractPdfTemplate({ company, lead, contractNumber, contractDat
   const projectTitle = lead?.projectTitle || lead?.projectType || t('projectScope')
   const normalizedWorkBreakdown = normalizeContractWorkBreakdown(workBreakdown)
   const hasScope = shouldRenderContractScopeText(scope, normalizedWorkBreakdown)
-  const accentColor = resolveCompanyAccentColor(company)
-  const accentTextColor = getReadableBrandTextColor(accentColor)
+  const { accentColor, accentTextColor } = resolveDocumentBrandTokens(company)
 
   return (
     <article className="document-sheet document-contract" data-contract-document="true" style={{ ...getDocumentDensityVariables(), '--document-card-padding-x': `${ESTIMATE_DOCUMENT_HORIZONTAL_PADDING}px`, overflow: 'hidden', borderRadius: 'var(--document-card-radius)', border: `${ESTIMATE_DOCUMENT_BORDER_WIDTH}px solid ${colors.slate200}`, backgroundColor: colors.paper, padding: 'var(--document-card-padding-y) var(--document-card-padding-x)', boxShadow: '0 18px 48px rgba(15, 23, 42, 0.08)', fontFamily: 'ui-sans-serif, system-ui, sans-serif', color: colors.ink }}>

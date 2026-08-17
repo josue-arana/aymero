@@ -1,6 +1,5 @@
 .invoice-document {
   --invoice-document-navy: #0f172a;
-  --invoice-document-teal: #0f8b8d;
   --invoice-document-border: #cbd5e1;
   box-sizing: border-box;
   display: flex;

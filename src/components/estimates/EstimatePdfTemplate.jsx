@@ -9,7 +9,7 @@ import {
 } from '../../utils/estimateDocument'
 import { getAcceptedPaymentMethodLabels } from '../../utils/acceptedPaymentMethods'
 import { getPaymentTermLabel } from '../../utils/paymentTerms'
-import { getReadableBrandTextColor, normalizeBrandColor } from '../../data/brandColors'
+import { resolveDocumentBrandTokens } from '../../data/brandColors'
 import {
   ESTIMATE_DOCUMENT_BORDER_WIDTH,
   ESTIMATE_DOCUMENT_HORIZONTAL_PADDING,
@@ -28,10 +28,6 @@ const colors = {
   slate900: '#0f172a',
   ink: '#111111',
   teal700: '#0e7490',
-}
-
-function resolveCompanyAccentColor(company = {}) {
-  return normalizeBrandColor(company?.primaryColor || company?.primary_color)
 }
 
 function formatDisplayDate(value, language = 'en') {
@@ -471,8 +467,7 @@ export function EstimatePdfTemplate({
   const hasScope = normalizedDocument.sections.scope.visible
   const hasLineItems = normalizedDocument.sections.workBreakdown.visible
   const hasContractorMessage = normalizedDocument.sections.messageFromContractor.visible
-  const accentColor = resolveCompanyAccentColor(company)
-  const accentTextColor = getReadableBrandTextColor(accentColor)
+  const { accentColor, accentTextColor } = resolveDocumentBrandTokens(company)
   const acceptedPaymentMethods = getAcceptedPaymentMethodLabels(company?.acceptedPaymentMethods, t)
   const displayValidUntil = resolveValidUntil(normalizedDocument.validUntil, estimateDate)
   const jobLocationLines = formatAddressLines(lead?.address || lead?.location || '')

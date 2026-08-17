@@ -1,5 +1,5 @@
 import { forwardRef, useEffect, useState } from 'react'
-import { normalizeBrandColor } from '../../data/brandColors'
+import { resolveDocumentBrandTokens } from '../../data/brandColors'
 import { currencyWithCents } from '../../utils/formatters'
 import { getLanguageLocale } from '../../utils/language'
 import { calculateInvoiceTotal, getInvoiceRemainingBalance } from '../../utils/invoiceRecords'
@@ -100,51 +100,50 @@ function getCompanyInitials(name = '') {
     .join('')
 }
 
-function HeaderPhoneIcon() {
+function HeaderPhoneIcon({ color }) {
   return (
     <svg width="13" height="13" viewBox="0 0 24 24" aria-hidden="true" className="block shrink-0">
       <path
-        fill="#0f8b8d"
+        fill={color}
         d="M6.62 10.79a15.54 15.54 0 0 0 6.59 6.59l2.2-2.2a1 1 0 0 1 1.02-.24c1.12.37 2.33.57 3.57.57a1 1 0 0 1 1 1V20a1 1 0 0 1-1 1C10.07 21 3 13.93 3 5a1 1 0 0 1 1-1h3.5a1 1 0 0 1 1 1c0 1.24.2 2.45.57 3.57a1 1 0 0 1-.24 1.02z"
       />
     </svg>
   )
 }
 
-function HeaderMailIcon() {
+function HeaderMailIcon({ color }) {
   return (
     <svg width="13" height="13" viewBox="0 0 24 24" aria-hidden="true" className="block shrink-0">
       <path
-        fill="#0f8b8d"
+        fill={color}
         d="M3 6.75A1.75 1.75 0 0 1 4.75 5h14.5A1.75 1.75 0 0 1 21 6.75v10.5A1.75 1.75 0 0 1 19.25 19H4.75A1.75 1.75 0 0 1 3 17.25zm1.9.1 6.47 4.53a1.1 1.1 0 0 0 1.26 0l6.47-4.53a.25.25 0 0 0-.14-.45H5.04a.25.25 0 0 0-.14.45"
       />
     </svg>
   )
 }
 
-function HeaderWebsiteIcon() {
+function HeaderWebsiteIcon({ color }) {
   return (
     <svg width="13" height="13" viewBox="0 0 24 24" aria-hidden="true" className="block shrink-0">
       <path
-        fill="#0f8b8d"
+        fill={color}
         d="M12 2a10 10 0 1 0 0 20 10 10 0 0 0 0-20m6.93 6h-3.17a15.7 15.7 0 0 0-1.35-3.16A8.05 8.05 0 0 1 18.93 8M12 4c.83 1.2 1.45 2.54 1.82 4h-3.64A13.5 13.5 0 0 1 12 4M4.26 14a7.8 7.8 0 0 1 0-4h3.4a16.5 16.5 0 0 0 0 4zm.81 2h3.17c.3 1.12.76 2.18 1.35 3.16A8.05 8.05 0 0 1 5.07 16M8.24 8H5.07a8.05 8.05 0 0 1 4.52-3.16A15.7 15.7 0 0 0 8.24 8M12 20a13.5 13.5 0 0 1-1.82-4h3.64A13.5 13.5 0 0 1 12 20m2.21-6H9.79a14.4 14.4 0 0 1 0-4h4.42a14.4 14.4 0 0 1 0 4m.2 5.16A15.7 15.7 0 0 0 15.76 16h3.17a8.05 8.05 0 0 1-4.52 3.16M16.34 14a16.5 16.5 0 0 0 0-4h3.4a7.8 7.8 0 0 1 0 4z"
       />
     </svg>
   )
 }
 
-function CompanyContactRow({ icon: Icon, children }) {
+function CompanyContactRow({ icon: Icon, accentColor, children }) {
   return (
     <div className="flex min-w-0 items-center gap-2 text-[12px] leading-[1.35] text-slate-700">
-      <Icon />
+      <Icon color={accentColor} />
       <span className="min-w-0 break-words [overflow-wrap:anywhere]">{children}</span>
     </div>
   )
 }
 
-function CompanyBrand({ company = {}, t }) {
+function CompanyBrand({ company = {}, accentColor, t }) {
   const [logoFailed, setLogoFailed] = useState(false)
-  const accentColor = normalizeBrandColor(company?.primaryColor || company?.primary_color)
   const companyName = company?.name || t('brandName')
   const initials = getCompanyInitials(companyName) || t('brandInitials')
   const companySubtitle = getFirstAvailableValue(
@@ -179,20 +178,20 @@ function CompanyBrand({ company = {}, t }) {
         <p className="break-words text-[19px] font-bold leading-tight text-slate-950 [overflow-wrap:anywhere]">{companyName}</p>
         <p className="mt-1 text-[12px] font-semibold leading-4 text-slate-500">{companySubtitle}</p>
         <div className="mt-3 grid gap-1.5">
-          {company?.phone ? <CompanyContactRow icon={HeaderPhoneIcon}>{company.phone}</CompanyContactRow> : null}
-          {company?.email ? <CompanyContactRow icon={HeaderMailIcon}>{company.email}</CompanyContactRow> : null}
-          {company?.website ? <CompanyContactRow icon={HeaderWebsiteIcon}>{company.website}</CompanyContactRow> : null}
+          {company?.phone ? <CompanyContactRow icon={HeaderPhoneIcon} accentColor={accentColor}>{company.phone}</CompanyContactRow> : null}
+          {company?.email ? <CompanyContactRow icon={HeaderMailIcon} accentColor={accentColor}>{company.email}</CompanyContactRow> : null}
+          {company?.website ? <CompanyContactRow icon={HeaderWebsiteIcon} accentColor={accentColor}>{company.website}</CompanyContactRow> : null}
         </div>
       </div>
     </div>
   )
 }
 
-function DocumentLabel({ children }) {
-  return <p className="text-[10px] font-bold uppercase tracking-[0.18em] text-[#0f8b8d]">{children}</p>
+function DocumentLabel({ accentTextColor, children }) {
+  return <p className="text-[10px] font-bold uppercase tracking-[0.18em]" style={{ color: accentTextColor }}>{children}</p>
 }
 
-function BillToBlock({ client = {}, invoice = {}, t }) {
+function BillToBlock({ client = {}, invoice = {}, accentTextColor, t }) {
   const name = client?.name || invoice?.client || invoice?.clientName || ''
   const details = [
     client?.phone,
@@ -201,7 +200,7 @@ function BillToBlock({ client = {}, invoice = {}, t }) {
 
   return (
     <div className="min-w-0">
-      <DocumentLabel>{t('billTo')}</DocumentLabel>
+      <DocumentLabel accentTextColor={accentTextColor}>{t('billTo')}</DocumentLabel>
       {name ? <p className="mt-3 break-words text-[13px] font-bold leading-5 text-slate-950 [overflow-wrap:anywhere]">{name}</p> : null}
       {details.length ? (
         <div className="mt-1 space-y-0.5 text-[12px] leading-[1.45] text-slate-600">
@@ -213,12 +212,12 @@ function BillToBlock({ client = {}, invoice = {}, t }) {
   )
 }
 
-function JobLocationBlock({ address, t }) {
+function JobLocationBlock({ address, accentTextColor, t }) {
   const addressLines = formatAddressLines(address)
 
   return (
     <div className="min-w-0">
-      <DocumentLabel>{t('jobLocation')}</DocumentLabel>
+      <DocumentLabel accentTextColor={accentTextColor}>{t('jobLocation')}</DocumentLabel>
       {addressLines.length ? (
         <div className="mt-3 space-y-0.5 text-[12px] font-semibold leading-[1.45] text-slate-800">
           {addressLines.map((line, index) => (
@@ -342,7 +341,7 @@ function getReliablePaidDate(invoice = {}, payments = [], { invoiceTotal, amount
   }, null)?.value || ''
 }
 
-function CalendarIcon({ color = '#0f8b8d' }) {
+function CalendarIcon({ color }) {
   return (
     <svg width="13" height="13" viewBox="0 0 24 24" aria-hidden="true" className="block shrink-0">
       <path
@@ -408,19 +407,25 @@ export const InvoicePdfTemplate = forwardRef(function InvoicePdfTemplate({
   const customerFacingNotes = resolveInvoiceCustomerNote(invoice) || t('thankYouForYourBusiness')
   const acceptedPaymentMethods = resolveAcceptedPaymentMethods(invoice, company, t)
   const jobLocation = resolveInvoiceJobLocation({ invoice, project, client })
+  const { accentColor, accentTextColor } = resolveDocumentBrandTokens(company)
 
   return (
     <article
       ref={ref}
       data-invoice-pdf-template="true"
+      data-invoice-accent-color={accentColor}
       className="invoice-document document-sheet border border-slate-200 bg-white p-10 font-sans text-slate-900"
+      style={{
+        '--invoice-accent-color': accentColor,
+        '--invoice-accent-text-color': accentTextColor,
+      }}
     >
       <header className="invoice-document-header grid grid-cols-[minmax(0,1fr)_210px] items-start gap-8 pb-6">
-        <CompanyBrand company={company} t={t} />
+        <CompanyBrand company={company} accentColor={accentColor} t={t} />
         <div className="min-w-0 text-right">
           <h1 className="m-0 text-[34px] font-bold uppercase leading-none tracking-[0.12em] text-slate-950">{t('invoice')}</h1>
           {invoiceNumber ? (
-            <p className="mt-3 break-words text-[15px] font-bold leading-5 text-[#0f8b8d] [overflow-wrap:anywhere]">{invoiceNumber}</p>
+            <p className="mt-3 break-words text-[15px] font-bold leading-5 [overflow-wrap:anywhere]" style={{ color: accentTextColor }}>{invoiceNumber}</p>
           ) : null}
         </div>
       </header>
@@ -429,13 +434,13 @@ export const InvoicePdfTemplate = forwardRef(function InvoicePdfTemplate({
 
       <section className="invoice-document-information grid grid-cols-[28fr_34fr_38fr] py-6">
         <div className="min-w-0 pr-5">
-          <BillToBlock client={client} invoice={invoice} t={t} />
+          <BillToBlock client={client} invoice={invoice} accentTextColor={accentTextColor} t={t} />
         </div>
         <div className="min-w-0 border-l border-slate-300 px-5">
-          <JobLocationBlock address={jobLocation} t={t} />
+          <JobLocationBlock address={jobLocation} accentTextColor={accentTextColor} t={t} />
         </div>
         <div className="min-w-0 border-l border-slate-300 pl-5">
-          <DocumentLabel>{t('invoiceDetails')}</DocumentLabel>
+          <DocumentLabel accentTextColor={accentTextColor}>{t('invoiceDetails')}</DocumentLabel>
           <dl className="mt-3 grid gap-1.5">
             {/* <InvoiceDetailRow label={t('invoiceNumber')} value={invoiceNumber} /> */}
             <InvoiceDetailRow label={t('invoiceDate')} value={issueDate} />
@@ -469,7 +474,7 @@ export const InvoicePdfTemplate = forwardRef(function InvoicePdfTemplate({
                 >
                   <td className="min-w-0 px-1 py-3.5 pr-5">
                     <p className="break-words font-bold leading-5 text-slate-950 [overflow-wrap:anywhere]">
-                      <span className="mr-1.5 text-[#0f8b8d]">{index + 1}.</span>
+                      <span className="mr-1.5" style={{ color: accentTextColor }}>{index + 1}.</span>
                       {title}
                     </p>
                     {supportingLines.length ? (
@@ -491,7 +496,7 @@ export const InvoicePdfTemplate = forwardRef(function InvoicePdfTemplate({
 
         <div className="invoice-document-payment-summary mt-7 grid grid-cols-[minmax(0,1.2fr)_minmax(250px,0.8fr)]">
           <section className="min-w-0 pr-6">
-            <DocumentLabel>{t('paymentHistory')}</DocumentLabel>
+            <DocumentLabel accentTextColor={accentTextColor}>{t('paymentHistory')}</DocumentLabel>
             <table className="invoice-document-table mt-3 border-y border-slate-300">
               <colgroup>
                 <col style={{ width: '92px' }} />
@@ -545,7 +550,7 @@ export const InvoicePdfTemplate = forwardRef(function InvoicePdfTemplate({
 
             <div className={`invoice-document-balance mt-5 border px-4 py-[15px] ${isPaidInFull ? 'border-emerald-300 bg-emerald-50/30' : 'border-slate-300 bg-white'}`}>
               <div className="flex items-start justify-between gap-4">
-                <p className={`text-[10px] font-bold uppercase tracking-[0.18em] ${isPaidInFull ? 'text-emerald-700' : 'text-[#0f8b8d]'}`}>
+                <p className={`text-[10px] font-bold uppercase tracking-[0.18em] ${isPaidInFull ? 'text-emerald-700' : ''}`} style={isPaidInFull ? undefined : { color: accentTextColor }}>
                   {isPaidInFull ? t('paidInFull') : t('balanceDue')}
                 </p>
                 <p className="shrink-0 text-[22px] font-bold leading-none tracking-tight text-slate-950">
@@ -559,7 +564,7 @@ export const InvoicePdfTemplate = forwardRef(function InvoicePdfTemplate({
                 </div>
               ) : !isPaidInFull && dueDate ? (
                 <div className="mt-3 flex items-center gap-2 text-[10.5px] font-semibold text-slate-600">
-                  <CalendarIcon />
+                  <CalendarIcon color={accentColor} />
                   <span>{t('invoiceDueDateLabel')} {dueDate}</span>
                 </div>
               ) : null}
@@ -570,12 +575,12 @@ export const InvoicePdfTemplate = forwardRef(function InvoicePdfTemplate({
 
       <section className={`invoice-document-final-content mt-7 border-t border-slate-300 pt-6 ${acceptedPaymentMethods.length ? 'grid grid-cols-2' : ''}`}>
         <div className={`invoice-document-notes min-w-0 ${acceptedPaymentMethods.length ? 'pr-7' : ''}`}>
-          <DocumentLabel>{t('notes')}</DocumentLabel>
+          <DocumentLabel accentTextColor={accentTextColor}>{t('notes')}</DocumentLabel>
           <p className="mt-3 whitespace-pre-line break-words text-[11.5px] leading-[1.55] text-slate-700 [overflow-wrap:anywhere]">{customerFacingNotes}</p>
         </div>
         {acceptedPaymentMethods.length ? (
           <div className="invoice-document-payment-methods min-w-0 border-l border-slate-300 pl-7">
-            <DocumentLabel>{t('acceptedPaymentMethods')}</DocumentLabel>
+            <DocumentLabel accentTextColor={accentTextColor}>{t('acceptedPaymentMethods')}</DocumentLabel>
             <ul className={`mt-3 grid gap-x-6 gap-y-2 pl-4 text-[11.5px] leading-[1.45] text-slate-700 ${acceptedPaymentMethods.length === 1 ? 'grid-cols-1' : 'grid-cols-2'}`}>
               {acceptedPaymentMethods.map((method) => (
                 <li key={method} className="break-words pl-0.5 [overflow-wrap:anywhere]">{method}</li>
@@ -587,7 +592,7 @@ export const InvoicePdfTemplate = forwardRef(function InvoicePdfTemplate({
 
       <footer className="invoice-document-footer pt-7">
         <div className="border-t border-slate-300 pt-5 text-center">
-          <p className="text-[13px] font-bold leading-5 text-[#0f8b8d]">{t('thankYouForYourBusiness')}</p>
+          <p className="text-[13px] font-bold leading-5" style={{ color: accentTextColor }}>{t('thankYouForYourBusiness')}</p>
           {company?.name ? <p className="mt-1 text-[11.5px] font-bold leading-5 text-slate-950">{company.name}</p> : null}
         </div>
       </footer>

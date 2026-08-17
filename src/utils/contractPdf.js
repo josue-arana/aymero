@@ -3,7 +3,7 @@ import { jsPDF } from 'jspdf'
 import { buildContractNotesAndTermsItems, normalizeContractWorkBreakdown, shouldRenderContractScopeText } from './contractDocument'
 import { currency } from './formatters'
 import { normalizeEstimateRichText } from './estimateDocument'
-import { getReadableBrandTextColor, normalizeBrandColor } from '../data/brandColors'
+import { resolveDocumentBrandTokens } from '../data/brandColors'
 import {
   ESTIMATE_PAPER_MARGIN,
   ESTIMATE_PAPER_WIDTH,
@@ -234,8 +234,7 @@ function buildFallbackPdf({
   const workLines = buildWorkLines(lead, t)
   const licenseLines = buildLicenseLines(company, t)
   const normalizedWorkBreakdown = normalizeContractWorkBreakdown(workBreakdown)
-  const accentColor = normalizeBrandColor(company?.primaryColor || company?.primary_color)
-  const accentTextColor = getReadableBrandTextColor(accentColor)
+  const { accentColor, accentTextColor } = resolveDocumentBrandTokens(company)
 
   function drawPageFrame() {
     pdf.setFillColor(safeColors.white)
