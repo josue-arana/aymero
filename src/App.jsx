@@ -1,6 +1,6 @@
 import { Suspense, lazy, useEffect, useMemo, useRef, useState } from 'react'
 import { BrowserRouter, Navigate, Route, Routes, matchPath, useLocation, useNavigate, useParams } from 'react-router-dom'
-import { BriefcaseBusiness, ClipboardList, DollarSign, Settings, Users } from 'lucide-react'
+import { DollarSign, Settings, Users } from 'lucide-react'
 import { Sidebar } from './components/layout/Sidebar'
 import { ScrollToTop } from './components/layout/ScrollToTop'
 import { Topbar } from './components/layout/Topbar'
@@ -62,7 +62,7 @@ import { generateContractNumber } from './utils/contractNumber'
 import { generateEstimateNumber } from './utils/estimateNumber'
 import { dedupeInvoiceRecords, hydrateInvoiceRecord } from './utils/invoiceRecords'
 import { normalizeClientPreferredLanguageFields, normalizeDocumentLanguageOverride, normalizeLeadClientLanguageFields, normalizeSupportedLanguage, normalizeSupportedLanguageOrEmpty, readStoredSupportedLanguage, resolveInitialSupportedLanguage, resolvePreferredClientLanguage } from './utils/language'
-import { buildLeadPipelineTransition, getLeadPipelineStage, getLeadPipelineStageCounts, leadPipelineStageOrder, leadPipelineStages, normalizeLeadPipelineStage } from './utils/leadPipeline'
+import { buildLeadPipelineTransition, getLeadPipelineStage, leadPipelineStageOrder, leadPipelineStages, normalizeLeadPipelineStage } from './utils/leadPipeline'
 import { calculateProjectPaymentSummary, dedupePayments, normalizePaymentRecord } from './utils/projectPayments'
 import { isRecordArchived, resolveEstimateArchiveState } from './utils/archiveLifecycle'
 import { createLocalRecordId, dedupeById, findLeadByProjectLookup, resolveLinkedLeadId, resolveLinkedProjectId } from './utils/projectIdentity'
@@ -1633,27 +1633,14 @@ function ContractorFlowApp() {
   }, [activeDashboardLeads, activeInvoices, activeScheduleEvents, archives.leadIds, t])
 
   const metrics = useMemo(() => {
-    const pipelineCounts = getLeadPipelineStageCounts(activeDashboardLeads)
-    const estimatePipelineCounts = getLeadPipelineStageCounts(activeDashboardLeads.filter((lead) => (
-      !resolveEstimateArchiveState({
-        estimate: lead?.portal?.estimate || {},
-        lead,
-        contract: lead?.portal?.contract || null,
-        archivedLeadIds: archives.leadIds,
-      }).isArchived
-    )))
-    const newLeads = pipelineCounts.newLeads
-    const estimates = estimatePipelineCounts.estimatesToSend + estimatePipelineCounts.followUpsDue
-    const activeJobs = pipelineCounts.readyForJob + pipelineCounts.byStage[leadPipelineStages.CONVERTED_TO_JOB]
+    const newLeads = activeDashboardLeads.filter((lead) => getLeadPipelineStage(lead) === leadPipelineStages.NEW_LEAD).length
     const pipelineValue = activeDashboardLeads.reduce((sum, lead) => sum + lead.value, 0)
 
     return [
       { label: t('metricNewLeads'), value: newLeads, helper: t('metricNewLeadsHelper'), icon: Users, tone: 'blue' },
-      { label: t('metricActiveEstimates'), value: estimates, helper: t('metricActiveEstimatesHelper'), icon: ClipboardList, tone: 'violet' },
-      { label: t('metricJobsInProgress'), value: activeJobs, helper: t('metricJobsInProgressHelper'), icon: BriefcaseBusiness, tone: 'amber' },
       { label: t('metricRevenuePipeline'), value: currency.format(pipelineValue), helper: t('metricRevenuePipelineHelper'), icon: DollarSign, tone: 'emerald' },
     ]
-  }, [activeDashboardLeads, archives.leadIds, t])
+  }, [activeDashboardLeads, t])
 
   function addNotification(titleKey, messageKey) {
     setNotifications((current) => [
@@ -4391,6 +4378,12 @@ function buildWorkspaceJobRecord(job, clientRecord = null) {
       metrics={metrics}
       scheduleEvents={activeScheduleEvents}
       invoices={activeInvoices}
+      estimates={persistedEstimates}
+      contracts={persistedContracts}
+      projects={persistedProjects}
+      payments={persistedPayments}
+      archivedLeadIds={archives.leadIds}
+      archivedProjectIds={[...archives.projectIds, ...archives.deletedProjectIds]}
       draggedLeadId={draggedLeadId}
       setDraggedLeadId={setDraggedLeadId}
       selectedMobileStage={selectedMobileStage}
@@ -4398,6 +4391,8 @@ function buildWorkspaceJobRecord(job, clientRecord = null) {
       moveLead={moveLead}
       onLeadClick={openLead}
       onOpenProject={openProject}
+      onOpenEstimate={openEstimateForLead}
+      onOpenContract={(leadId) => openContractForLead(leadId, { source: 'dashboard' })}
       onOpenInvoice={(invoiceId) => navigate(`/invoices/${invoiceId}`)}
       onCreateLeadClick={() => setIsDashboardLeadModalOpen(true)}
       onCreateJob={() => openJobModal({ origin: 'dashboard' })}

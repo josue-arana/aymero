@@ -1,4 +1,9 @@
 import { buildPublicUrl, getPublicEnvironmentConfig } from '../services/system/environmentService'
+import {
+  normalizeEstimatePublicShareToken,
+  resolveEstimatePublicShareToken,
+  resolveEstimateShareLink,
+} from './estimateShare'
 
 const LEGACY_PORTAL_HOSTS = new Set([
   'contractorflow.app',
@@ -31,7 +36,7 @@ export function buildPortalShareUrl(portalRouteId = '') {
 }
 
 export function buildEstimateShareUrl(estimateToken = '') {
-  const normalizedToken = normalizeExplicitPublicRouteToken(estimateToken)
+  const normalizedToken = normalizeEstimatePublicShareToken(estimateToken)
   if (!normalizedToken) return ''
 
   return buildPublicUrl(`/estimate/${normalizedToken}`, 'portal')
@@ -88,27 +93,14 @@ function normalizeExplicitPublicPortalRouteId(value = '') {
   return normalizeExplicitPublicRouteToken(value)
 }
 
-export function resolvePublicEstimateShareToken(record = {}) {
-  const candidates = [
-    record?.publicShareToken,
-    record?.public_share_token,
-    record?.estimate?.publicShareToken,
-    record?.estimate?.public_share_token,
-  ]
+export const resolvePublicEstimateShareToken = resolveEstimatePublicShareToken
 
-  for (const candidate of candidates) {
-    const token = normalizeExplicitPublicRouteToken(candidate)
-    if (token) return token
-  }
-
-  return ''
+export function resolvePublicEstimateShare(record) {
+  return resolveEstimateShareLink(record, { buildUrl: buildEstimateShareUrl })
 }
 
 export function resolvePublicEstimateShareUrl(record = {}) {
-  if (!hasUsableClientDeliveryOrigin()) return ''
-
-  const token = resolvePublicEstimateShareToken(record)
-  return token ? buildEstimateShareUrl(token) : ''
+  return resolvePublicEstimateShare(record).url
 }
 
 export function resolvePublicPortalRouteId(record = {}) {

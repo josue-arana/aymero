@@ -54,6 +54,8 @@ export function EstimatesPage({ leads, estimates = [], contracts = [], archivedI
       archiveSource: archiveState.source,
       routeUsesEstimateId: false,
       canUseProjectActions: true,
+      publicShareToken: estimate.publicShareToken || estimate.public_share_token || '',
+      public_share_token: estimate.public_share_token || estimate.publicShareToken || '',
     }
   }), [archivedIds, leads, t])
 

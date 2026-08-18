@@ -1,7 +1,7 @@
-import { getClientSlug } from './clients'
-import { getInvoiceDisplayNumber } from './invoiceNumber'
-import { findLeadByProjectLookup, dedupeById } from './projectIdentity'
-import { dedupePayments, normalizePaymentRecord } from './projectPayments'
+import { getClientSlug } from './clients.js'
+import { getInvoiceDisplayNumber } from './invoiceNumber.js'
+import { findLeadByProjectLookup, dedupeById } from './projectIdentity.js'
+import { dedupePayments, normalizePaymentRecord } from './projectPayments.js'
 
 function readField(source = {}, keys = []) {
   for (const key of keys) {

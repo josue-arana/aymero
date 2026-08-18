@@ -9,7 +9,8 @@ import { EstimateFormattedText } from '../components/estimates/EstimateFormatted
 import { LightweightFormattedTextarea } from '../components/estimates/LightweightFormattedTextarea'
 import { PaginatedEstimatePreview } from '../components/estimates/PaginatedEstimatePreview'
 import { currency, formatDisplayDate } from '../utils/formatters'
-import { getPortalData, resolvePublicEstimateShareUrl } from '../utils/portal'
+import { getPortalData, resolvePublicEstimateShare, resolvePublicEstimateShareUrl } from '../utils/portal'
+import { ESTIMATE_SHARE_RESOLUTION } from '../utils/estimateShare'
 import { archivePanelButtonClasses } from '../utils/buttonStyles'
 import { ConfirmRecordModal } from '../components/common/ConfirmRecordModal'
 import { SendToCustomerModal } from '../components/common/SendToCustomerModal'
@@ -130,6 +131,28 @@ function buildDefaultLineItems(leadValue, materialsIncluded, t) {
   ]
 }
 
+function logEstimateShareResolution(resolution, estimate = {}, { usedResolvedFallback = false } = {}) {
+  if (!import.meta.env.DEV) return
+
+  const diagnostic = {
+    estimateId: estimate?.id || null,
+    estimateNumber: estimate?.number || estimate?.estimateNumber || null,
+    status: resolution?.status || ESTIMATE_SHARE_RESOLUTION.UNEXPECTED_ERROR,
+    hasToken: Boolean(resolution?.token),
+    hasUrl: Boolean(resolution?.url),
+    usedResolvedFallback,
+  }
+
+  if (resolution?.status === ESTIMATE_SHARE_RESOLUTION.TOKEN_PRESENT) {
+    // eslint-disable-next-line no-console
+    console.info('[dev] Estimate client-link resolution succeeded.', diagnostic)
+    return
+  }
+
+  // eslint-disable-next-line no-console
+  console.warn('[dev] Estimate client-link resolution failed.', diagnostic, resolution?.error || '')
+}
+
 function buildEstimateDraftState({ savedEstimate = {}, lead, companySettings, t }) {
   const defaultMaterialsIncluded = resolveMaterialsIncludedDefault(
     savedEstimate.materialsIncluded,
@@ -240,7 +263,7 @@ export function EstimateBuilderPage({ lead, clientRecord = null, t, appLanguage 
   }
 
   useEffect(() => {
-    if (publicEstimateLink) setSendDocumentLink(publicEstimateLink)
+    setSendDocumentLink(publicEstimateLink || '')
   }, [publicEstimateLink])
 
   useEffect(() => {
@@ -444,7 +467,12 @@ export function EstimateBuilderPage({ lead, clientRecord = null, t, appLanguage 
     if (isEstimateActionPending || estimateSaveGuardRef.current) return
 
     const result = await persistEstimate({ status: savedEstimate.status || 'Draft' })
-    const nextShareLink = resolvePublicEstimateShareUrl(result || savedEstimate) || publicEstimateLink
+    const persistedEstimate = result || (hasExistingEstimate ? savedEstimate : null)
+    const shareResolution = resolvePublicEstimateShare(persistedEstimate)
+    const nextShareLink = shareResolution.url || publicEstimateLink
+    logEstimateShareResolution(shareResolution, persistedEstimate, {
+      usedResolvedFallback: Boolean(nextShareLink && !shareResolution.url),
+    })
     setSendDocumentLink(nextShareLink)
     setShowSendModal(true)
   }

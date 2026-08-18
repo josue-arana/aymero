@@ -30,6 +30,20 @@ export const technicalDebtRegistry = {
   },
   todoItems: [
     {
+      id: 'contractorConfigurableServices',
+      titleKey: 'technicalDebtConfigurableServicesTitle',
+      descriptionKey: 'technicalDebtConfigurableServicesDescription',
+      severity: 'low',
+      affectedAreaKey: 'technicalDebtAreaProjectSetup',
+      nextActionKey: 'technicalDebtConfigurableServicesNextAction',
+      classification: 'backlog',
+      whyItMattersKey: 'technicalDebtConfigurableServicesWhy',
+      priority: 'medium',
+      dependencyKeys: ['technicalDebtDependencyServiceSettings', 'technicalDebtDependencyServiceDataModel'],
+      futureSprintAreaKey: 'technicalDebtSprintServiceConfiguration',
+      sourceHint: 'JobFormModal.projectTypes',
+    },
+    {
       id: 'portalClientMessaging',
       titleKey: 'technicalDebtPortalMessagingTitle',
       descriptionKey: 'technicalDebtPortalMessagingDescription',
