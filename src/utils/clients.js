@@ -1,4 +1,4 @@
-import { normalizeClientPreferredLanguageFields, readRecordLanguage } from './language'
+import { normalizeClientPreferredLanguageFields, readRecordLanguage } from './language.js'
 
 export function getClientSlug(name = '') {
   return String(name)

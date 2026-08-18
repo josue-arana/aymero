@@ -7,9 +7,20 @@ import { useAnalyticsMode } from '../contexts/SimpleModeContext'
 import { tStatus } from '../translations'
 import { currency, formatDisplayDate } from '../utils/formatters'
 import { getLeadNextStepKey, getLeadPipelineStage, leadPipelineStageOrder, leadPipelineStages } from '../utils/leadPipeline'
-import { getPortalData } from '../utils/portal'
-import { deriveProjectStatus } from '../utils/projectLifecycle'
-import { calculateOutstandingInvoiceBalance, getInvoiceRemainingBalance } from '../utils/invoiceRecords'
+import { calculateOutstandingInvoiceBalance, getInvoiceRemainingBalance, isCollectibleInvoice } from '../utils/invoiceRecords'
+import { calculateProjectPaymentSummary } from '../utils/projectPayments'
+import { isRecordArchived } from '../utils/archiveLifecycle'
+import { isClientVisibleScheduleEvent } from '../utils/scheduleEvents'
+import {
+  deriveDashboardProjectStatus,
+  findDashboardLinkedLead,
+  getDashboardProjectPayments,
+  isDashboardPendingEstimate,
+  selectDashboardActiveProjects,
+  selectDashboardPendingEstimates,
+  selectDashboardProjectRecords,
+  selectDashboardTodayEvents,
+} from '../utils/dashboardConsistency'
 import heroBackground from '../assets/portal/blue-bg.png'
 
 function buildDateKey(value = new Date()) {
@@ -89,7 +100,7 @@ function DashboardActionItem({ item }) {
   return (
     <Wrapper
       {...(item.onClick ? { onClick: item.onClick, type: 'button' } : {})}
-      className={`w-full rounded-2xl border border-slate-200 bg-slate-50 p-4 text-left transition ${item.onClick ? 'hover:border-cyan-200 hover:bg-cyan-50/60' : ''}`}
+      className={`w-full rounded-2xl border border-slate-200 bg-slate-50 p-4 text-left transition ${item.onClick ? 'hover:border-cyan-200 hover:bg-cyan-50/60 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-blue-500 focus-visible:ring-offset-2' : ''}`}
     >
       <div className="flex items-start justify-between gap-3">
         <div className="min-w-0">
@@ -157,7 +168,7 @@ function AgendaCard({ title, items, emptyText, t }) {
                 <p className="mt-1 break-words text-sm text-slate-700">{item.location || t('notAdded')}</p>
               </div>
               {item.onClick ? (
-                <button type="button" onClick={item.onClick} className="inline-flex min-h-10 items-center justify-center rounded-xl border border-slate-200 bg-slate-50 px-3 py-2 text-sm font-bold text-blue-700 transition hover:bg-blue-50 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-blue-500 focus-visible:ring-offset-2">
+                <button type="button" onClick={item.onClick} className="inline-flex min-h-11 items-center justify-center rounded-xl border border-slate-200 bg-slate-50 px-3 py-2 text-sm font-bold text-blue-700 transition hover:bg-blue-50 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-blue-500 focus-visible:ring-offset-2">
                   {item.actionLabel}
                 </button>
               ) : null}
@@ -174,7 +185,7 @@ function AgendaCard({ title, items, emptyText, t }) {
   )
 }
 
-function RecentProjectsCard({ projects, onOpenProject, t }) {
+function RecentProjectsCard({ projects, onOpenProject, showFinancials = false, t }) {
   return (
     <section className="min-w-0 rounded-[1.75rem] border border-slate-200 bg-white p-4 shadow-sm sm:p-5" aria-labelledby="recent-projects-title">
       <div className="flex items-center justify-between gap-3">
@@ -196,7 +207,7 @@ function RecentProjectsCard({ projects, onOpenProject, t }) {
                 </div>
                 <StatusBadge status={project.status} t={t} />
               </div>
-              <dl className="mt-4 grid grid-cols-2 gap-3 border-t border-slate-200 pt-4">
+              {showFinancials ? <dl className="mt-4 grid grid-cols-2 gap-3 border-t border-slate-200 pt-4">
                 <div className="min-w-0">
                   <dt className="text-[11px] font-bold uppercase tracking-[0.14em] text-slate-400">{t('total')}</dt>
                   <dd className="mt-1 break-words text-sm font-bold text-slate-900">{currency.format(project.total)}</dd>
@@ -205,8 +216,8 @@ function RecentProjectsCard({ projects, onOpenProject, t }) {
                   <dt className="text-[11px] font-bold uppercase tracking-[0.14em] text-slate-400">{t('balance')}</dt>
                   <dd className="mt-1 break-words text-sm font-bold text-slate-900">{currency.format(project.balance)}</dd>
                 </div>
-              </dl>
-              <button type="button" onClick={() => onOpenProject?.(project.id)} className="mt-4 inline-flex min-h-10 w-full items-center justify-center rounded-xl bg-slate-950 px-4 py-2 text-sm font-bold text-white transition hover:bg-slate-800 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-blue-500 focus-visible:ring-offset-2">
+              </dl> : null}
+              <button type="button" onClick={() => onOpenProject?.(project.id)} className="mt-4 inline-flex min-h-11 w-full items-center justify-center rounded-xl bg-slate-950 px-4 py-2 text-sm font-bold text-white transition hover:bg-slate-800 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-blue-500 focus-visible:ring-offset-2">
                 {t('viewProject')}
               </button>
             </article>
@@ -300,6 +311,12 @@ export function DashboardPage({
   metrics,
   scheduleEvents = [],
   invoices = [],
+  estimates = [],
+  contracts = [],
+  projects = [],
+  payments = [],
+  archivedLeadIds = [],
+  archivedProjectIds = [],
   draggedLeadId,
   setDraggedLeadId,
   selectedMobileStage,
@@ -307,6 +324,8 @@ export function DashboardPage({
   moveLead,
   onLeadClick,
   onOpenProject,
+  onOpenEstimate,
+  onOpenContract,
   onOpenInvoice,
   onCreateLeadClick,
   onCreateJob,
@@ -329,21 +348,12 @@ export function DashboardPage({
   const leadsById = useMemo(() => new Map(leads.map((lead) => [lead.id, lead])), [leads])
 
   const todaysScheduleItems = useMemo(() => (
-    scheduleEvents
-      .filter((event) => resolveEventDateKey(event) === todayKey)
-      .sort((left, right) => {
-        const leftTime = left.startTime || left.start_time || left.time || ''
-        const rightTime = right.startTime || right.start_time || right.time || ''
-        return String(leftTime).localeCompare(String(rightTime))
-      })
+    selectDashboardTodayEvents(scheduleEvents, new Date())
       .map((event) => {
-        const linkedLead = leadsById.get(event.leadId) || leads.find((lead) => (
-          lead.projectId === event.projectId
-          || lead.project_id === event.projectId
-          || lead.projectId === event.project_id
-          || lead.project_id === event.project_id
-        )) || null
-        const hasProject = Boolean(linkedLead?.projectId || linkedLead?.project_id)
+        const linkedLead = leadsById.get(event.leadId || event.lead_id)
+          || findDashboardLinkedLead(leads, event)
+        const eventProjectId = event.projectId || event.project_id || linkedLead?.projectId || linkedLead?.project_id || ''
+        const hasProject = Boolean(eventProjectId)
         return {
           id: event.id || `${event.leadId}-${event.date}-${event.title}`,
           title: event.title || event.type || t('calendar'),
@@ -351,9 +361,11 @@ export function DashboardPage({
           customer: resolveClientName(linkedLead, event.clientName || ''),
           location: event.location || linkedLead?.address || linkedLead?.location || '',
           actionLabel: hasProject ? t('viewProject') : t('viewLead'),
-          onClick: linkedLead
-            ? () => (hasProject ? onOpenProject?.(linkedLead.id) : onLeadClick?.(linkedLead.id))
-            : null,
+          onClick: hasProject
+            ? () => onOpenProject?.(eventProjectId)
+            : linkedLead
+              ? () => onLeadClick?.(linkedLead.id)
+              : null,
         }
       })
   ), [leads, leadsById, onLeadClick, onOpenProject, scheduleEvents, t, todayKey])
@@ -369,29 +381,26 @@ export function DashboardPage({
       const hasProject = Boolean(lead?.projectId || lead?.project_id)
       const goToLeadOrProject = () => (hasProject ? onOpenProject?.(lead.id) : onLeadClick?.(lead.id))
 
-      if (stage === leadPipelineStages.ESTIMATE_CREATED) {
+      const estimate = lead?.portal?.estimate || null
+      if (isDashboardPendingEstimate({
+        estimate,
+        lead,
+        contract: lead?.portal?.contract || null,
+        archivedLeadIds,
+      })) {
+        const estimateStatus = String(estimate?.status || '').trim().toLowerCase()
+        const requiresFollowUp = estimateStatus === 'sent'
+          || stage === leadPipelineStages.ESTIMATE_SENT
+          || stage === leadPipelineStages.FOLLOW_UP
         items.push({
-          id: `estimate-draft-${lead.id}`,
+          id: `estimate-${requiresFollowUp ? 'followup' : 'draft'}-${lead.id}`,
           eyebrow: t('estimate'),
           title: projectTitle,
           description: clientName,
-          meta: t(getLeadNextStepKey(stage)),
-          priority: 30,
-          timestamp: toTimestamp(lead?.portal?.estimate?.dateCreated || lead?.portal?.estimate?.createdAt || lead?.portal?.estimate?.created_at || lead?.createdAt || lead?.created_at),
-          onClick: goToLeadOrProject,
-        })
-      }
-
-      if (stage === leadPipelineStages.ESTIMATE_SENT || stage === leadPipelineStages.FOLLOW_UP) {
-        items.push({
-          id: `estimate-followup-${lead.id}`,
-          eyebrow: t('estimate'),
-          title: projectTitle,
-          description: clientName,
-          meta: t(getLeadNextStepKey(stage)),
-          priority: 25,
-          timestamp: toTimestamp(lead?.portal?.estimate?.updatedAt || lead?.portal?.estimate?.updated_at || lead?.portal?.estimate?.dateCreated || lead?.portal?.estimate?.createdAt),
-          onClick: goToLeadOrProject,
+          meta: t(getLeadNextStepKey(requiresFollowUp ? leadPipelineStages.ESTIMATE_SENT : leadPipelineStages.ESTIMATE_CREATED)),
+          priority: requiresFollowUp ? 25 : 30,
+          timestamp: toTimestamp(estimate?.updatedAt || estimate?.updated_at || estimate?.dateCreated || estimate?.createdAt || estimate?.created_at || lead?.createdAt || lead?.created_at),
+          onClick: onOpenEstimate ? () => onOpenEstimate(lead.id, estimate) : goToLeadOrProject,
         })
       }
 
@@ -406,7 +415,7 @@ export function DashboardPage({
         || contract?.status
       )
 
-      if (hasContract && contractStatus !== 'signed') {
+      if (hasContract && !isRecordArchived(contract) && ['draft', 'sent', 'pending', 'pending_signature', 'viewed'].includes(contractStatus || 'draft')) {
         items.push({
           id: `contract-unsigned-${lead.id}`,
           eyebrow: t('contract'),
@@ -415,12 +424,14 @@ export function DashboardPage({
           meta: contractStatus === 'sent' ? t('contractNeedsSignature') : t('sendContract'),
           priority: 20,
           timestamp: toTimestamp(contract?.updatedAt || contract?.updated_at || contract?.createdAt || contract?.created_at),
-          onClick: goToLeadOrProject,
+          onClick: onOpenContract ? () => onOpenContract(lead.id) : goToLeadOrProject,
         })
       }
     })
 
     scheduleEvents.forEach((event) => {
+      if (!isClientVisibleScheduleEvent(event)) return
+
       const eventDateKey = resolveEventDateKey(event)
       const eventDate = eventDateKey ? new Date(`${eventDateKey}T00:00:00`) : null
 
@@ -428,8 +439,9 @@ export function DashboardPage({
       if (eventDateKey <= todayKey) return
       if (eventDate.getTime() > upcomingWindowEnd.getTime()) return
 
-      const linkedLead = leadsById.get(event.leadId) || null
-      const hasProject = Boolean(linkedLead?.projectId || linkedLead?.project_id)
+      const linkedLead = leadsById.get(event.leadId || event.lead_id) || findDashboardLinkedLead(leads, event)
+      const eventProjectId = event.projectId || event.project_id || linkedLead?.projectId || linkedLead?.project_id || ''
+      const hasProject = Boolean(eventProjectId)
       const detailParts = [
         formatDisplayDate(eventDateKey, event.displayDate || eventDateKey),
         resolveEventTime(event),
@@ -444,16 +456,20 @@ export function DashboardPage({
         meta: detailParts.join(' · '),
         priority: 40,
         timestamp: eventDate.getTime(),
-        onClick: linkedLead ? () => (hasProject ? onOpenProject?.(linkedLead.id) : onLeadClick?.(linkedLead.id)) : null,
+        onClick: hasProject
+          ? () => onOpenProject?.(eventProjectId)
+          : linkedLead
+            ? () => onLeadClick?.(linkedLead.id)
+            : null,
       })
     })
 
     invoices.forEach((invoice) => {
       const remaining = getInvoiceRemainingBalance(invoice)
-      if (remaining <= 0) return
+      if (remaining <= 0 || !isCollectibleInvoice(invoice)) return
 
       const isOverdue = invoice.status === 'Overdue'
-      const isOutstanding = invoice.status === 'Sent'
+      const isOutstanding = ['Sent', 'Partially Paid'].includes(invoice.status)
       if (!isOverdue && !isOutstanding) return
 
       items.push({
@@ -477,7 +493,7 @@ export function DashboardPage({
         return left.timestamp - right.timestamp
       })
       .slice(0, 6)
-  }, [invoices, leads, leadsById, onLeadClick, onOpenInvoice, onOpenProject, scheduleEvents, t, todayKey])
+  }, [archivedLeadIds, invoices, leads, leadsById, onLeadClick, onOpenContract, onOpenEstimate, onOpenInvoice, onOpenProject, scheduleEvents, t, todayKey])
 
   const recentActivityItems = useMemo(() => {
     const items = []
@@ -491,7 +507,7 @@ export function DashboardPage({
       const contract = lead?.portal?.contract
 
       const estimateTimestamp = toTimestamp(estimate?.dateCreated || estimate?.createdAt || estimate?.created_at)
-      if (estimateTimestamp) {
+      if (estimateTimestamp && !isRecordArchived(estimate)) {
         items.push({
           id: `activity-estimate-${lead.id}`,
           eyebrow: t('estimate'),
@@ -504,7 +520,7 @@ export function DashboardPage({
       }
 
       const signedTimestamp = toTimestamp(contract?.signedDate || contract?.signed_at)
-      if (signedTimestamp) {
+      if (signedTimestamp && !isRecordArchived(contract)) {
         items.push({
           id: `activity-contract-${lead.id}`,
           eyebrow: t('contract'),
@@ -539,72 +555,92 @@ export function DashboardPage({
       const createdTimestamp = toTimestamp(event.createdAt || event.created_at)
       if (!createdTimestamp) return
 
-      const linkedLead = leadsById.get(event.leadId) || null
-      const hasProject = Boolean(linkedLead?.projectId || linkedLead?.project_id)
+      const linkedLead = leadsById.get(event.leadId || event.lead_id) || findDashboardLinkedLead(leads, event)
+      const eventProjectId = event.projectId || event.project_id || linkedLead?.projectId || linkedLead?.project_id || ''
+      const hasProject = Boolean(eventProjectId)
 
       items.push({
-        id: `activity-event-${event.id}`,
+        id: `activity-event-${event.id || [event.leadId || event.lead_id, event.date, event.title, event.createdAt || event.created_at].filter(Boolean).join('-')}`,
         eyebrow: t('calendar'),
         title: t('eventScheduledActivity'),
         description: [event.title || tStatus(t, event.type || t('scheduled')), resolveClientName(linkedLead, event.clientName || '')].filter(Boolean).join(' · '),
         meta: formatDisplayDate(event.createdAt || event.created_at),
         timestamp: createdTimestamp,
-        onClick: linkedLead ? () => (hasProject ? onOpenProject?.(linkedLead.id) : onLeadClick?.(linkedLead.id)) : null,
+        onClick: hasProject
+          ? () => onOpenProject?.(eventProjectId)
+          : linkedLead
+            ? () => onLeadClick?.(linkedLead.id)
+            : null,
       })
     })
 
+    const seenActivityIds = new Set()
+
     return items
+      .filter((item) => {
+        if (seenActivityIds.has(item.id)) return false
+        seenActivityIds.add(item.id)
+        return true
+      })
       .sort((left, right) => right.timestamp - left.timestamp)
       .slice(0, 6)
   }, [invoices, leads, leadsById, onLeadClick, onOpenInvoice, onOpenProject, scheduleEvents, t])
 
   const dashboardSummary = useMemo(() => {
-    const activeJobsMetric = metrics.find((metric) => metric.label === t('metricJobsInProgress'))
-    const pendingEstimatesMetric = metrics.find((metric) => metric.label === t('metricActiveEstimates'))
     const outstandingBalance = calculateOutstandingInvoiceBalance(invoices)
+    const activeJobs = selectDashboardActiveProjects({
+      projects,
+      leads,
+      contracts,
+      payments,
+      events: scheduleEvents,
+      archivedProjectIds,
+    }).length
+    const pendingEstimates = selectDashboardPendingEstimates({
+      estimates,
+      leads,
+      contracts,
+      archivedLeadIds,
+    }).length
 
     return {
       newLeads: metrics.find((metric) => metric.label === t('metricNewLeads'))?.value ?? 0,
-      activeJobs: activeJobsMetric?.value ?? 0,
-      pendingEstimates: pendingEstimatesMetric?.value ?? 0,
+      activeJobs,
+      pendingEstimates,
       outstandingBalance,
       visitsToday: todaysScheduleItems.length,
     }
-  }, [invoices, metrics, t, todaysScheduleItems.length])
+  }, [archivedLeadIds, archivedProjectIds, contracts, estimates, invoices, leads, metrics, payments, projects, scheduleEvents, t, todaysScheduleItems.length])
 
   const financialSnapshotMetrics = useMemo(() => metrics.filter((metric) => (
     metric.label === t('metricRevenuePipeline')
   )), [metrics, t])
 
-  const recentProjects = useMemo(() => leads
-    .filter((lead) => Boolean(lead?.projectId || lead?.project_id))
-    .map((lead) => {
-      const portal = getPortalData(lead)
-      const linkedEvents = scheduleEvents.filter((event) => (
-        event?.leadId === lead.id
-        || event?.projectId === lead.projectId
-        || event?.project_id === lead.projectId
-        || event?.projectId === lead.project_id
-        || event?.project_id === lead.project_id
-      ))
+  const recentProjects = useMemo(() => selectDashboardProjectRecords({
+    projects,
+    leads,
+    archivedProjectIds,
+  })
+    .map((project) => {
+      const projectPayments = getDashboardProjectPayments(payments, project)
+      const paymentSummary = calculateProjectPaymentSummary(project, projectPayments)
 
       return {
-        id: lead.id,
-        title: resolveDisplayTitle(lead, t('project')),
-        client: resolveClientName(lead, t('client')),
-        status: deriveProjectStatus({
-          project: lead,
-          contract: lead?.portal?.contract,
-          payments: lead?.portal?.payments || lead?.portal?.paymentHistory || [],
-          events: linkedEvents,
+        id: project.dashboardProjectId,
+        title: resolveDisplayTitle(project, t('project')),
+        client: resolveClientName(project, t('client')),
+        status: deriveDashboardProjectStatus(project, {
+          contracts,
+          payments,
+          events: scheduleEvents,
         }),
-        total: Number(portal.contractAmount || lead.contractValue || lead.value || 0),
-        balance: Number(portal.outstandingBalance || 0),
-        timestamp: toTimestamp(lead.updatedAt || lead.updated_at || lead.createdAt || lead.created_at),
+        total: paymentSummary.projectValue,
+        balance: paymentSummary.outstandingBalance,
+        timestamp: toTimestamp(project.updatedAt || project.updated_at || project.createdAt || project.created_at),
       }
     })
     .sort((left, right) => right.timestamp - left.timestamp)
-    .slice(0, 4), [leads, scheduleEvents, t])
+    .slice(0, 4), [archivedProjectIds, contracts, leads, payments, projects, scheduleEvents, t])
 
   return (
     <div className="mx-auto w-full max-w-7xl space-y-6 overflow-x-hidden">
@@ -624,11 +660,11 @@ export function DashboardPage({
               <h1 className="mt-3 break-words text-3xl font-bold leading-tight tracking-tight sm:text-4xl lg:text-5xl">{t('welcomeBack', { name: firstName })}</h1>
               <p className="mt-4 max-w-2xl text-sm leading-6 text-slate-300 sm:text-base">{t('dashboardWorkspaceHelp')}</p>
             </div>
-            <dl className={`grid min-w-0 gap-px overflow-hidden rounded-2xl border border-white/10 bg-white/10 backdrop-blur-sm ${isAnalyticsMode ? 'grid-cols-2' : 'grid-cols-3'}`}>
+            <dl className={`grid min-w-0 grid-cols-2 gap-px overflow-hidden rounded-2xl border border-white/10 bg-white/10 backdrop-blur-sm ${isAnalyticsMode ? '' : 'sm:grid-cols-3'}`}>
               <div className="min-w-0 bg-slate-950/35 p-4"><dt className="text-[0.68rem] font-bold uppercase tracking-[0.14em] text-slate-400">{t('activeJobs')}</dt><dd className="mt-2 break-words text-2xl font-bold text-white">{dashboardSummary.activeJobs}</dd></div>
               <div className="min-w-0 bg-slate-950/35 p-4"><dt className="text-[0.68rem] font-bold uppercase tracking-[0.14em] text-slate-400">{t('pendingEstimates')}</dt><dd className="mt-2 break-words text-2xl font-bold text-white">{dashboardSummary.pendingEstimates}</dd></div>
               {isAnalyticsMode ? <div className="min-w-0 bg-slate-950/35 p-4"><dt className="text-[0.68rem] font-bold uppercase tracking-[0.14em] text-slate-400">{t('outstandingBalance')}</dt><dd className="mt-2 break-words text-xl font-bold text-white">{currency.format(dashboardSummary.outstandingBalance)}</dd></div> : null}
-              <div className="min-w-0 bg-slate-950/35 p-4"><dt className="text-[0.68rem] font-bold uppercase tracking-[0.14em] text-slate-400">{t('upcomingVisitsToday')}</dt><dd className="mt-2 break-words text-2xl font-bold text-white">{dashboardSummary.visitsToday}</dd></div>
+              <div className={`min-w-0 bg-slate-950/35 p-4 ${isAnalyticsMode ? '' : 'col-span-2 sm:col-span-1'}`}><dt className="text-[0.68rem] font-bold uppercase tracking-[0.14em] text-slate-400">{t('upcomingVisitsToday')}</dt><dd className="mt-2 break-words text-2xl font-bold text-white">{dashboardSummary.visitsToday}</dd></div>
             </dl>
           </div>
         </div>
@@ -704,7 +740,7 @@ export function DashboardPage({
         </section>
       ) : null}
 
-      <RecentProjectsCard projects={recentProjects} onOpenProject={onOpenProject} t={t} />
+      <RecentProjectsCard projects={recentProjects} onOpenProject={onOpenProject} showFinancials={isAnalyticsMode} t={t} />
 
       <PipelineBoard
         leads={leads}

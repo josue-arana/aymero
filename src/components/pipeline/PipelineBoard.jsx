@@ -185,6 +185,14 @@ function LeadCard({ lead, onDragStart, statuses = [], moveLead, mobile = false, 
       draggable={!mobile}
       onDragStart={onDragStart}
       onClick={onClick}
+      onKeyDown={(event) => {
+        if (event.key !== 'Enter' && event.key !== ' ') return
+        event.preventDefault()
+        onClick?.()
+      }}
+      role="button"
+      tabIndex={0}
+      aria-label={`${t('viewLead')}: ${lead.client || t('client')}`}
       className={`${mobile ? '' : 'cursor-grab active:cursor-grabbing'} rounded-[1.35rem] border border-slate-200 bg-white p-4 shadow-sm transition hover:-translate-y-0.5 hover:shadow-md`}
     >
       <div className="mb-3 flex items-start justify-between gap-3">

@@ -10,6 +10,7 @@ const emptyJob = {
   location: '',
   projectTitle: '',
   projectType: '',
+  customProjectType: '',
   projectStatus: 'Scheduled',
   startDate: '',
   value: '',
@@ -24,6 +25,7 @@ const projectTypes = [
   'Roof Replacement',
   'Interior Painting',
   'Exterior Painting',
+  'Other',
 ]
 
 const jobStatuses = [
@@ -77,13 +79,17 @@ export function JobFormModal({ isOpen, mode = 'create', project = null, clients 
     setSelectedClientId(nextSelectedClientId)
     setIsSubmitting(false)
     submitGuardRef.current = false
+    const editingProjectType = editingProject?.projectType || editingProject?.jobType || ''
+    const hasCustomProjectType = Boolean(editingProjectType && !projectTypes.includes(editingProjectType))
+
     setForm(editingProject ? {
       ...emptyJob,
       client: editingProject.client || editingProject.clientName || matchedClient?.name || '',
       address: editingProject.address || editingProject.location || matchedClient?.address || '',
       location: editingProject.location || editingProject.address || matchedClient?.address || '',
       projectTitle: editingProject.projectTitle || editingProject.title || '',
-      projectType: editingProject.projectType || editingProject.jobType || '',
+      projectType: hasCustomProjectType ? 'Other' : editingProjectType,
+      customProjectType: hasCustomProjectType ? editingProjectType : '',
       projectStatus: editingProject.projectStatus || editingProject.status || emptyJob.projectStatus,
       startDate: editingProject.startDate || editingProject.start_date || '',
       value: editingProject.value ?? editingProject.estimatedValue ?? editingProject.contractValue ?? '',
@@ -164,7 +170,10 @@ export function JobFormModal({ isOpen, mode = 'create', project = null, clients 
       ? sortedClients.find((client) => client.id === selectedClientId)
       : null
     const trimmedClientName = form.client.trim() || selectedClient?.name || t('newClientFallback')
-    const projectType = form.projectType.trim() || form.projectTitle.trim() || t('projectJob')
+    const selectedProjectType = form.projectType.trim()
+    const projectType = selectedProjectType === 'Other'
+      ? form.customProjectType.trim() || form.projectTitle.trim() || t('projectJob')
+      : selectedProjectType || form.projectTitle.trim() || t('projectJob')
     const projectTitle = form.projectTitle.trim() || projectType
     const address = form.address.trim() || form.location.trim() || selectedClient?.address || ''
 
@@ -235,6 +244,17 @@ export function JobFormModal({ isOpen, mode = 'create', project = null, clients 
               <option value="">{t('selectProjectType')}</option>
               {projectTypes.map((type) => <option key={type} value={type}>{t(type)}</option>)}
             </SelectField>
+            {form.projectType === 'Other' ? (
+              <div className="mt-3">
+                <TextField
+                  label={t('customJobType')}
+                  value={form.customProjectType}
+                  onChange={(value) => updateField('customProjectType', value)}
+                  placeholder={t('customJobTypePlaceholder')}
+                  required
+                />
+              </div>
+            ) : null}
           </div>
           {mode === 'create' ? <div>
             <label className="mb-2 block text-sm font-bold text-slate-700">{t('status')}</label>
@@ -268,7 +288,7 @@ export function JobFormModal({ isOpen, mode = 'create', project = null, clients 
   )
 }
 
-function TextField({ label, value, onChange, type = 'text', required = false }) {
+function TextField({ label, value, onChange, type = 'text', placeholder = '', required = false }) {
   return (
     <div>
       <label className="mb-2 block text-sm font-bold text-slate-700">{label}</label>
@@ -277,6 +297,7 @@ function TextField({ label, value, onChange, type = 'text', required = false }) 
         onChange={(event) => onChange(event.target.value)}
         type={type}
         required={required}
+        placeholder={placeholder}
         className="w-full rounded-2xl border border-slate-200 px-4 py-3 text-sm outline-none transition focus:border-blue-500 focus:ring-4 focus:ring-blue-100"
       />
     </div>

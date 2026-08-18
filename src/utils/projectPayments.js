@@ -1,4 +1,4 @@
-import { currency } from './formatters'
+import { currency } from './formatters.js'
 
 function toNumber(value) {
   const parsed = Number(value)
