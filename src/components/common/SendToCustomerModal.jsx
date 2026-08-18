@@ -1,6 +1,7 @@
 import { useEffect, useMemo, useRef, useState } from 'react'
 import { ModalShell } from './ModalShell'
 import { normalizePortalShareUrl } from '../../utils/portal'
+import { getCustomerDeliveryAvailability } from '../../utils/customerDelivery'
 
 export function SendToCustomerModal({ isOpen, documentType = 'invoice', customer = {}, projectTitle = '', amountLabel = '', amountValue = '', dueDate = '', portalUrl = '', documentLink = '', onClose, onSent, t, contentT = t }) {
   const phone = customer.phone || ''
@@ -23,8 +24,13 @@ export function SendToCustomerModal({ isOpen, documentType = 'invoice', customer
   const typeLabel = t(documentType)
   const resolvedPortalUrl = normalizePortalShareUrl(portalUrl)
   const resolvedDocumentLink = normalizePortalShareUrl(documentLink)
-  const requiresClientLink = documentType === 'estimate' || documentType === 'contract'
-  const hasRequiredClientLink = !requiresClientLink || Boolean(resolvedDocumentLink)
+  const deliveryAvailability = getCustomerDeliveryAvailability({
+    documentType,
+    documentLink: resolvedDocumentLink,
+    phone,
+    email,
+  })
+  const { requiresClientLink, hasRequiredClientLink } = deliveryAvailability
   const availableChannels = useMemo(() => (
     [
       hasPhone ? { id: 'text', label: t('textMessage') } : null,
@@ -81,7 +87,7 @@ export function SendToCustomerModal({ isOpen, documentType = 'invoice', customer
   if (!isOpen) return null
 
   async function sendText() {
-    if (submitGuardRef.current || !hasPhone || !hasRequiredClientLink) {
+    if (submitGuardRef.current || !deliveryAvailability.text) {
       return
     }
 
@@ -105,7 +111,7 @@ export function SendToCustomerModal({ isOpen, documentType = 'invoice', customer
   }
 
   async function sendEmail() {
-    if (submitGuardRef.current || !hasEmail || !hasRequiredClientLink) {
+    if (submitGuardRef.current || !deliveryAvailability.email) {
       return
     }
 
@@ -178,7 +184,7 @@ export function SendToCustomerModal({ isOpen, documentType = 'invoice', customer
       <div className="mt-5 grid gap-3 sm:grid-cols-2">
         <button
           type="button"
-          disabled={isSubmitting || !hasRequiredClientLink || (channel === 'text' ? !hasPhone : !hasEmail)}
+          disabled={isSubmitting || !deliveryAvailability[channel]}
           onClick={channel === 'email' ? sendEmail : sendText}
           className="rounded-2xl bg-blue-600 px-4 py-4 text-sm font-bold text-white hover:bg-blue-700 disabled:cursor-not-allowed disabled:bg-slate-300"
         >
