@@ -30,6 +30,25 @@ export const technicalDebtRegistry = {
   },
   todoItems: [
     {
+      id: 'clientEstimateApproval',
+      titleKey: 'technicalDebtEstimateApprovalTitle',
+      descriptionKey: 'technicalDebtEstimateApprovalDescription',
+      severity: 'medium',
+      affectedAreaKey: 'technicalDebtAreaEstimateSharing',
+      nextActionKey: 'technicalDebtEstimateApprovalNextAction',
+      classification: 'backlog',
+      whyItMattersKey: 'technicalDebtEstimateApprovalWhy',
+      priority: 'high',
+      dependencyKeys: [
+        'technicalDebtDependencyPublicMutationSecurity',
+        'technicalDebtDependencyEstimateLifecycle',
+        'technicalDebtDependencyContractorNotifications',
+        'technicalDebtDependencyApprovalMeaning',
+      ],
+      futureSprintAreaKey: 'technicalDebtSprintEstimateAcceptance',
+      sourceHint: 'developerHealthRegistry.todoItems.clientEstimateApproval',
+    },
+    {
       id: 'contractorConfigurableServices',
       titleKey: 'technicalDebtConfigurableServicesTitle',
       descriptionKey: 'technicalDebtConfigurableServicesDescription',

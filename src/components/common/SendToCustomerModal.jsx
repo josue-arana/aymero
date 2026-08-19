@@ -1,9 +1,9 @@
 import { useEffect, useMemo, useRef, useState } from 'react'
 import { ModalShell } from './ModalShell'
 import { normalizePortalShareUrl } from '../../utils/portal'
-import { getCustomerDeliveryAvailability } from '../../utils/customerDelivery'
+import { buildCustomerDeliveryContent, getCustomerDeliveryAvailability } from '../../utils/customerDelivery'
 
-export function SendToCustomerModal({ isOpen, documentType = 'invoice', customer = {}, projectTitle = '', amountLabel = '', amountValue = '', dueDate = '', portalUrl = '', documentLink = '', onClose, onSent, t, contentT = t }) {
+export function SendToCustomerModal({ isOpen, documentType = 'invoice', customer = {}, projectTitle = '', amountLabel = '', amountValue = '', dueDate = '', portalUrl = '', documentLink = '', companyName = '', onClose, onSent, t, contentT = t }) {
   const phone = customer.phone || ''
   const email = customer.email || ''
   const hasPhone = Boolean(phone)
@@ -20,7 +20,6 @@ export function SendToCustomerModal({ isOpen, documentType = 'invoice', customer
     }
   }, [hasEmail, hasPhone, isOpen])
 
-  const firstName = (customer.name || '').split(' ')[0] || contentT('customer')
   const typeLabel = t(documentType)
   const resolvedPortalUrl = normalizePortalShareUrl(portalUrl)
   const resolvedDocumentLink = normalizePortalShareUrl(documentLink)
@@ -41,39 +40,18 @@ export function SendToCustomerModal({ isOpen, documentType = 'invoice', customer
     ? (isSubmitting ? t('saving') : hasEmail ? t('sendEmailNow') : t('noEmailOnFile'))
     : (isSubmitting ? t('saving') : hasPhone ? t('sendTextNow') : t('noPhoneOnFile'))
   const messageContent = useMemo(() => {
-    const resolvedDocumentStatus = resolvedDocumentLink
-      ? contentT('documentLinkIncluded', { link: resolvedDocumentLink })
-      : contentT('documentLinkUnavailable')
-
-    const subject = documentType === 'estimate'
-      ? contentT('sendEstimateSubject', { project: projectTitle })
-      : documentType === 'contract'
-        ? contentT('sendContractSubject', { project: projectTitle })
-        : documentType === 'portalLink'
-          ? contentT('sendPortalSubject', { project: projectTitle })
-          : contentT('sendInvoiceSubject', { project: projectTitle })
-    const smsBody = requiresClientLink && !resolvedDocumentLink
-      ? ''
-      : documentType === 'estimate'
-      ? contentT('estimateSmsMessage', { name: firstName, project: projectTitle, total: amountValue, link: resolvedDocumentLink })
-      : documentType === 'contract'
-        ? contentT('contractSmsMessage', { name: firstName, project: projectTitle, link: resolvedDocumentLink })
-        : documentType === 'portalLink'
-          ? contentT('portalSmsMessage', { name: firstName, project: projectTitle, link: resolvedPortalUrl })
-          : contentT('invoiceSmsMessage', { name: firstName, project: projectTitle, amount: amountValue, dueDate, documentStatus: resolvedDocumentStatus })
-
-    const emailBody = requiresClientLink && !resolvedDocumentLink
-      ? ''
-      : documentType === 'estimate'
-      ? contentT('estimateEmailBody', { name: firstName, project: projectTitle, total: amountValue, link: resolvedDocumentLink })
-      : documentType === 'contract'
-        ? contentT('contractEmailBody', { name: firstName, project: projectTitle, total: amountValue, link: resolvedDocumentLink })
-        : documentType === 'portalLink'
-          ? contentT('portalEmailBody', { name: firstName, project: projectTitle, link: resolvedPortalUrl })
-          : contentT('invoiceEmailBody', { name: firstName, project: projectTitle, amount: amountValue, dueDate, documentStatus: resolvedDocumentStatus })
-
-    return { subject, smsBody, emailBody, resolvedDocumentStatus }
-  }, [amountValue, contentT, documentType, dueDate, firstName, projectTitle, requiresClientLink, resolvedDocumentLink, resolvedPortalUrl])
+    return buildCustomerDeliveryContent({
+      documentType,
+      customerName: customer.name,
+      projectTitle,
+      amountValue,
+      dueDate,
+      portalUrl: resolvedPortalUrl,
+      documentLink: resolvedDocumentLink,
+      companyName,
+      contentT,
+    })
+  }, [amountValue, companyName, contentT, customer.name, documentType, dueDate, projectTitle, resolvedDocumentLink, resolvedPortalUrl])
 
   const clientLinkStatus = resolvedDocumentLink
     ? t('clientLinkReady')
@@ -134,19 +112,19 @@ export function SendToCustomerModal({ isOpen, documentType = 'invoice', customer
   }
 
   return (
-    <ModalShell isOpen={isOpen} onBackdropClick={isSubmitting ? undefined : onClose} panelClassName="sm:max-w-lg">
-      <div className="mb-5 rounded-2xl bg-blue-50 p-4 text-blue-900">
+    <ModalShell isOpen={isOpen} onBackdropClick={isSubmitting ? undefined : onClose} panelClassName="min-w-0 overflow-x-hidden pb-[max(1.25rem,env(safe-area-inset-bottom))] sm:max-w-lg">
+      <div className="mb-5 min-w-0 rounded-2xl bg-blue-50 p-4 text-blue-900">
         <p className="text-xs font-bold uppercase tracking-wide text-blue-500">{t('sendToCustomer')}</p>
         <h2 className="mt-1 text-xl font-bold">{t('sendDocumentToCustomer', { document: typeLabel })}</h2>
         <p className="mt-2 text-sm leading-6 text-blue-800">{t(requiresClientLink ? 'sendClientLinkHelp' : 'sendToCustomerHelp')}</p>
       </div>
 
-      <div className="rounded-2xl border border-slate-200 p-4 text-sm">
-        <p className="font-bold text-slate-950">{customer.name || t('customer')}</p>
-        <p className="mt-1 text-slate-500">{projectTitle}</p>
-        {amountLabel && amountValue && <p className="mt-2 text-slate-700">{amountLabel}: <span className="font-bold">{amountValue}</span></p>}
+      <div className="min-w-0 rounded-2xl border border-slate-200 p-4 text-sm [overflow-wrap:anywhere]">
+        <p className="break-words font-bold text-slate-950">{customer.name || t('customer')}</p>
+        <p className="mt-1 break-words text-slate-500">{projectTitle}</p>
+        {amountLabel && amountValue && <p className="mt-2 break-words text-slate-700">{amountLabel}: <span className="font-bold">{amountValue}</span></p>}
         {resolvedPortalUrl && <p className="mt-2 break-all text-slate-700">{t('shareUrl')}: <span className="font-bold">{resolvedPortalUrl}</span></p>}
-        <p className="mt-2 text-slate-700">{t(requiresClientLink ? 'clientLinkStatus' : 'documentStatus')}: <span className="font-bold">{clientLinkStatus}</span></p>
+        <p className="mt-2 break-words text-slate-700">{t(requiresClientLink ? 'clientLinkStatus' : 'documentStatus')}: <span className="font-bold">{clientLinkStatus}</span></p>
         {requiresClientLink && !resolvedDocumentLink ? (
           <p className="mt-2 text-sm leading-6 text-amber-700">{t(clientLinkUnavailableHelpKey)}</p>
         ) : null}
@@ -160,6 +138,7 @@ export function SendToCustomerModal({ isOpen, documentType = 'invoice', customer
               type="button"
               disabled={isSubmitting}
               onClick={() => setChannel(option.id)}
+              aria-pressed={channel === option.id}
               className={`rounded-[1rem] px-4 py-3 text-sm font-bold transition disabled:cursor-not-allowed disabled:opacity-60 ${channel === option.id ? 'bg-white text-blue-700 shadow-sm ring-1 ring-blue-200' : 'text-slate-600 hover:bg-white/80 hover:text-slate-900'}`}
             >
               {option.label}
@@ -168,15 +147,15 @@ export function SendToCustomerModal({ isOpen, documentType = 'invoice', customer
         </div>
       </div>
 
-      {hasRequiredClientLink ? <div className="mt-4 rounded-2xl border border-slate-200 bg-slate-50 p-4">
+      {hasRequiredClientLink ? <div className="mt-4 min-w-0 max-w-full overflow-hidden rounded-2xl border border-slate-200 bg-slate-50 p-4" role="region" aria-labelledby="customer-message-preview-label">
         {channel === 'email' && (
           <>
             <p className="text-xs font-bold uppercase tracking-wide text-slate-400">{t('subject')}</p>
-            <p className="mt-1 text-sm font-bold text-slate-900">{messageContent.subject}</p>
+            <p className="mt-1 break-words text-sm font-bold text-slate-900 [overflow-wrap:anywhere]">{messageContent.subject}</p>
           </>
         )}
-        <p className={`text-xs font-bold uppercase tracking-wide text-slate-400 ${channel === 'email' ? 'mt-4' : ''}`}>{t('messagePreview')}</p>
-        <p className="mt-1 whitespace-pre-wrap text-sm leading-6 text-slate-700">
+        <p id="customer-message-preview-label" className={`text-xs font-bold uppercase tracking-wide text-slate-400 ${channel === 'email' ? 'mt-4' : ''}`}>{t('messagePreview')}</p>
+        <p className="mt-1 min-w-0 max-w-full whitespace-pre-wrap break-words text-sm leading-6 text-slate-700 [overflow-wrap:anywhere]">
           {channel === 'email' ? messageContent.emailBody : messageContent.smsBody}
         </p>
       </div> : null}
@@ -191,6 +170,7 @@ export function SendToCustomerModal({ isOpen, documentType = 'invoice', customer
           {primaryActionLabel}
         </button>
         <button
+          type="button"
           disabled={isSubmitting}
           onClick={onClose}
           className="rounded-2xl border border-slate-200 px-4 py-4 text-sm font-bold text-slate-700 hover:bg-slate-50 disabled:cursor-not-allowed disabled:opacity-60"
