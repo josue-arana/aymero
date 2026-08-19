@@ -1,7 +1,8 @@
 import { useEffect, useMemo, useRef, useState } from 'react'
-import { Archive, ArrowLeft, BriefcaseBusiness, CheckCircle2, ChevronRight, ClipboardList, Copy, Edit3, FileText, Send, Trash2, Undo2, UserRoundPlus } from 'lucide-react'
+import { Archive, BriefcaseBusiness, CheckCircle2, ChevronRight, ClipboardList, Copy, Edit3, FileText, Send, Trash2, Undo2, UserRoundPlus } from 'lucide-react'
 import { useNavigate, useParams } from 'react-router-dom'
 import { ActionMenu } from '../components/common/ActionMenu'
+import { RecordBackButton } from '../components/common/RecordBackButton'
 import { AymeroLoader } from '../components/common/AymeroLoader'
 import { ConfirmRecordModal } from '../components/common/ConfirmRecordModal'
 import { useToast } from '../components/common/ToastProvider'
@@ -734,14 +735,7 @@ export function LeadDetailPage({
     <div className="mx-auto max-w-6xl space-y-6">
       <div className="flex min-w-0 items-center gap-4">
         <nav aria-label={t('leads')} className="flex min-w-0 items-center gap-2 text-sm font-semibold">
-          <button
-            type="button"
-            onClick={onBack}
-            className="inline-flex min-h-10 shrink-0 items-center gap-2 rounded-xl px-2 text-slate-600 transition hover:bg-slate-100 hover:text-slate-950 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-blue-500 focus-visible:ring-offset-2"
-          >
-            <ArrowLeft className="h-4 w-4" aria-hidden="true" />
-            {t('leads')}
-          </button>
+          <RecordBackButton label={t('leads')} onClick={onBack} />
           <ChevronRight className="h-4 w-4 shrink-0 text-slate-400" aria-hidden="true" />
           <span className="truncate text-slate-950" aria-current="page">{leadDisplayName}</span>
         </nav>

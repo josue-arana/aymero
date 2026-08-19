@@ -82,6 +82,7 @@ function read(relativePath) {
 
 const actionMenuSource = read('../src/components/common/ActionMenu.jsx')
 const projectSource = read('../src/pages/ProjectDetailPage.jsx')
+const projectScheduleSource = read('../src/components/projects/ProjectScheduleCard.jsx')
 const clientSource = read('../src/pages/ClientProfilePage.jsx')
 const sharedConsumers = [
   '../src/pages/LeadsPage.jsx',
@@ -93,6 +94,7 @@ const sharedConsumers = [
   '../src/pages/ClientProfilePage.jsx',
   '../src/pages/LeadDetailPage.jsx',
   '../src/pages/ProjectDetailPage.jsx',
+  '../src/components/projects/ProjectScheduleCard.jsx',
   '../src/pages/InvoiceDetailPage.jsx',
   '../src/components/layout/Topbar.jsx',
 ]
@@ -113,7 +115,7 @@ assert.match(actionMenuSource, /focusTrigger\(\)/)
 assert.match(actionMenuSource, /window\.visualViewport/)
 assert.match(actionMenuSource, /overflow-x-hidden/)
 assert.doesNotMatch(projectSource, /openPaymentMenuId|openScheduleMenuId/)
-assert.equal((projectSource.match(/<ActionMenu/g) || []).length >= 4, true)
+assert.equal((`${projectSource}\n${projectScheduleSource}`.match(/<ActionMenu/g) || []).length >= 4, true)
 assert.match(clientSource, /mobileHeroActionGridClasses/)
 
 for (const consumer of sharedConsumers) {

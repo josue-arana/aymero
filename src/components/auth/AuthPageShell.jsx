@@ -4,7 +4,7 @@ import { LanguageToggleButton } from '../common/LanguageToggleButton'
 
 export function AuthPageShell({ eyebrow, title, description, alternateLabel, alternatePath, alternateActionLabel, children, t, language, setLanguage }) {
   return (
-    <div className="min-h-screen bg-slate-50 px-4 py-8 sm:px-6 lg:px-8">
+    <div className="min-h-screen min-h-dvh bg-slate-50 pb-[max(2rem,env(safe-area-inset-bottom))] pl-[max(1rem,env(safe-area-inset-left))] pr-[max(1rem,env(safe-area-inset-right))] pt-[max(2rem,env(safe-area-inset-top))] sm:pl-[max(1.5rem,env(safe-area-inset-left))] sm:pr-[max(1.5rem,env(safe-area-inset-right))] lg:pl-[max(2rem,env(safe-area-inset-left))] lg:pr-[max(2rem,env(safe-area-inset-right))]">
       <div className="mx-auto grid max-w-5xl gap-6 lg:grid-cols-[1.05fr,0.95fr]">
         <section className="rounded-[2rem] bg-gradient-to-br from-slate-950 via-slate-900 to-blue-950 p-6 text-white shadow-2xl sm:p-8">
           <div className="flex items-start justify-between gap-4">
@@ -38,7 +38,7 @@ export function AuthPageShell({ eyebrow, title, description, alternateLabel, alt
           {children}
           <div className="mt-6 border-t border-slate-100 pt-6">
             <p className="text-sm text-slate-500">{alternateLabel}</p>
-            <NavLink to={alternatePath} className="mt-2 inline-flex rounded-2xl border border-slate-200 px-4 py-3 text-sm font-bold text-slate-800 hover:bg-slate-50">
+            <NavLink to={alternatePath} className="mt-2 inline-flex min-h-11 items-center rounded-2xl border border-slate-200 px-4 py-3 text-sm font-bold text-slate-800 hover:bg-slate-50 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-blue-500 focus-visible:ring-offset-2">
               {alternateActionLabel}
             </NavLink>
           </div>

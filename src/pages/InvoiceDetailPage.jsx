@@ -1,6 +1,6 @@
 import { useEffect, useMemo, useRef, useState } from 'react'
 import { useNavigate, useParams } from 'react-router-dom'
-import { Archive, ArrowLeft, Building2, CalendarDays, CheckCircle2, ChevronRight, CreditCard, DollarSign, Download, Eye, FileText, Pencil, Printer, RotateCcw, Save, Send, Trash2, UserRound, Wallet } from 'lucide-react'
+import { Archive, Building2, CalendarDays, CheckCircle2, ChevronRight, CreditCard, DollarSign, Download, Eye, FileText, Pencil, Printer, RotateCcw, Save, Send, Trash2, UserRound, Wallet } from 'lucide-react'
 import { StatusBadge } from '../components/ui/StatusBadge'
 import { InvoiceDocumentPreview } from '../components/invoices/InvoiceDocumentPreview'
 import { contractorCompany } from '../data/mockInvoices'
@@ -11,6 +11,7 @@ import { SendToCustomerModal } from '../components/common/SendToCustomerModal'
 import { ModalShell } from '../components/common/ModalShell'
 import { useToast } from '../components/common/ToastProvider'
 import ActionMenu from '../components/common/ActionMenu'
+import { RecordBackButton } from '../components/common/RecordBackButton'
 import { AymeroLoader } from '../components/common/AymeroLoader'
 import dataProvider from '../services/dataProvider'
 import { useAuth } from '../contexts/AuthContext'
@@ -847,14 +848,7 @@ export function InvoiceDetailRoute({ companySettings, leads, clients = [], invoi
     <div className="mx-auto max-w-6xl space-y-6">
       <div className="flex min-w-0 items-center justify-between gap-4">
         <nav aria-label={t('invoices')} className="flex min-w-0 items-center gap-2 text-sm font-semibold">
-          <button
-            type="button"
-            onClick={() => navigate(appRoutes.invoices)}
-            className="inline-flex shrink-0 items-center gap-2 text-slate-600 transition hover:text-slate-950 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-blue-500 focus-visible:ring-offset-2"
-          >
-            <ArrowLeft className="h-4 w-4" aria-hidden="true" />
-            {t('invoices')}
-          </button>
+          <RecordBackButton label={t('invoices')} onClick={() => navigate(appRoutes.invoices)} />
           <ChevronRight className="h-4 w-4 shrink-0 text-slate-300" aria-hidden="true" />
           <span className="min-w-0 truncate text-slate-950" aria-current="page">{invoiceNumber}</span>
         </nav>

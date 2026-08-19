@@ -1,10 +1,13 @@
 import { useEffect, useMemo, useRef, useState } from 'react'
 import { useLocation, useNavigate, useParams } from 'react-router-dom'
-import { Archive, ArrowLeft, MoreVertical, Trash2, Undo2 } from 'lucide-react'
+import { Archive, MoreVertical, Trash2, Undo2 } from 'lucide-react'
 import { ActionMenu } from '../components/common/ActionMenu'
+import { RecordBackButton } from '../components/common/RecordBackButton'
 import { ContractPdfTemplate } from '../components/contracts/ContractPdfTemplate'
 import { PaginatedContractPreview } from '../components/contracts/PaginatedContractPreview'
 import { SelectField } from '../components/ui/SelectField'
+import { FilterChip } from '../components/ui/FilterChip'
+import { StatusBadge } from '../components/ui/StatusBadge'
 import { currency } from '../utils/formatters'
 import { getPortalData, resolvePublicPortalShareUrl } from '../utils/portal'
 import { SendToCustomerModal } from '../components/common/SendToCustomerModal'
@@ -402,9 +405,9 @@ export function ContractPreviewPage({ lead, clientRecord = null, t, appLanguage 
 
   return (
     <div className="mx-auto max-w-5xl space-y-6">
-      <button onClick={onBack} className="inline-flex items-center gap-2 text-sm font-semibold text-slate-600 hover:text-slate-950"><ArrowLeft className="h-4 w-4" /> {backLabel || t('backToProjectWorkspace')}</button>
-      <section className="rounded-3xl bg-gradient-to-br from-slate-950 to-slate-800 p-5 text-white shadow-xl sm:p-6">
-        <p className="text-sm font-semibold uppercase tracking-[0.25em] text-blue-200">{t('contractPreview')}</p>
+      <RecordBackButton label={backLabel || t('backToProjectWorkspace')} onClick={onBack} />
+      <section className="rounded-3xl bg-gradient-to-br from-slate-950 to-slate-800 p-5 text-white shadow-xl sm:p-7 lg:p-8">
+        <p className="text-xs font-bold uppercase tracking-[0.24em] text-blue-200">{t('contractPreview')}</p>
         <h1 className="mt-2 text-3xl font-bold">{lead.projectTitle || lead.projectType}</h1>
         <p className="mt-2 break-words text-slate-300">{lead.client} · {lead.address || lead.location}</p>
       </section>
@@ -910,11 +913,11 @@ export function ContractsPage({ leads, contracts = [], onViewContract, onRestore
         <p className="mt-2 text-sm text-slate-300">{t('contractsComingDescription')}</p>
       </section>
       <section className="grid gap-4">
-        <div className="flex flex-wrap gap-2">
+        <div className="flex gap-2 overflow-x-auto pb-1">
           {['Active', 'Archived'].map((filter) => (
-            <button key={filter} onClick={() => setSelectedFilter(filter)} className={`rounded-full px-4 py-2 text-sm font-bold transition ${selectedFilter === filter ? 'bg-blue-600 text-white shadow-sm' : 'bg-slate-100 text-slate-600 hover:bg-slate-200'}`}>
+            <FilterChip key={filter} selected={selectedFilter === filter} onClick={() => setSelectedFilter(filter)}>
               {t(filter === 'Active' ? 'active' : 'archived')}
-            </button>
+            </FilterChip>
           ))}
         </div>
         {filteredContracts.map((contract) => (
@@ -923,7 +926,7 @@ export function ContractsPage({ leads, contracts = [], onViewContract, onRestore
               <div>
                 <p className="font-bold text-slate-950">{contract.client}</p>
                 <p className="text-sm text-slate-500">{contract.projectTitle}</p>
-                <p className="mt-1 text-xs font-bold uppercase tracking-wide text-slate-400">{contract.isArchived ? t('archived') : contract.status}</p>
+                <div className="mt-2 flex flex-wrap gap-2"><StatusBadge status={contract.status} t={t} />{contract.isArchived ? <StatusBadge status="Archived" t={t} /> : null}</div>
               </div>
               <div className="grid grid-cols-[minmax(0,1fr)_auto] gap-2 sm:min-w-[15rem]">
                 <button onClick={() => onViewContract(contract.routeId)} className="rounded-2xl bg-slate-950 px-4 py-3 text-sm font-bold text-white hover:bg-slate-800">

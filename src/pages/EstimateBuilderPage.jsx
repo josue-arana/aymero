@@ -1,6 +1,6 @@
 import { useEffect, useMemo, useRef, useState } from 'react'
 import { useLocation, useNavigate, useParams } from 'react-router-dom'
-import { Archive, ArrowLeft, ChevronDown, MapPin, Trash2, Undo2, UserRound } from 'lucide-react'
+import { Archive, ChevronDown, MapPin, Trash2, Undo2, UserRound } from 'lucide-react'
 import { SelectField } from '../components/ui/SelectField'
 import { AymeroLoader } from '../components/common/AymeroLoader'
 import { InfoCard } from '../components/ui/InfoCard'
@@ -15,6 +15,7 @@ import { archivePanelButtonClasses } from '../utils/buttonStyles'
 import { ConfirmRecordModal } from '../components/common/ConfirmRecordModal'
 import { SendToCustomerModal } from '../components/common/SendToCustomerModal'
 import { ModalShell } from '../components/common/ModalShell'
+import { RecordBackButton } from '../components/common/RecordBackButton'
 import { useToast } from '../components/common/ToastProvider'
 import dataProvider from '../services/dataProvider'
 import { useAuth } from '../contexts/AuthContext'
@@ -640,11 +641,11 @@ export function EstimateBuilderPage({ lead, clientRecord = null, t, appLanguage 
 
   return (
     <div className="mx-auto w-full max-w-6xl space-y-6 overflow-x-hidden">
-      <button onClick={onBack} className="inline-flex items-center gap-2 text-sm font-semibold text-slate-600 hover:text-slate-950"><ArrowLeft className="h-4 w-4" /> {backLabel}</button>
-      <section className="rounded-3xl bg-gradient-to-br from-slate-950 to-slate-800 p-5 text-white shadow-xl sm:p-6 lg:p-7">
+      <RecordBackButton label={backLabel} onClick={onBack} />
+      <section className="rounded-3xl bg-gradient-to-br from-slate-950 to-slate-800 p-5 text-white shadow-xl sm:p-7 lg:p-8">
         <div className="grid min-w-0 gap-6 lg:grid-cols-[minmax(0,1fr)_minmax(320px,0.72fr)] lg:items-end">
           <div className="min-w-0">
-            <p className="text-sm font-semibold uppercase tracking-[0.25em] text-blue-200">{t('estimateBuilder')}</p>
+            <p className="text-xs font-bold uppercase tracking-[0.24em] text-blue-200">{t('estimateBuilder')}</p>
             <h1 className="mt-3 break-words text-3xl font-bold leading-tight sm:text-4xl">{lead.projectTitle || lead.projectType}</h1>
             <div className="mt-4 flex flex-col gap-2 text-sm text-slate-300 sm:flex-row sm:flex-wrap sm:gap-x-5">
               {lead?.client || clientRecord?.name ? (
@@ -928,7 +929,7 @@ export function EstimateBuilderPage({ lead, clientRecord = null, t, appLanguage 
         </aside>
       </div>
       <ConfirmRecordModal isOpen={Boolean(confirmAction)} mode={confirmAction?.mode === 'delete' ? 'delete' : 'archive'} title={confirmAction?.mode === 'delete' ? t('confirmPermanentDelete') : confirmAction?.mode === 'sync-contract' ? t('confirmSyncSignedContract') : t('confirmArchive')} message={confirmAction?.mode === 'delete' ? t('permanentDeleteHelp') : confirmAction?.mode === 'sync-contract' ? t('signedContractSyncWarning') : t('archiveHelp')} confirmLabel={confirmAction?.mode === 'delete' ? t('deletePermanently') : confirmAction?.mode === 'sync-contract' ? t('syncContractFromEstimate') : t('archive')} onCancel={() => setConfirmAction(null)} onConfirm={async () => { if (confirmAction?.mode === 'archive') { await onArchiveEstimate?.() } if (confirmAction?.mode === 'delete') { await onDeleteEstimate?.(); onBack?.() } if (confirmAction?.mode === 'sync-contract') { await handleSyncContract(true) } setConfirmAction(null) }} t={t} />
-      <SendToCustomerModal isOpen={showSendModal} documentType="estimate" customer={{ name: lead.client, phone: lead.phone, email: lead.email }} projectTitle={lead.projectTitle || lead.projectType} amountLabel={t('estimatedTotal')} amountValue={currency.format(estimateTotal)} documentLink={sendDocumentLink} onClose={() => setShowSendModal(false)} onSent={async () => {
+      <SendToCustomerModal isOpen={showSendModal} documentType="estimate" customer={{ name: lead.client, phone: lead.phone, email: lead.email }} projectTitle={lead.projectTitle || lead.projectType} amountLabel={t('estimatedTotal')} amountValue={currency.format(estimateTotal)} documentLink={sendDocumentLink} companyName={companySettings?.company?.name || ''} onClose={() => setShowSendModal(false)} onSent={async () => {
         const result = await persistEstimate({ status: 'Sent', sentAt: savedEstimate.sentAt || savedEstimate.sent_at || new Date().toISOString() }, { closeSendModal: true })
         return Boolean(result)
       }} t={t} contentT={estimateT} />

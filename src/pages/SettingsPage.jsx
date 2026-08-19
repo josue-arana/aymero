@@ -409,11 +409,11 @@ export function SettingsPage({ settings, onSaveSettings, onOpenCompanySetup, onC
             {settings?.onboarding?.completed ? t('onboardingReviewSetup') : t('onboardingResumeSetup')}
           </button>
           {sampleWorkspaceNeedsUpgrade ? (
-            <button type="button" onClick={() => setSampleAction('update')} className="min-h-10 rounded-2xl border border-amber-200 bg-white px-4 text-sm font-bold text-amber-800 hover:bg-amber-50">
+            <button type="button" onClick={() => setSampleAction('update')} className="min-h-11 rounded-2xl border border-amber-200 bg-white px-4 text-sm font-bold text-amber-800 hover:bg-amber-50">
               {t('sampleDataUpdateAction')}
             </button>
           ) : !sampleWorkspaceInstalled ? (
-            <button type="button" onClick={() => setSampleAction('install')} className="min-h-10 rounded-2xl border border-blue-200 bg-white px-4 text-sm font-bold text-blue-700 hover:bg-blue-50">
+            <button type="button" onClick={() => setSampleAction('install')} className="min-h-11 rounded-2xl border border-blue-200 bg-white px-4 text-sm font-bold text-blue-700 hover:bg-blue-50">
               {t(sampleWorkspaceExists ? 'sampleDataContinueAction' : 'sampleDataExploreAction')}
             </button>
           ) : null}
@@ -421,12 +421,12 @@ export function SettingsPage({ settings, onSaveSettings, onOpenCompanySetup, onC
             <button type="button" onClick={async () => {
               const result = await onReopenSampleGuide?.()
               if (result?.error) showToast(t('sampleGuideSaveError'), 'error')
-            }} className="min-h-10 rounded-2xl border border-cyan-200 bg-white px-4 text-sm font-bold text-cyan-800 hover:bg-cyan-50">
+            }} className="min-h-11 rounded-2xl border border-cyan-200 bg-white px-4 text-sm font-bold text-cyan-800 hover:bg-cyan-50">
               {t('sampleGuideReopen')}
             </button>
           ) : null}
           {sampleWorkspaceExists ? (
-            <button type="button" onClick={() => setSampleAction('remove')} className="min-h-10 rounded-2xl border border-rose-200 bg-white px-4 text-sm font-bold text-rose-700 hover:bg-rose-50">
+            <button type="button" onClick={() => setSampleAction('remove')} className="min-h-11 rounded-2xl border border-rose-200 bg-white px-4 text-sm font-bold text-rose-700 hover:bg-rose-50">
               {t('sampleDataRemoveAction')}
             </button>
           ) : null}

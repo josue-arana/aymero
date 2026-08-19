@@ -24,7 +24,7 @@ export function StatusBadge({ status, t = (key) => key }) {
   }
 
   return (
-    <span className={`inline-flex w-fit rounded-full px-2.5 py-1 text-xs font-bold ring-1 ${styles[status] || 'bg-slate-100 text-slate-700 ring-slate-200'}`}>
+    <span className={`inline-flex min-h-6 w-fit max-w-full items-center break-words rounded-full px-2.5 py-1 text-xs font-bold leading-none ring-1 ${styles[status] || 'bg-slate-100 text-slate-700 ring-slate-200'}`}>
       {tStatus(t, status)}
     </span>
   )

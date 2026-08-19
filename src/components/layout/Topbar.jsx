@@ -130,9 +130,9 @@ export function Topbar({
 
   return (
     <>
-      <header className="sticky top-0 z-30 border-b border-slate-200/80 bg-white/92 px-4 py-4 backdrop-blur sm:px-6 lg:px-8">
+      <header className="sticky top-0 z-30 border-b border-slate-200/80 bg-white/92 pb-4 pl-[max(1rem,env(safe-area-inset-left))] pr-[max(1rem,env(safe-area-inset-right))] pt-[max(1rem,env(safe-area-inset-top))] backdrop-blur sm:pl-[max(1.5rem,env(safe-area-inset-left))] sm:pr-[max(1.5rem,env(safe-area-inset-right))] lg:pl-[max(2rem,env(safe-area-inset-left))] lg:pr-[max(2rem,env(safe-area-inset-right))]">
         <div className="relative z-10 flex items-center justify-between gap-4">
-          <button className="rounded-2xl border border-slate-200 p-2 lg:hidden" onClick={onMenuClick} aria-label={t('menu')}>
+          <button type="button" className="inline-flex min-h-11 min-w-11 items-center justify-center rounded-2xl border border-slate-200 bg-white text-slate-600 transition hover:bg-slate-50 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-blue-500 focus-visible:ring-offset-2 lg:hidden" onClick={onMenuClick} aria-label={t('menu')}>
             <Menu className="h-5 w-5" />
           </button>
 
@@ -150,7 +150,7 @@ export function Topbar({
               t={t}
               className="px-2.5 py-2 text-[11px] sm:px-3 sm:py-3 sm:text-xs lg:px-3 lg:py-3"
             />
-            <button onClick={openNotifications} className="relative rounded-[1.35rem] border border-slate-200 bg-white p-3 hover:bg-slate-50" aria-label={t('notificationCenter')}>
+            <button type="button" onClick={openNotifications} className="relative inline-flex min-h-11 min-w-11 items-center justify-center rounded-[1.35rem] border border-slate-200 bg-white p-3 transition hover:bg-slate-50 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-blue-500 focus-visible:ring-offset-2" aria-label={t('notificationCenter')}>
               <Bell className="h-5 w-5 text-slate-600" />
               {unreadCount > 0 && (
                 <span className="absolute -right-1 -top-1 flex h-5 min-w-5 items-center justify-center rounded-full bg-blue-600 px-1 text-[10px] font-bold text-white">
@@ -166,7 +166,7 @@ export function Topbar({
                 buttonClassName="inline-flex min-h-[56px] items-center justify-center gap-2 rounded-[1.35rem] border border-slate-200 bg-white px-4 py-3 text-sm font-bold text-slate-800 shadow-sm transition hover:bg-slate-50"
               />
             </div>
-            <button onClick={() => { setIsAccountOpen((value) => !value); setIsNotificationsOpen(false); setAccountScreen(null) }} className="flex items-center gap-3 rounded-[1.35rem] border border-slate-200 bg-white px-3 py-2.5 shadow-sm hover:bg-slate-50" aria-label={t('accountMenu')}>
+            <button type="button" onClick={() => { setIsAccountOpen((value) => !value); setIsNotificationsOpen(false); setAccountScreen(null) }} className="flex min-h-11 items-center gap-3 rounded-[1.35rem] border border-slate-200 bg-white px-3 py-2.5 shadow-sm transition hover:bg-slate-50 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-blue-500 focus-visible:ring-offset-2" aria-label={t('accountMenu')}>
               <div className="flex h-10 w-10 items-center justify-center rounded-2xl bg-slate-950 text-sm font-bold text-white">{userProfile?.initials || t('userInitials')}</div>
               <div className="hidden text-left lg:block">
                 <p className="text-sm font-semibold text-slate-950">{userProfile?.name || t('userName')}</p>

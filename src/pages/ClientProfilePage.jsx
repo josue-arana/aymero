@@ -1,6 +1,6 @@
 import { useMemo, useState } from 'react'
 import { useParams } from 'react-router-dom'
-import { Archive, ArrowLeft, BarChart3, BriefcaseBusiness, CalendarDays, CarFront, ChevronRight, Clock3, CreditCard, Edit3, FileSignature, Images, Mail, MessageSquare, MoreVertical, Phone, Plus, Sparkles, Trash2, Undo2, WalletCards } from 'lucide-react'
+import { Archive, BarChart3, BriefcaseBusiness, CalendarDays, CarFront, ChevronRight, Clock3, CreditCard, Edit3, FileSignature, Images, Mail, MessageSquare, MoreVertical, Phone, Plus, Sparkles, Trash2, Undo2, WalletCards } from 'lucide-react'
 import { DetailRow } from '../components/ui/DetailRow'
 import { InfoCard } from '../components/ui/InfoCard'
 import { StatusBadge } from '../components/ui/StatusBadge'
@@ -23,6 +23,7 @@ import { hasContractData } from '../utils/contractLinks'
 import { calculateProjectPaymentSummary, dedupePayments } from '../utils/projectPayments'
 import { getContractForProject, getEstimateForProject, getProjectsForClient, resolveLinkedProjectId } from '../utils/projectIdentity'
 import { ActionMenu } from '../components/common/ActionMenu'
+import { RecordBackButton } from '../components/common/RecordBackButton'
 import { deriveProjectStatus } from '../utils/projectLifecycle'
 import { resolveClientContactActions } from '../utils/clientContactActions'
 
@@ -610,9 +611,7 @@ function renderMobileAccountSummary() {
   return (
     <div className="mx-auto max-w-6xl space-y-6">
       <nav aria-label={t('clients')} className="flex min-w-0 items-center gap-2 text-sm font-semibold">
-        <button type="button" onClick={onBack} aria-label={t('backToClients')} className="inline-flex min-h-11 shrink-0 items-center gap-2 rounded-xl px-2 text-slate-600 transition hover:bg-slate-100 hover:text-slate-950 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-blue-500 focus-visible:ring-offset-2">
-          <ArrowLeft className="h-4 w-4" aria-hidden="true" /> {t('backToClients')}
-        </button>
+        <RecordBackButton label={t('backToClients')} onClick={onBack} />
         <ChevronRight className="h-4 w-4 shrink-0 text-slate-300" aria-hidden="true" />
         <span className="min-w-0 truncate text-slate-950" aria-current="page">{client.name}</span>
       </nav>

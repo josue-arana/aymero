@@ -23,7 +23,7 @@ function formatClientAddress(client = {}, project = {}) {
 
 function PublicEstimateState({ title, message }) {
   return (
-    <main className="flex min-h-[100dvh] items-center justify-center bg-slate-50 px-4 py-[max(1.5rem,env(safe-area-inset-top))] sm:px-6">
+    <main className="flex min-h-[100dvh] items-center justify-center bg-slate-50 pb-[max(1.5rem,env(safe-area-inset-bottom))] pl-[max(1rem,env(safe-area-inset-left))] pr-[max(1rem,env(safe-area-inset-right))] pt-[max(1.5rem,env(safe-area-inset-top))] sm:pl-[max(1.5rem,env(safe-area-inset-left))] sm:pr-[max(1.5rem,env(safe-area-inset-right))]">
       <section className="w-full max-w-xl rounded-3xl border border-slate-200 bg-white p-8 text-center shadow-sm">
         <h1 className="text-2xl font-bold text-slate-950">{title}</h1>
         <p className="mx-auto mt-3 max-w-lg text-sm leading-6 text-slate-500">{message}</p>
@@ -167,12 +167,12 @@ export function PublicEstimatePage() {
   }
 
   return (
-    <main className="min-h-[100dvh] bg-slate-100 px-4 pb-[max(1.5rem,env(safe-area-inset-bottom))] pt-[max(1rem,env(safe-area-inset-top))] sm:px-6 sm:py-8">
+    <main className="min-h-[100dvh] bg-slate-100 pb-[max(1.5rem,env(safe-area-inset-bottom))] pl-[max(1rem,env(safe-area-inset-left))] pr-[max(1rem,env(safe-area-inset-right))] pt-[max(1rem,env(safe-area-inset-top))] sm:pl-[max(1.5rem,env(safe-area-inset-left))] sm:pr-[max(1.5rem,env(safe-area-inset-right))] sm:pt-[max(2rem,env(safe-area-inset-top))]">
       <div className="mx-auto w-full max-w-5xl">
         <div className="mb-4 flex flex-col gap-3 rounded-2xl border border-slate-200 bg-white p-3 shadow-sm sm:flex-row sm:items-center sm:justify-between sm:p-4">
           <div className="min-w-0">
             <p className="text-xs font-bold uppercase tracking-[0.18em] text-slate-400">{t('estimate')}</p>
-            <h1 className="mt-1 truncate text-lg font-bold text-slate-950">{previewProps.lead.projectTitle || previewProps.estimateNumber}</h1>
+            <h1 className="mt-1 break-words text-lg font-bold text-slate-950 [overflow-wrap:anywhere]">{previewProps.lead.projectTitle || previewProps.estimateNumber}</h1>
           </div>
           <button type="button" onClick={handleSaveAsPdf} className="min-h-11 rounded-xl bg-slate-950 px-5 py-3 text-sm font-bold text-white hover:bg-slate-800 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-blue-500 focus-visible:ring-offset-2">
             {t('saveAsPdf')}

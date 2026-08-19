@@ -9,6 +9,7 @@ import { getEventsContractorId } from '../services/system/eventsRuntimeService'
 import { MetricCard } from '../components/ui/MetricCard'
 import { SelectField } from '../components/ui/SelectField'
 import { StatusBadge } from '../components/ui/StatusBadge'
+import { FilterChip } from '../components/ui/FilterChip'
 import { scheduleEventTypes } from '../data/mockScheduleEvents'
 import { tStatus } from '../translations'
 import calendarHeroBackground from '../assets/page-heroes/calendar-bg.png'
@@ -162,7 +163,7 @@ export function CalendarPage({ leads, scheduleEvents = [], onCreateEvent, onExpo
 
   return (
     <div className="space-y-6">
-      <section className="relative overflow-hidden rounded-3xl p-6 text-white shadow-sm sm:p-8" style={buildHeroBackgroundStyle(calendarHeroBackground, 'rgba(2, 6, 23, 0.82)', 'rgba(15, 23, 42, 0.35)', '72% center')}>
+      <section className="relative overflow-hidden rounded-3xl p-6 text-white shadow-xl" style={buildHeroBackgroundStyle(calendarHeroBackground, 'rgba(2, 6, 23, 0.82)', 'rgba(15, 23, 42, 0.35)', '72% center')}>
         <div className="absolute inset-0 bg-gradient-to-r from-slate-950/55 via-slate-950/20 to-transparent" />
         <div className="relative flex flex-col justify-between gap-6 lg:flex-row lg:items-end">
           <div>
@@ -195,9 +196,9 @@ export function CalendarPage({ leads, scheduleEvents = [], onCreateEvent, onExpo
 
         <div className="mb-5 flex gap-2 overflow-x-auto pb-1">
           {scheduleEventTypes.map((type) => (
-            <button key={type} onClick={() => setSelectedFilter(type)} className={`shrink-0 rounded-full px-4 py-2 text-sm font-bold transition ${selectedFilter === type ? 'bg-blue-600 text-white shadow-sm' : 'bg-slate-100 text-slate-600 hover:bg-slate-200'}`}>
+            <FilterChip key={type} selected={selectedFilter === type} onClick={() => setSelectedFilter(type)}>
               {type === 'All' ? t('all') : tStatus(t, type)}
-            </button>
+            </FilterChip>
           ))}
         </div>
 
@@ -244,11 +245,11 @@ export function CalendarPage({ leads, scheduleEvents = [], onCreateEvent, onExpo
                     <td className="px-4 py-3 text-slate-600">{event.location}</td>
                     <td className="px-4 py-3">
                       <div className="flex justify-end gap-2">
-                        {event.projectId ? <button onClick={() => onViewProject(event.projectId, event.leadId)} className="rounded-xl bg-slate-950 px-3 py-2 text-xs font-bold text-white hover:bg-slate-800">{t('viewProject')}</button> : event.leadId ? <button onClick={() => onViewLead(event.leadId)} className="rounded-xl bg-slate-950 px-3 py-2 text-xs font-bold text-white hover:bg-slate-800">{t('viewLead')}</button> : null}
+                        {event.projectId ? <button onClick={() => onViewProject(event.projectId, event.leadId)} className="inline-flex min-h-11 items-center justify-center rounded-xl bg-slate-950 px-3 py-2 text-xs font-bold text-white hover:bg-slate-800">{t('viewProject')}</button> : event.leadId ? <button onClick={() => onViewLead(event.leadId)} className="inline-flex min-h-11 items-center justify-center rounded-xl bg-slate-950 px-3 py-2 text-xs font-bold text-white hover:bg-slate-800">{t('viewLead')}</button> : null}
                         {!isCompleted ? (
-                          <button disabled={isCompleting} onClick={() => markComplete(event.id)} className="rounded-xl border border-slate-200 px-3 py-2 text-xs font-bold text-slate-700 hover:bg-slate-50 disabled:cursor-not-allowed disabled:opacity-60">{isCompleting ? t('saving') : t('markComplete')}</button>
+                          <button disabled={isCompleting} onClick={() => markComplete(event.id)} className="inline-flex min-h-11 items-center justify-center rounded-xl border border-slate-200 px-3 py-2 text-xs font-bold text-slate-700 hover:bg-slate-50 disabled:cursor-not-allowed disabled:opacity-60">{isCompleting ? t('saving') : t('markComplete')}</button>
                         ) : null}
-                        <button onClick={() => onExportEvent(event)} className="rounded-xl border border-blue-200 bg-blue-50 px-3 py-2 text-xs font-bold text-blue-700 hover:bg-blue-100"><Download className="mr-1 inline h-3 w-3" />{t('exportToCalendar')}</button>
+                        <button onClick={() => onExportEvent(event)} className="inline-flex min-h-11 items-center justify-center rounded-xl border border-blue-200 bg-blue-50 px-3 py-2 text-xs font-bold text-blue-700 hover:bg-blue-100"><Download className="mr-1 inline h-3 w-3" />{t('exportToCalendar')}</button>
                       </div>
                     </td>
                   </tr>
@@ -272,7 +273,7 @@ export function CalendarPage({ leads, scheduleEvents = [], onCreateEvent, onExpo
                       <Icon className="h-4 w-4" />
                     </div>
                     <div className="min-w-0">
-                      <h3 className="truncate font-bold text-slate-950">{t(event.title)}</h3>
+                      <h3 className="break-words font-bold text-slate-950 [overflow-wrap:anywhere]">{t(event.title)}</h3>
                       <p className="text-sm text-slate-500">{tStatus(t, event.type)}</p>
                     </div>
                   </div>
@@ -282,16 +283,16 @@ export function CalendarPage({ leads, scheduleEvents = [], onCreateEvent, onExpo
                 <div className="mt-3 grid grid-cols-2 gap-3 rounded-2xl bg-slate-50 p-3 text-sm">
                   <div><p className="text-xs font-bold uppercase tracking-wide text-slate-400">{t('date')}</p><p className="font-medium text-slate-800">{event.displayDate}</p></div>
                   <div><p className="text-xs font-bold uppercase tracking-wide text-slate-400">{t('time')}</p><p className="font-medium text-slate-800">{event.time || t('notAdded')}</p></div>
-                  <div className="col-span-2"><p className="text-xs font-bold uppercase tracking-wide text-slate-400">{t('customerProject')}</p><p className="font-medium text-slate-800">{event.clientName} · {event.projectTitle}</p></div>
-                  <div className="col-span-2"><p className="text-xs font-bold uppercase tracking-wide text-slate-400">{t('location')}</p><p className="font-medium text-slate-800">{event.location}</p></div>
+                  <div className="col-span-2 min-w-0"><p className="text-xs font-bold uppercase tracking-wide text-slate-400">{t('customerProject')}</p><p className="break-words font-medium text-slate-800 [overflow-wrap:anywhere]">{event.clientName} · {event.projectTitle}</p></div>
+                  <div className="col-span-2 min-w-0"><p className="text-xs font-bold uppercase tracking-wide text-slate-400">{t('location')}</p><p className="break-words font-medium text-slate-800 [overflow-wrap:anywhere]">{event.location}</p></div>
                 </div>
 
                 <div className="mt-3 grid gap-2 sm:grid-cols-3">
-                  {event.projectId ? <button onClick={() => onViewProject(event.projectId, event.leadId)} className="rounded-xl bg-slate-950 px-3 py-2 text-xs font-bold text-white hover:bg-slate-800">{t('viewProject')}</button> : event.leadId ? <button onClick={() => onViewLead(event.leadId)} className="rounded-xl bg-slate-950 px-3 py-2 text-xs font-bold text-white hover:bg-slate-800">{t('viewLead')}</button> : null}
+                  {event.projectId ? <button onClick={() => onViewProject(event.projectId, event.leadId)} className="inline-flex min-h-11 items-center justify-center rounded-xl bg-slate-950 px-3 py-2 text-xs font-bold text-white hover:bg-slate-800">{t('viewProject')}</button> : event.leadId ? <button onClick={() => onViewLead(event.leadId)} className="inline-flex min-h-11 items-center justify-center rounded-xl bg-slate-950 px-3 py-2 text-xs font-bold text-white hover:bg-slate-800">{t('viewLead')}</button> : null}
                   {!isCompleted ? (
-                    <button disabled={isCompleting} onClick={() => markComplete(event.id)} className="rounded-xl border border-slate-200 px-3 py-2 text-xs font-bold text-slate-700 hover:bg-slate-50 disabled:cursor-not-allowed disabled:opacity-60">{isCompleting ? t('saving') : t('markComplete')}</button>
+                    <button disabled={isCompleting} onClick={() => markComplete(event.id)} className="inline-flex min-h-11 items-center justify-center rounded-xl border border-slate-200 px-3 py-2 text-xs font-bold text-slate-700 hover:bg-slate-50 disabled:cursor-not-allowed disabled:opacity-60">{isCompleting ? t('saving') : t('markComplete')}</button>
                   ) : null}
-                  <button onClick={() => onExportEvent(event)} className="rounded-xl border border-blue-200 bg-blue-50 px-3 py-2 text-xs font-bold text-blue-700 hover:bg-blue-100"><Download className="mr-1 inline h-3 w-3" />{t('exportToCalendar')}</button>
+                  <button onClick={() => onExportEvent(event)} className="inline-flex min-h-11 items-center justify-center rounded-xl border border-blue-200 bg-blue-50 px-3 py-2 text-xs font-bold text-blue-700 hover:bg-blue-100"><Download className="mr-1 inline h-3 w-3" />{t('exportToCalendar')}</button>
                 </div>
               </article>
             )
@@ -313,11 +314,11 @@ export function CalendarPage({ leads, scheduleEvents = [], onCreateEvent, onExpo
             <p className="text-sm text-slate-500">{t('monthlyPreviewHelp')}</p>
           </div>
           <div className="flex items-center gap-2">
-            <button type="button" onClick={() => moveSelectedMonth(-1)} className="flex h-9 w-9 items-center justify-center rounded-full border border-slate-200 text-slate-600 hover:bg-slate-50" aria-label={t('previousMonth')}>
+            <button type="button" onClick={() => moveSelectedMonth(-1)} className="flex h-11 w-11 items-center justify-center rounded-full border border-slate-200 text-slate-600 hover:bg-slate-50 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-blue-500" aria-label={t('previousMonth')}>
               <ChevronLeft className="h-4 w-4" />
             </button>
             <p className="min-w-32 rounded-full bg-slate-100 px-3 py-1 text-center text-sm font-bold capitalize text-slate-600">{selectedMonthLabel}</p>
-            <button type="button" onClick={() => moveSelectedMonth(1)} className="flex h-9 w-9 items-center justify-center rounded-full border border-slate-200 text-slate-600 hover:bg-slate-50" aria-label={t('nextMonth')}>
+            <button type="button" onClick={() => moveSelectedMonth(1)} className="flex h-11 w-11 items-center justify-center rounded-full border border-slate-200 text-slate-600 hover:bg-slate-50 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-blue-500" aria-label={t('nextMonth')}>
               <ChevronRight className="h-4 w-4" />
             </button>
           </div>

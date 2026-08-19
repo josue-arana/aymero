@@ -25,11 +25,16 @@ const clientSource = readFileSync(
   fileURLToPath(new URL('../src/pages/ClientProfilePage.jsx', import.meta.url)),
   'utf8',
 )
+const backButtonSource = readFileSync(
+  fileURLToPath(new URL('../src/components/common/RecordBackButton.jsx', import.meta.url)),
+  'utf8',
+)
 
 assert.doesNotMatch(appSource, /isMobileClientProfileRoute/)
 assert.match(appSource, /<Topbar/)
-assert.match(appSource, /const mainLayoutClassName = 'px-4 py-6 sm:px-6 lg:px-8'/)
-assert.match(clientSource, /aria-label=\{t\('backToClients'\)\}/)
+assert.match(appSource, /const mainLayoutClassName = '[^']*safe-area-inset-left[^']*safe-area-inset-right[^']*'/)
+assert.match(clientSource, /<RecordBackButton label=\{t\('backToClients'\)\}/)
+assert.match(backButtonSource, /aria-label=\{ariaLabel\}/)
 assert.match(clientSource, /heroContactActions\.map/)
 assert.match(clientSource, /clientStatus = isArchived \? 'Archived' : 'Active'/)
 assert.match(clientSource, /project\.isProjectRecord \? onOpenProject\(project\.id\)/)
@@ -39,7 +44,7 @@ assert.match(clientSource, /grid-cols-2/)
 assert.match(clientSource, /sm:grid-cols-3/)
 assert.match(clientSource, /max-w-6xl/)
 assert.match(clientSource, /overflow-x-hidden/)
-assert.equal(clientSource.match(/aria-label=\{t\('backToClients'\)\}/g)?.length, 1)
+assert.equal(clientSource.match(/<RecordBackButton label=\{t\('backToClients'\)\}/g)?.length, 1)
 assert.doesNotMatch(clientSource, /setLanguage/)
 assert.doesNotMatch(clientSource, /cursor-not-allowed[^\n]*hero/i)
 
