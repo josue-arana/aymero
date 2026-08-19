@@ -3,6 +3,7 @@ import { Archive, BriefcaseBusiness, CalendarDays, CheckCircle2, DollarSign, Mor
 import { MetricCard } from '../components/ui/MetricCard'
 import { SelectField } from '../components/ui/SelectField'
 import { StatusBadge } from '../components/ui/StatusBadge'
+import { FilterChip } from '../components/ui/FilterChip'
 import { MobileJobStat } from '../components/ui/MobileJobStat'
 import { ConfirmRecordModal } from '../components/common/ConfirmRecordModal'
 import { AymeroLoader } from '../components/common/AymeroLoader'
@@ -556,13 +557,13 @@ export function JobsPage({ leads, clients = [], archivedIds = [], sampleWorkspac
 
         <div className="mb-5 flex gap-2 overflow-x-auto pb-1">
           {jobFilters.map((filter) => (
-            <button
+            <FilterChip
               key={filter}
+              selected={selectedFilter === filter}
               onClick={() => setSelectedFilter(filter)}
-              className={`shrink-0 rounded-full px-4 py-2 text-sm font-bold transition ${selectedFilter === filter ? 'bg-blue-600 text-white shadow-sm' : 'bg-slate-100 text-slate-600 hover:bg-slate-200'}`}
             >
               {filter === 'All' ? t('all') : filter === 'Archived' ? t('archived') : tStatus(t, filter)}
-            </button>
+            </FilterChip>
           ))}
         </div>
 
@@ -591,12 +592,12 @@ export function JobsPage({ leads, clients = [], archivedIds = [], sampleWorkspac
             </thead>
             <tbody className="divide-y divide-slate-100">
               {filteredJobs.map((job) => (
-                <tr key={job.id} onClick={() => openJobRecord(job)} className="cursor-pointer bg-white transition hover:bg-blue-50/40">
+                <tr key={job.id} onClick={() => openJobRecord(job)} onKeyDown={(event) => { if (event.target !== event.currentTarget || (event.key !== 'Enter' && event.key !== ' ')) return; event.preventDefault(); openJobRecord(job) }} tabIndex={0} role="button" aria-label={t('viewProject')} className="cursor-pointer bg-white transition hover:bg-blue-50/40 focus-visible:bg-blue-50/60 focus-visible:outline-none">
                   <td className="px-4 py-4">
                     <p className="font-bold text-slate-950">{job.clientDisplayName}</p>
                     <p className="text-sm text-slate-500">{job.projectDisplayTitle}</p>
                   </td>
-                  <td className="px-4 py-4"><StatusBadge status={isArchivedJob(job) ? 'Archived' : job.jobStatus} t={t} /></td>
+                  <td className="px-4 py-4"><div className="flex flex-wrap gap-2"><StatusBadge status={job.jobStatus} t={t} />{isArchivedJob(job) ? <StatusBadge status="Archived" t={t} /> : null}</div></td>
                   <td className="px-4 py-4 font-medium text-slate-700">{job.startDate}</td>
                   <td className="px-4 py-4 text-right font-bold text-slate-900">{currency.format(job.projectValue)}</td>
                   <td className="px-4 py-4 text-right font-bold text-emerald-700">{currency.format(job.amountPaid)}</td>
@@ -611,13 +612,13 @@ export function JobsPage({ leads, clients = [], archivedIds = [], sampleWorkspac
 
         <div className="space-y-3 md:hidden">
           {filteredJobs.map((job) => (
-            <article key={job.id} onClick={() => openJobRecord(job)} className="rounded-3xl border border-slate-200 bg-white p-4 shadow-sm transition hover:-translate-y-0.5 hover:shadow-md">
+            <article key={job.id} onClick={() => openJobRecord(job)} onKeyDown={(event) => { if (event.target !== event.currentTarget || (event.key !== 'Enter' && event.key !== ' ')) return; event.preventDefault(); openJobRecord(job) }} tabIndex={0} role="button" aria-label={t('viewProject')} className="rounded-3xl border border-slate-200 bg-white p-4 shadow-sm transition hover:-translate-y-0.5 hover:shadow-md focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-blue-500/40">
               <div className="mb-4 flex items-start justify-between gap-3">
-                <div>
-                  <h3 className="font-bold text-slate-950">{job.clientDisplayName}</h3>
-                  <p className="text-sm text-slate-500">{job.projectDisplayTitle}</p>
+                <div className="min-w-0">
+                  <h3 className="break-words font-bold text-slate-950 [overflow-wrap:anywhere]">{job.clientDisplayName}</h3>
+                  <p className="break-words text-sm text-slate-500 [overflow-wrap:anywhere]">{job.projectDisplayTitle}</p>
                 </div>
-                <StatusBadge status={isArchivedJob(job) ? 'Archived' : job.jobStatus} t={t} />
+                <div className="flex flex-wrap justify-end gap-2"><StatusBadge status={job.jobStatus} t={t} />{isArchivedJob(job) ? <StatusBadge status="Archived" t={t} /> : null}</div>
               </div>
               <div className="grid grid-cols-2 gap-3 text-sm">
                 <MobileJobStat label={t('start')} value={job.startDate} />
@@ -627,7 +628,7 @@ export function JobsPage({ leads, clients = [], archivedIds = [], sampleWorkspac
               </div>
               <div className="mt-4 rounded-2xl bg-slate-50 p-3">
                 <p className="text-xs font-semibold uppercase tracking-wide text-slate-400">{t('nextStep')}</p>
-                <p className="mt-1 text-sm font-medium text-slate-700">{job.nextStep}</p>
+                <p className="mt-1 break-words text-sm font-medium text-slate-700 [overflow-wrap:anywhere]">{job.nextStep}</p>
               </div>
               <div className="mt-4">{renderJobActions(job, true)}</div>
             </article>

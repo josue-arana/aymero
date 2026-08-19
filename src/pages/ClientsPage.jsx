@@ -3,6 +3,7 @@ import { useLocation, useNavigate } from 'react-router-dom'
 import { Archive, DollarSign, MoreVertical, Plus, Search, Trash2, Undo2, UserCheck, Users, WalletCards } from 'lucide-react'
 import { MetricCard } from '../components/ui/MetricCard'
 import { StatusBadge } from '../components/ui/StatusBadge'
+import { FilterChip } from '../components/ui/FilterChip'
 import { useToast } from '../components/common/ToastProvider'
 import { currency } from '../utils/formatters'
 import { archiveMenuItemClasses } from '../utils/buttonStyles'
@@ -279,9 +280,9 @@ export function ClientsPage({ leads, customClients = [], archivedClientIds = [],
 
         <div className="mb-5 flex gap-2 overflow-x-auto pb-1">
           {clientFilters.map((filter) => (
-            <button key={filter} onClick={() => setSelectedFilter(filter)} className={`shrink-0 rounded-full px-4 py-2 text-sm font-bold transition ${selectedFilter === filter ? 'bg-blue-600 text-white shadow-sm' : 'bg-slate-100 text-slate-600 hover:bg-slate-200'}`}>
+            <FilterChip key={filter} selected={selectedFilter === filter} onClick={() => setSelectedFilter(filter)}>
               {filter === 'Archived' ? t('archived') : t('active')}
-            </button>
+            </FilterChip>
           ))}
         </div>
 
@@ -308,13 +309,13 @@ export function ClientsPage({ leads, customClients = [], archivedClientIds = [],
                   tabIndex={0}
                   className="cursor-pointer bg-white transition hover:bg-blue-50/40 focus-visible:bg-blue-50/40 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-blue-500/40"
                 >
-                  <td className="px-4 py-4"><p className="font-bold text-slate-950">{client.name}</p><p className="text-xs text-slate-500">{client.address}</p></td>
+                  <td className="max-w-64 px-4 py-4"><p className="break-words font-bold text-slate-950 [overflow-wrap:anywhere]">{client.name}</p><p className="break-words text-xs text-slate-500 [overflow-wrap:anywhere]">{client.address}</p></td>
                   <td className="px-4 py-4 font-medium text-slate-700">{client.phone}</td>
-                  <td className="px-4 py-4 text-slate-600">{client.email || t('notAdded')}</td>
+                  <td className="max-w-56 break-words px-4 py-4 text-slate-600 [overflow-wrap:anywhere]">{client.email || t('notAdded')}</td>
                   <td className="px-4 py-4 text-right font-bold text-slate-900">{client.projectCount}</td>
                   {isAnalyticsMode && <td className="px-4 py-4 text-right font-bold text-slate-900">{currency.format(client.totalProjectValue)}</td>}
                   {isAnalyticsMode && <td className="px-4 py-4 text-right font-bold text-slate-900">{currency.format(client.outstandingBalance)}</td>}
-                  <td className="px-4 py-4"><StatusBadge status={isClientArchived(client, archivedClientIds) ? 'Archived' : client.latestProjectStatus} t={t} /></td>
+                  <td className="px-4 py-4"><div className="flex flex-wrap gap-2">{client.latestProjectStatus ? <StatusBadge status={client.latestProjectStatus} t={t} /> : null}{isClientArchived(client, archivedClientIds) ? <StatusBadge status="Archived" t={t} /> : null}</div></td>
                   <td className="px-4 py-4 text-right">{renderClientActions(client)}</td>
                 </tr>
               ))}
@@ -333,10 +334,10 @@ export function ClientsPage({ leads, customClients = [], archivedClientIds = [],
               className="cursor-pointer rounded-3xl border border-slate-200 bg-white p-4 shadow-sm transition hover:border-blue-200 hover:bg-blue-50/30 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-blue-500/40"
             >
               <div className="mb-4 flex items-start justify-between gap-3">
-                <div><h3 className="font-bold text-slate-950">{client.name}</h3><p className="text-sm text-slate-500">{client.phone}</p></div>
-                <StatusBadge status={isClientArchived(client, archivedClientIds) ? 'Archived' : client.latestProjectStatus} t={t} />
+                <div className="min-w-0"><h3 className="break-words font-bold text-slate-950 [overflow-wrap:anywhere]">{client.name}</h3><p className="break-words text-sm text-slate-500">{client.phone}</p></div>
+                <div className="flex flex-wrap justify-end gap-2">{client.latestProjectStatus ? <StatusBadge status={client.latestProjectStatus} t={t} /> : null}{isClientArchived(client, archivedClientIds) ? <StatusBadge status="Archived" t={t} /> : null}</div>
               </div>
-              <div className="space-y-2 text-sm text-slate-600"><p>{client.email || t('notAdded')}</p><p>{client.address}</p></div>
+              <div className="min-w-0 space-y-2 text-sm text-slate-600 [overflow-wrap:anywhere]"><p className="break-words">{client.email || t('notAdded')}</p><p className="break-words">{client.address}</p></div>
               <div className="mt-4 grid grid-cols-2 gap-3 rounded-2xl bg-slate-50 p-3 text-sm">
                 <div><p className="text-xs font-bold uppercase tracking-wide text-slate-400">{t('projects')}</p><p className="font-bold text-slate-950">{client.projectCount}</p></div>
                 {isAnalyticsMode && <div><p className="text-xs font-bold uppercase tracking-wide text-slate-400">{t('balance')}</p><p className="font-bold text-slate-950">{currency.format(client.outstandingBalance)}</p></div>}

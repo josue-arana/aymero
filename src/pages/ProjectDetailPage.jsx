@@ -1,7 +1,8 @@
 import { Component, useEffect, useMemo, useState } from 'react'
-import { Archive, ArrowLeft, CalendarDays, Camera, ChevronLeft, ChevronRight, Clock, Copy, Download, Edit3, ExternalLink, FileText, MapPin, MoreVertical, Share2, DollarSign, Trash2, Undo2, X } from 'lucide-react'
+import { Archive, CalendarDays, Camera, ChevronLeft, ChevronRight, Copy, Edit3, ExternalLink, FileText, MapPin, MoreVertical, Share2, DollarSign, Trash2, Undo2, X } from 'lucide-react'
 import { useLocation, useNavigate, useParams } from 'react-router-dom'
 import { ActionMenu } from '../components/common/ActionMenu'
+import { RecordBackButton } from '../components/common/RecordBackButton'
 import { AymeroLoader } from '../components/common/AymeroLoader'
 import { ModalShell } from '../components/common/ModalShell'
 import { InfoCard } from '../components/ui/InfoCard'
@@ -9,12 +10,12 @@ import { DetailRow } from '../components/ui/DetailRow'
 import { StatusBadge } from '../components/ui/StatusBadge'
 import { currency, formatDisplayDate } from '../utils/formatters'
 import { getPortalData, normalizePortalShareUrl } from '../utils/portal'
-import { tStatus } from '../translations'
 import { JobFormModal } from '../components/jobs/JobFormModal'
 import { ConfirmRecordModal } from '../components/common/ConfirmRecordModal'
 import { SendToCustomerModal } from '../components/common/SendToCustomerModal'
 import { RecordPaymentModal } from '../components/common/RecordPaymentModal'
 import { PhotoUploadModal } from '../components/common/PhotoUploadModal'
+import { ProjectScheduleCard } from '../components/projects/ProjectScheduleCard'
 import { useToast } from '../components/common/ToastProvider'
 import { USE_SUPABASE, USE_SUPABASE_EVENTS, USE_SUPABASE_PAYMENTS, USE_SUPABASE_PROJECTS } from '../config/backendConfig'
 import { useAuth } from '../contexts/AuthContext'
@@ -30,8 +31,9 @@ import { PROJECT_PHOTO_MAX_FILE_SIZE_BYTES, revokeProjectPhotoPreviewUrl, valida
 import { calculateProjectPaymentSummary, collectProjectInvoiceIds, dedupePayments, mergeProjectTimeline, normalizePaymentRecord } from '../utils/projectPayments'
 import { dedupeById, resolveLinkedProjectId } from '../utils/projectIdentity'
 import { getRecordDetailsTitleKey } from '../utils/recordDetailsTitle'
-import { deriveProjectStatus } from '../utils/projectLifecycle'
 import { sortScheduleEvents } from '../utils/scheduleEvents'
+import { getInvoiceRemainingBalance } from '../utils/invoiceRecords'
+import { buildProjectWorkspaceViewModel, selectProjectWorkspaceInvoices } from '../utils/projectWorkspaceViewModel'
 import projectWorkspaceHeroBackground from '../assets/page-heroes/jobs-bg.png'
 
 function logProjectDetailDevError(message, error, meta) {
@@ -397,7 +399,7 @@ class ProjectDetailErrorBoundary extends Component {
   }
 }
 
-function ProjectDetailPageContent({ lead, companySettings, clients = [], scheduleEvents = [], archivedScheduleEventIds = [], isArchived = false, onBack, onOpenPortal, onOpenContract, onConvertEstimate, onUpdateLead, onRecordPayment, onUpdatePayment, onDeletePayment, onUploadPhotos, onScheduleEvent, onEditScheduleEvent, onExportEvent, onArchiveScheduleEvent, onRestoreScheduleEvent, onDeleteScheduleEvent, onArchiveProject, onRestoreProject, onDeleteProject, language = 'en', t }) {
+function ProjectDetailPageContent({ lead, companySettings, clients = [], invoices = [], scheduleEvents = [], archivedScheduleEventIds = [], isArchived = false, onBack, onOpenPortal, onOpenContract, onConvertEstimate, onUpdateLead, onRecordPayment, onUpdatePayment, onDeletePayment, onUploadPhotos, onScheduleEvent, onEditScheduleEvent, onExportEvent, onArchiveScheduleEvent, onRestoreScheduleEvent, onDeleteScheduleEvent, onArchiveProject, onRestoreProject, onDeleteProject, language = 'en', t }) {
   const { id, leadId } = useParams()
   const location = useLocation()
   const navigate = useNavigate()
@@ -601,6 +603,20 @@ function ProjectDetailPageContent({ lead, companySettings, clients = [], schedul
   const hasContract = hasProjectContract(currentLead)
   const hasLeadLink = Boolean(currentLead?.leadId)
   const hasClientLink = Boolean(currentLead?.clientId)
+  const relatedProjectInvoices = useMemo(() => selectProjectWorkspaceInvoices(invoices, {
+    projectIds: [
+      linkedProjectId,
+      projectId,
+      currentLead?.id,
+      currentLead?.projectId,
+      currentLead?.project_id,
+    ],
+    leadIds: [relatedLeadId, currentLead?.leadId, currentLead?.lead_id, lead?.id],
+    invoiceIds: relatedInvoiceIds,
+  }), [currentLead, invoices, lead?.id, linkedProjectId, projectId, relatedInvoiceIds, relatedLeadId])
+  const relatedInvoiceById = useMemo(() => new Map(
+    relatedProjectInvoices.map((invoice) => [invoice.id, invoice])
+  ), [relatedProjectInvoices])
 
   useEffect(() => {
     if (!import.meta.env.DEV) return
@@ -1032,11 +1048,30 @@ function ProjectDetailPageContent({ lead, companySettings, clients = [], schedul
   }, [galleryPhotos, selectedPhoto, selectedPhotoIndex])
 
   const activeScheduleEvents = useMemo(() => (
-    projectEventRecords.filter((event) => !archivedScheduleEventIds.includes(event.id) && !event.archivedAt)
+    projectEventRecords.filter((event) => (
+      !archivedScheduleEventIds.includes(event.id)
+      && !event.archivedAt
+      && !event.archived_at
+      && !event.isArchived
+    ))
   ), [archivedScheduleEventIds, projectEventRecords])
   const archivedScheduleEvents = useMemo(() => (
-    projectEventRecords.filter((event) => archivedScheduleEventIds.includes(event.id) || event.archivedAt)
+    projectEventRecords.filter((event) => (
+      archivedScheduleEventIds.includes(event.id)
+      || event.archivedAt
+      || event.archived_at
+      || event.isArchived
+    ))
   ), [archivedScheduleEventIds, projectEventRecords])
+  const workspaceViewModel = useMemo(() => buildProjectWorkspaceViewModel({
+    project: currentLead || {},
+    contract: resolvedContract,
+    paymentSummary,
+    events: activeScheduleEvents,
+    invoices: relatedProjectInvoices,
+    photoCount: galleryPhotos.length,
+    isArchived: projectIsArchived,
+  }), [activeScheduleEvents, currentLead, galleryPhotos.length, paymentSummary, projectIsArchived, relatedProjectInvoices, resolvedContract])
 
   useEffect(() => {
     if (new URLSearchParams(location.search).get('sampleGuide') !== 'event' || activeScheduleEvents.length === 0) return
@@ -1067,12 +1102,14 @@ function ProjectDetailPageContent({ lead, companySettings, clients = [], schedul
     return <ProjectDetailFallbackState onBack={onBack} t={t} />
   }
 
-  const actionButtons = [
-    { label: t('recordPayment'), icon: DollarSign, action: () => { setEditingPayment(null); setShowPaymentModal(true) }, primary: true, disabled: !canRecordPayment },
-    { label: t('scheduleJob'), icon: CalendarDays, action: onScheduleEvent },
-    { label: t('uploadPhotos'), icon: Camera, action: () => setShowPhotoModal(true) },
-    { label: t('edit'), icon: Edit3, action: () => setIsEditOpen(true) },
-  ].filter(Boolean)
+  const actionButtons = projectIsArchived
+    ? [{ label: t('edit'), icon: Edit3, action: () => setIsEditOpen(true) }]
+    : [
+        { label: t('recordPayment'), icon: DollarSign, action: () => { setEditingPayment(null); setShowPaymentModal(true) }, primary: true, disabled: !canRecordPayment },
+        { label: t('scheduleJob'), icon: CalendarDays, action: onScheduleEvent },
+        { label: t('uploadPhotos'), icon: Camera, action: () => setShowPhotoModal(true) },
+        { label: t('edit'), icon: Edit3, action: () => setIsEditOpen(true) },
+      ]
   const moreMenuItems = [
     hasEstimate
       ? {
@@ -1137,18 +1174,16 @@ function ProjectDetailPageContent({ lead, companySettings, clients = [], schedul
   const projectSignedDate = resolvedContract?.signedDate
     ? formatProjectDetailDate(resolvedContract.signedDate, resolvedContract.signedDate)
     : ''
-  const projectStatus = deriveProjectStatus({
-    project: currentLead,
-    contract: resolvedContract,
-    payments: paymentSummary.payments,
-    events: activeScheduleEvents,
-    isArchived: projectIsArchived,
-  })
-  const projectValue = Number(currentLead.value)
+  const projectStatus = workspaceViewModel.projectStatus
+  const rawProjectValue = baseProject?.value
+    ?? baseProject?.estimatedValue
+    ?? baseProject?.contractValue
+    ?? resolvedEstimate?.total
+  const projectValue = Number(paymentSummary.projectValue)
   const portalShareUrl = normalizePortalShareUrl(portal.shareUrl)
-  const hasProjectValue = currentLead.value !== null
-    && currentLead.value !== undefined
-    && currentLead.value !== ''
+  const hasProjectValue = rawProjectValue !== null
+    && rawProjectValue !== undefined
+    && rawProjectValue !== ''
     && Number.isFinite(projectValue)
 
   function closePaymentModal() {
@@ -1460,12 +1495,49 @@ function ProjectDetailPageContent({ lead, companySettings, clients = [], schedul
     }
   }
 
+  function runRecommendedAction() {
+    const nextAction = workspaceViewModel.nextAction
+
+    if (!nextAction) return
+    if (nextAction.id === 'review-contract') onOpenContract?.(currentLead.id)
+    if (nextAction.id === 'view-invoice' && nextAction.invoiceId) navigate(`/invoices/${nextAction.invoiceId}`)
+    if (nextAction.id === 'view-schedule') document.getElementById('project-schedule')?.scrollIntoView({ behavior: 'smooth', block: 'start' })
+    if (nextAction.id === 'schedule-job') onScheduleEvent?.()
+    if (nextAction.id === 'upload-photos') setShowPhotoModal(true)
+  }
+
+  async function restoreArchivedProjectEvent(event) {
+    try {
+      const response = await dataProvider.events.restore?.(event.id, { contractorId })
+      if (response?.error) throw response.error
+    } catch (error) {
+      if (USE_SUPABASE_EVENTS) {
+        logProjectDetailDevError('[dev] ProjectDetailPage failed to restore event.', error, { eventId: event.id })
+        return
+      }
+    }
+
+    setProjectEventRecords((current) => sortScheduleEvents(current.map((entry) => (
+      entry.id === event.id ? { ...entry, archivedAt: null, archived_at: null } : entry
+    ))))
+    onRestoreScheduleEvent?.(event.id)
+  }
+
+  const RecommendedActionIcon = workspaceViewModel.nextAction?.id === 'upload-photos'
+    ? Camera
+    : workspaceViewModel.nextAction?.id === 'review-contract' || workspaceViewModel.nextAction?.id === 'view-invoice'
+      ? FileText
+      : CalendarDays
+  const recommendedActionMessage = workspaceViewModel.nextAction
+    ? t(workspaceViewModel.nextAction.messageKey, {
+        date: workspaceViewModel.nextAction.event?.displayDate || workspaceViewModel.nextAction.event?.date || '',
+      })
+    : ''
+
   return (
     <div className="space-y-6">
       <nav aria-label={t('projectWorkspace')} className="flex min-w-0 items-center gap-2 text-sm font-semibold">
-        <button type="button" onClick={onBack} className="inline-flex shrink-0 items-center gap-2 text-slate-600 transition hover:text-slate-950 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-blue-500 focus-visible:ring-offset-2">
-          <ArrowLeft className="h-4 w-4" aria-hidden="true" /> {t('backToDashboard')}
-        </button>
+        <RecordBackButton label={t('backToDashboard')} onClick={onBack} />
         <ChevronRight className="h-4 w-4 shrink-0 text-slate-300" aria-hidden="true" />
         <span className="min-w-0 truncate text-slate-950" aria-current="page">{projectTitle}</span>
       </nav>
@@ -1501,37 +1573,54 @@ function ProjectDetailPageContent({ lead, companySettings, clients = [], schedul
             ) : null}
           </div>
 
-          <dl className="grid min-w-0 grid-cols-2 gap-px overflow-hidden rounded-2xl border border-white/10 bg-white/10 backdrop-blur-sm">
-            {projectStatus ? (
-              <div className="min-w-0 bg-slate-950/35 p-4">
+          <div className="min-w-0 overflow-hidden rounded-2xl border border-white/10 bg-slate-950/35 backdrop-blur-sm">
+            <dl className="grid min-w-0 gap-px bg-white/10">
+              <div className="min-w-0 bg-slate-950/45 p-4">
                 <dt className="text-[0.68rem] font-bold uppercase tracking-[0.16em] text-slate-400">{t('status')}</dt>
                 <dd className="mt-2 flex flex-wrap items-center gap-2">
                   <StatusBadge status={projectStatus} t={t} />
+                  {projectIsArchived ? <StatusBadge status="Archived" t={t} /> : null}
                 </dd>
               </div>
+            </dl>
+
+            {isAnalyticsMode && hasProjectValue ? (
+              <dl className="grid min-w-0 grid-cols-1 gap-px border-t border-white/10 bg-white/10 min-[380px]:grid-cols-3">
+                <div className="min-w-0 bg-slate-950/45 p-4">
+                  <dt className="text-[0.68rem] font-bold uppercase tracking-[0.14em] text-slate-400">{t('projectValue')}</dt>
+                  <dd className="mt-2 break-words text-lg font-bold tracking-tight text-white">{currency.format(paymentSummary.projectValue)}</dd>
+                </div>
+                <div className="min-w-0 bg-slate-950/45 p-4">
+                  <dt className="text-[0.68rem] font-bold uppercase tracking-[0.14em] text-slate-400">{t('amountPaid')}</dt>
+                  <dd className="mt-2 break-words text-lg font-bold tracking-tight text-emerald-300">{currency.format(paymentSummary.totalPaid)}</dd>
+                </div>
+                <div className="min-w-0 bg-slate-950/45 p-4">
+                  <dt className="text-[0.68rem] font-bold uppercase tracking-[0.14em] text-slate-400">{t('remainingBalance')}</dt>
+                  <dd className="mt-2 break-words text-lg font-bold tracking-tight text-white">{currency.format(paymentSummary.outstandingBalance)}</dd>
+                </div>
+              </dl>
             ) : null}
-            {hasProjectValue ? (
-              <div className="min-w-0 bg-slate-950/35 p-4">
-                <dt className="text-[0.68rem] font-bold uppercase tracking-[0.16em] text-slate-400">{t('projectValue')}</dt>
-                <dd className="mt-2 break-words text-xl font-bold tracking-tight text-white sm:text-2xl">{currency.format(projectValue)}</dd>
-              </div>
+
+            {(projectCreatedDate || projectSignedDate) ? (
+              <dl className="grid min-w-0 grid-cols-2 gap-px border-t border-white/10 bg-white/10">
+                {projectCreatedDate ? (
+                  <div className={`min-w-0 bg-slate-950/45 p-4 ${!projectSignedDate ? 'col-span-2' : ''}`}>
+                    <dt className="text-[0.68rem] font-bold uppercase tracking-[0.14em] text-slate-400">{t('dateCreated')}</dt>
+                    <dd className="mt-1.5 break-words text-sm font-semibold leading-5 text-white">{projectCreatedDate}</dd>
+                  </div>
+                ) : null}
+                {projectSignedDate ? (
+                  <div className={`min-w-0 bg-slate-950/45 p-4 ${!projectCreatedDate ? 'col-span-2' : ''}`}>
+                    <dt className="text-[0.68rem] font-bold uppercase tracking-[0.14em] text-slate-400">{t('signedDate')}</dt>
+                    <dd className="mt-1.5 break-words text-sm font-semibold leading-5 text-white">{projectSignedDate}</dd>
+                  </div>
+                ) : null}
+              </dl>
             ) : null}
-            {projectCreatedDate ? (
-              <div className={`min-w-0 bg-slate-950/35 p-4 ${!projectSignedDate ? 'col-span-2' : ''}`}>
-                <dt className="text-[0.68rem] font-bold uppercase tracking-[0.16em] text-slate-400">{t('dateCreated')}</dt>
-                <dd className="mt-2 break-words text-sm font-semibold leading-5 text-white">{projectCreatedDate}</dd>
-              </div>
-            ) : null}
-            {projectSignedDate ? (
-              <div className={`min-w-0 bg-slate-950/35 p-4 ${!projectCreatedDate ? 'col-span-2' : ''}`}>
-                <dt className="text-[0.68rem] font-bold uppercase tracking-[0.16em] text-slate-400">{t('signedDate')}</dt>
-                <dd className="mt-2 break-words text-sm font-semibold leading-5 text-white">{projectSignedDate}</dd>
-              </div>
-            ) : null}
-          </dl>
+          </div>
         </div>
 
-        <div data-project-workspace-hero-actions="true" className="relative mt-7 flex flex-col gap-2 border-t border-white/10 pt-5 sm:flex-row sm:flex-wrap sm:items-center">
+        <div data-project-workspace-hero-actions="true" className="relative mt-7 grid grid-cols-1 gap-2 border-t border-white/10 pt-5 min-[380px]:grid-cols-2 sm:flex sm:flex-wrap sm:items-center">
           {actionButtons.map((button) => {
             const Icon = button.icon
             return (
@@ -1562,61 +1651,46 @@ function ProjectDetailPageContent({ lead, companySettings, clients = [], schedul
             </button>
           ) : null}
         </div>
-        {!canRecordPayment ? (
+        {!projectIsArchived && !canRecordPayment ? (
           <p className="relative mt-3 text-sm text-amber-200">{t('recordPaymentRequiresRealProject')}</p>
         ) : null}
       </section>
 
-      <div data-project-workspace-layout="true" className="grid min-w-0 grid-cols-1 gap-4 md:grid-cols-2 xl:grid-cols-6">
-      <section className="contents">
-        <div className="order-1 min-w-0 [&>article]:h-full xl:col-span-2">
-          <InfoCard title={t('clientInformation')}>
-            <DetailRow label={t('name')} value={currentLead.client || t('noClientLinked')} />
-            <DetailRow label={t('phone')} value={currentLead.phone || t('notAdded')} />
-            <DetailRow label={t('email')} value={currentLead.email || t('notAdded')} />
-            <DetailRow label={t('address')} value={currentLead.address || currentLead.location} />
-            {hasClientLink && (
-              <button
-                onClick={() => navigate(`/clients/${currentLead.clientId}`)}
-                className="mt-4 inline-flex w-full items-center justify-center gap-2 rounded-2xl border border-slate-200 bg-white px-4 py-3 text-sm font-bold text-slate-800 hover:bg-slate-50 sm:w-auto"
-              >
-                {t('viewClient')}
-              </button>
-            )}
-          </InfoCard>
-        </div>
-        {isAnalyticsMode && (
-          <div className="order-7 min-w-0 md:col-span-2 [&>article]:h-full xl:col-span-6">
-            <InfoCard title={recordDetailsTitle}>
-              <DetailRow label={t('status')} value={tStatus(t, projectStatus)} />
-              <DetailRow label={t('priority')} value={currentLead.priority} />
-              <DetailRow label={t('source')} value={currentLead.source || t('notAdded')} />
-              <DetailRow label={t('projectType')} value={currentLead.projectType || currentLead.projectTitle || t('unknownProject')} />
-            </InfoCard>
-          </div>
-        )}
-        <div className="order-2 min-w-0 [&>article]:h-full xl:col-span-2">
-          <InfoCard title={t('customerPortal')} bodyClassName="space-y-3">
-            <p className="text-sm leading-6 text-slate-600">{t('clientPortalCardHelp')}</p>
-            <div className="grid gap-2">
-              <a href={portalShareUrl} target="_blank" rel="noopener noreferrer" className="inline-flex min-h-11 w-full items-center justify-center gap-2 rounded-2xl bg-blue-600 px-4 py-2.5 text-sm font-bold text-white transition hover:bg-blue-700 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-blue-500 focus-visible:ring-offset-2">
-                {t('openCustomerPortal')} <ExternalLink className="h-4 w-4" aria-hidden="true" />
-              </a>
-              <div className="grid grid-cols-2 gap-2">
-                <button type="button" onClick={copyPortalLink} disabled={!portalShareUrl} className="inline-flex min-h-11 w-full items-center justify-center gap-2 rounded-2xl border border-slate-200 bg-white px-3 py-2.5 text-sm font-bold text-slate-800 transition hover:bg-slate-50 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-blue-500 focus-visible:ring-offset-2 disabled:cursor-not-allowed disabled:opacity-60">
-                  <Copy className="h-4 w-4 shrink-0" aria-hidden="true" /> {t('copyLink')}
-                </button>
-                <button type="button" onClick={() => setShowPortalLinkModal(true)} className="inline-flex min-h-11 w-full items-center justify-center gap-2 rounded-2xl border border-slate-200 bg-white px-3 py-2.5 text-sm font-bold text-slate-800 transition hover:bg-slate-50 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-blue-500 focus-visible:ring-offset-2">
-                  <Share2 className="h-4 w-4 shrink-0" aria-hidden="true" /> {t('sendLinkToClient')}
-                </button>
-              </div>
+      {workspaceViewModel.nextAction ? (
+        <section aria-labelledby="project-next-action-title" className="flex flex-col gap-4 rounded-3xl border border-blue-200 bg-blue-50 p-5 shadow-sm sm:flex-row sm:items-center sm:justify-between sm:p-6">
+          <div className="flex min-w-0 items-start gap-3">
+            <span className="inline-flex h-11 w-11 shrink-0 items-center justify-center rounded-2xl bg-blue-600 text-white shadow-sm" aria-hidden="true">
+              {RecommendedActionIcon ? <RecommendedActionIcon className="h-5 w-5" /> : null}
+            </span>
+            <div className="min-w-0">
+              <h2 id="project-next-action-title" className="text-sm font-bold uppercase tracking-[0.16em] text-blue-800">{t('nextRecommendedAction')}</h2>
+              <p className="mt-1 break-words text-sm leading-6 text-slate-700 [overflow-wrap:anywhere]">{recommendedActionMessage}</p>
             </div>
-          </InfoCard>
-        </div>
-      </section>
+          </div>
+          <button type="button" onClick={runRecommendedAction} className="inline-flex min-h-11 w-full shrink-0 items-center justify-center rounded-2xl bg-blue-600 px-5 py-3 text-sm font-bold text-white transition hover:bg-blue-700 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-blue-500 focus-visible:ring-offset-2 sm:w-auto">
+            {t(workspaceViewModel.nextAction.actionLabelKey)}
+          </button>
+        </section>
+      ) : null}
 
+      <div data-project-workspace-layout="true" className="grid min-w-0 grid-cols-1 gap-4 md:grid-cols-2 xl:grid-cols-6">
+      <div className="min-w-0 md:col-span-2 xl:col-span-6">
+        <ProjectScheduleCard
+          upcomingEvents={workspaceViewModel.upcomingEvents}
+          historyEvents={workspaceViewModel.historyEvents}
+          archivedEvents={archivedScheduleEvents}
+          fallbackLocation={currentLead.address || currentLead.location}
+          onScheduleEvent={projectIsArchived ? undefined : onScheduleEvent}
+          onExportEvent={onExportEvent}
+          onEditEvent={onEditScheduleEvent}
+          onArchiveEvent={(event) => setScheduleConfirmAction({ mode: 'archive', event })}
+          onRestoreEvent={restoreArchivedProjectEvent}
+          onDeleteEvent={(event) => setScheduleConfirmAction({ mode: 'delete', event })}
+          t={t}
+        />
+      </div>
       <section className="contents">
-        <div className="order-3 min-w-0 rounded-3xl border border-slate-200 bg-white p-5 shadow-sm md:col-span-2 xl:col-span-2">
+        <div className="min-w-0 rounded-3xl border border-slate-200 bg-white p-5 shadow-sm md:col-span-2 xl:col-span-3">
           <div className="mb-4">
             <h2 className="text-xl font-bold text-slate-950">{t('projectDocuments')}</h2>
             <p className="text-sm text-slate-500">{t('documents')}</p>
@@ -1626,7 +1700,7 @@ function ProjectDetailPageContent({ lead, companySettings, clients = [], schedul
               <div className="flex flex-col gap-3 rounded-2xl border border-slate-200 bg-slate-50 p-3.5 sm:flex-row sm:items-center sm:justify-between">
                 <div className="min-w-0">
                   <p className="text-[11px] font-bold uppercase tracking-[0.18em] text-slate-400">{t('estimate')}</p>
-                  <p className="mt-1 truncate font-bold text-slate-950">{formatEstimateDisplayNumber(resolvedEstimate.number || resolvedEstimate.estimateNumber || '', currentLead)}</p>
+                  <p className="mt-1 break-words font-bold text-slate-950 [overflow-wrap:anywhere]">{formatEstimateDisplayNumber(resolvedEstimate.number || resolvedEstimate.estimateNumber || '', currentLead)}</p>
                   <div className="mt-1 flex flex-wrap items-center gap-x-3 gap-y-1 text-sm text-slate-600">
                     <span>{currency.format(Number(resolvedEstimate.total || 0))}</span>
                     <span>{resolvedEstimate.title || t('estimate')}</span>
@@ -1634,7 +1708,7 @@ function ProjectDetailPageContent({ lead, companySettings, clients = [], schedul
                 </div>
                 <div className="flex items-center justify-between gap-3 sm:justify-end">
                   <StatusBadge status={resolvedEstimate.status || 'Draft'} t={t} />
-                  <button onClick={() => navigate(`/projects/${currentLead.id}/estimate`, { state: { source: 'project', projectId: currentLead.id } })} className="rounded-2xl border border-slate-200 bg-white px-4 py-2.5 text-sm font-bold text-slate-800 hover:bg-slate-50">
+                  <button type="button" onClick={() => navigate(`/projects/${currentLead.id}/estimate`, { state: { source: 'project', projectId: currentLead.id } })} className="inline-flex min-h-11 items-center rounded-2xl border border-slate-200 bg-white px-4 py-2.5 text-sm font-bold text-slate-800 transition hover:bg-slate-50 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-blue-500 focus-visible:ring-offset-2">
                     {t('view')}
                   </button>
                 </div>
@@ -1647,7 +1721,7 @@ function ProjectDetailPageContent({ lead, companySettings, clients = [], schedul
               <div className="flex flex-col gap-3 rounded-2xl border border-slate-200 bg-slate-50 p-3.5 sm:flex-row sm:items-center sm:justify-between">
                 <div className="min-w-0">
                   <p className="text-[11px] font-bold uppercase tracking-[0.18em] text-slate-400">{t('contract')}</p>
-                  <p className="mt-1 truncate font-bold text-slate-950">{formatContractDisplayNumber(resolvedContract.number || resolvedContract.contractNumber || '', currentLead)}</p>
+                  <p className="mt-1 break-words font-bold text-slate-950 [overflow-wrap:anywhere]">{formatContractDisplayNumber(resolvedContract.number || resolvedContract.contractNumber || '', currentLead)}</p>
                   <div className="mt-1 flex flex-wrap items-center gap-x-3 gap-y-1 text-sm text-slate-600">
                     <span>{currency.format(Number(resolvedContract.total || 0))}</span>
                     {(resolvedContract.signed || resolvedContract.signedDate) && (
@@ -1660,7 +1734,7 @@ function ProjectDetailPageContent({ lead, companySettings, clients = [], schedul
                 </div>
                 <div className="flex items-center justify-between gap-3 sm:justify-end">
                   <StatusBadge status={resolvedContract.status || (resolvedContract.signed ? 'Signed' : 'Draft')} t={t} />
-                  <button onClick={() => onOpenContract?.(currentLead.id)} className="rounded-2xl border border-slate-200 bg-white px-4 py-2.5 text-sm font-bold text-slate-800 hover:bg-slate-50">
+                  <button type="button" onClick={() => onOpenContract?.(currentLead.id)} className="inline-flex min-h-11 items-center rounded-2xl border border-slate-200 bg-white px-4 py-2.5 text-sm font-bold text-slate-800 transition hover:bg-slate-50 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-blue-500 focus-visible:ring-offset-2">
                     {t('view')}
                   </button>
                 </div>
@@ -1668,44 +1742,53 @@ function ProjectDetailPageContent({ lead, companySettings, clients = [], schedul
             ) : (
               <div className="rounded-2xl border border-dashed border-slate-300 bg-slate-50 p-4 text-sm text-slate-500">{t('noContracts')}</div>
             )}
+
+            {relatedProjectInvoices.length > 0 ? relatedProjectInvoices.map((invoice) => (
+              <div key={invoice.id} className="flex flex-col gap-3 rounded-2xl border border-slate-200 bg-slate-50 p-3.5 sm:flex-row sm:items-center sm:justify-between">
+                <div className="min-w-0">
+                  <p className="text-[11px] font-bold uppercase tracking-[0.18em] text-slate-400">{t('invoice')}</p>
+                  <p className="mt-1 break-words font-bold text-slate-950 [overflow-wrap:anywhere]">{invoice.number || invoice.invoiceNumber || t('invoice')}</p>
+                  <div className="mt-1 flex flex-wrap items-center gap-x-3 gap-y-1 text-sm text-slate-600">
+                    <span>{currency.format(Number(invoice.amount || invoice.total || 0))}</span>
+                    <span>{t('remaining')}: {currency.format(getInvoiceRemainingBalance(invoice))}</span>
+                  </div>
+                </div>
+                <div className="flex items-center justify-between gap-3 sm:justify-end">
+                  <StatusBadge status={invoice.status || 'Draft'} t={t} />
+                  <button type="button" onClick={() => navigate(`/invoices/${invoice.id}`)} className="inline-flex min-h-11 items-center rounded-2xl border border-slate-200 bg-white px-4 py-2.5 text-sm font-bold text-slate-800 transition hover:bg-slate-50 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-blue-500 focus-visible:ring-offset-2">
+                    {t('view')}
+                  </button>
+                </div>
+              </div>
+            )) : (
+              <div className="rounded-2xl border border-dashed border-slate-300 bg-slate-50 p-4 text-sm text-slate-500">{t('noInvoices')}</div>
+            )}
           </div>
         </div>
 
-        <div className="order-4 min-w-0 rounded-3xl border border-slate-200 bg-white p-5 shadow-sm xl:col-span-3">
+        <div className="min-w-0 rounded-3xl border border-slate-200 bg-white p-5 shadow-sm xl:col-span-3">
           <div className="mb-4">
             <h2 className="text-xl font-bold text-slate-950">{t('paymentHistory')}</h2>
             <p className="text-sm text-slate-500">{t('paymentsRecorded')}</p>
           </div>
 
-          {isAnalyticsMode && (
-            <div className="grid gap-2 sm:grid-cols-3">
-              <div className="rounded-2xl bg-slate-50 p-3">
-                <p className="text-xs font-semibold uppercase tracking-wide text-slate-500">{t('projectValue')}</p>
-                <p className="mt-1 text-lg font-bold text-slate-950">{currency.format(paymentSummary.projectValue)}</p>
-              </div>
-              <div className="rounded-2xl bg-slate-50 p-3">
-                <p className="text-xs font-semibold uppercase tracking-wide text-slate-500">{t('totalPaid')}</p>
-                <p className="mt-1 text-lg font-bold text-emerald-700">{currency.format(paymentSummary.totalPaid)}</p>
-              </div>
-              <div className="rounded-2xl bg-slate-50 p-3">
-                <p className="text-xs font-semibold uppercase tracking-wide text-slate-500">{t('remainingBalance')}</p>
-                <p className="mt-1 text-lg font-bold text-slate-950">{currency.format(paymentSummary.outstandingBalance)}</p>
-              </div>
-            </div>
-          )}
-
-          <div className="mt-4 space-y-2.5">
+          <div className="space-y-2.5">
             {paymentSummary.payments.length > 0 ? paymentSummary.payments.map((payment) => (
               <article key={payment.id || `${payment.paymentDate || payment.createdAt}-${payment.amount}`} className="rounded-2xl border border-slate-200 bg-slate-50 p-3.5">
-                <div className="flex items-start justify-between gap-3">
+                <div className="flex flex-col gap-3 sm:flex-row sm:items-start sm:justify-between">
                   <div className="min-w-0">
                     <p className="font-bold text-slate-950">{t(getPaymentTypeLabelKey(payment))}</p>
                     <div className="mt-1 flex flex-wrap items-center gap-x-3 gap-y-1 text-sm text-slate-600">
                       <span>{formatProjectDetailDate(payment.paymentDate, payment.date || '')}</span>
                       {payment.paymentMethod && <span>{t('paymentMethod')}: {payment.paymentMethod}</span>}
                     </div>
+                    {payment.invoiceId && relatedInvoiceById.has(payment.invoiceId) ? (
+                      <button type="button" onClick={() => navigate(`/invoices/${payment.invoiceId}`)} className="mt-2 inline-flex min-h-11 items-center gap-2 rounded-xl px-2 text-sm font-bold text-blue-700 transition hover:bg-blue-50 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-blue-500 focus-visible:ring-offset-2">
+                        <FileText className="h-4 w-4" aria-hidden="true" /> {t('viewInvoice')} {relatedInvoiceById.get(payment.invoiceId)?.number || ''}
+                      </button>
+                    ) : null}
                   </div>
-                  <div className="flex shrink-0 items-start gap-2">
+                  <div className="flex shrink-0 items-center justify-between gap-2 sm:justify-end">
                     <p className="text-right text-base font-bold text-slate-950">{currency.format(Number(payment.amount || 0))}</p>
                     <ActionMenu
                       label={<MoreVertical className="h-4 w-4" aria-hidden="true" />}
@@ -1737,45 +1820,49 @@ function ProjectDetailPageContent({ lead, companySettings, clients = [], schedul
                   </div>
                 </div>
                 {payment.notes && (
-                  <p className="mt-2 text-sm text-slate-500">{t('paymentNotes')}: {payment.notes}</p>
+                  <p className="mt-2 break-words text-sm leading-6 text-slate-500 [overflow-wrap:anywhere]">{t('paymentNotes')}: {payment.notes}</p>
                 )}
               </article>
             )) : (
               <div className="rounded-2xl border border-dashed border-slate-300 bg-slate-50 p-5 text-center">
                 <p className="text-sm text-slate-500">{t('noPaymentsRecordedYet')}</p>
-                {!projectIsArchived && (
+                {!projectIsArchived && canRecordPayment ? (
                   <button
+                    type="button"
                     onClick={() => {
                       setEditingPayment(null)
                       setShowPaymentModal(true)
                     }}
-                    className="mt-4 inline-flex items-center justify-center gap-2 rounded-2xl bg-blue-600 px-4 py-2.5 text-sm font-bold text-white hover:bg-blue-700"
+                    className="mt-4 inline-flex min-h-11 items-center justify-center gap-2 rounded-2xl bg-blue-600 px-4 py-2.5 text-sm font-bold text-white transition hover:bg-blue-700 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-blue-500 focus-visible:ring-offset-2"
                   >
                     <DollarSign className="h-4 w-4" /> {t('recordPayment')}
                   </button>
-                )}
+                ) : null}
               </div>
             )}
           </div>
         </div>
       </section>
 
-      <section className="order-6 min-w-0 rounded-3xl border border-slate-200 bg-white p-5 shadow-sm md:col-span-2 xl:col-span-6">
+      <section className="min-w-0 rounded-3xl border border-slate-200 bg-white p-5 shadow-sm md:col-span-2 xl:col-span-6 sm:p-6">
         <div className="mb-4 flex flex-col justify-between gap-3 sm:flex-row sm:items-center">
           <div>
             <h2 className="text-xl font-bold text-slate-950">{t('projectPhotos')}</h2>
             <p className="text-sm text-slate-500">{t('uploadProjectPhotosHelp')}</p>
           </div>
-          <button
-            onClick={() => setShowPhotoModal(true)}
-            className="inline-flex items-center justify-center gap-2 rounded-2xl bg-blue-600 px-4 py-3 text-sm font-bold text-white hover:bg-blue-700"
-          >
-            <Camera className="h-4 w-4" /> {t('uploadPhoto')}
-          </button>
+          {!projectIsArchived ? (
+            <button
+              type="button"
+              onClick={() => setShowPhotoModal(true)}
+              className="inline-flex min-h-11 items-center justify-center gap-2 rounded-2xl bg-blue-600 px-4 py-3 text-sm font-bold text-white transition hover:bg-blue-700 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-blue-500 focus-visible:ring-offset-2"
+            >
+              <Camera className="h-4 w-4" aria-hidden="true" /> {t('uploadPhoto')}
+            </button>
+          ) : null}
         </div>
 
         <div className="mb-4 rounded-2xl bg-slate-50 px-4 py-3 text-xs font-medium text-slate-500">
-          {`.jpg, .jpeg, .png, .webp • ${Math.round(PROJECT_PHOTO_MAX_FILE_SIZE_BYTES / (1024 * 1024))} MB max`}
+          {t('projectPhotoFileHelp', { size: Math.round(PROJECT_PHOTO_MAX_FILE_SIZE_BYTES / (1024 * 1024)) })}
         </div>
 
         {isLoadingPhotos ? (
@@ -1786,7 +1873,7 @@ function ProjectDetailPageContent({ lead, companySettings, clients = [], schedul
             className="rounded-2xl border border-dashed border-slate-300 bg-slate-50"
           />
         ) : galleryPhotos.length > 0 ? (
-          <div className="grid grid-cols-2 gap-3 sm:grid-cols-3 lg:grid-cols-4 xl:grid-cols-5">
+          <div className="grid gap-3 [grid-template-columns:repeat(auto-fit,minmax(min(100%,9rem),1fr))]">
             {galleryPhotos.map((photo) => {
               const photoLoadFailed = failedPhotoIds.includes(photo.id)
 
@@ -1795,7 +1882,7 @@ function ProjectDetailPageContent({ lead, companySettings, clients = [], schedul
                   <button
                     type="button"
                     onClick={() => openPhotoPreview(photo.id)}
-                    className="block w-full text-left"
+                    className="block min-h-11 w-full text-left focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-inset focus-visible:ring-blue-500"
                     aria-label={t('previewPhoto')}
                   >
                     {photo.previewUrl && !photoLoadFailed ? (
@@ -1821,7 +1908,7 @@ function ProjectDetailPageContent({ lead, companySettings, clients = [], schedul
                       </div>
                     )}
                     <div className="space-y-1 p-2.5">
-                      <p className="truncate text-sm font-bold text-slate-950">{photo.displayTitle}</p>
+                      <p className="break-words text-sm font-bold text-slate-950 [overflow-wrap:anywhere]">{photo.displayTitle}</p>
                       <div className="flex flex-wrap items-center gap-x-2 gap-y-1 text-[11px] text-slate-500">
                         {photo.createdAt && <span>{formatDisplayDate(photo.createdAt, photo.createdAt)}</span>}
                         {photo.fileSize > 0 && <span>{formatProjectPhotoFileSize(photo.fileSize)}</span>}
@@ -1840,123 +1927,61 @@ function ProjectDetailPageContent({ lead, companySettings, clients = [], schedul
         )}
       </section>
 
-      <section id="project-schedule" className="order-5 min-w-0 scroll-mt-24 rounded-3xl border border-slate-200 bg-white p-5 shadow-sm xl:col-span-3">
-        <div className="mb-4 flex flex-col justify-between gap-3 sm:flex-row sm:items-center">
-          <div>
-            <h2 className="text-xl font-bold text-slate-950">{t('projectSchedule')}</h2>
-            <p className="text-sm text-slate-500">{t('projectScheduleHelp')}</p>
-          </div>
-          <button onClick={onScheduleEvent} className="inline-flex items-center justify-center gap-2 rounded-2xl bg-blue-600 px-4 py-3 text-sm font-bold text-white hover:bg-blue-700">
-            <CalendarDays className="h-4 w-4" /> {t('scheduleJob')}
-          </button>
+      <section className="contents">
+        <div className="min-w-0 [&>article]:h-full xl:col-span-3">
+          <InfoCard title={t('clientInformation')}>
+            {currentLead.phone ? <DetailRow label={t('phone')} value={<a href={`tel:${currentLead.phone}`} className="rounded text-blue-700 underline-offset-4 hover:underline focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-blue-500">{currentLead.phone}</a>} /> : null}
+            {currentLead.email ? <DetailRow label={t('email')} value={<a href={`mailto:${currentLead.email}`} className="break-all rounded text-blue-700 underline-offset-4 hover:underline focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-blue-500">{currentLead.email}</a>} /> : null}
+            {!currentLead.phone && !currentLead.email ? <p className="text-sm leading-6 text-slate-500">{t('noClientContactInformation')}</p> : null}
+            {hasClientLink ? (
+              <button type="button" onClick={() => navigate(`/clients/${currentLead.clientId}`)} className="mt-4 inline-flex min-h-11 w-full items-center justify-center gap-2 rounded-2xl border border-slate-200 bg-white px-4 py-3 text-sm font-bold text-slate-800 transition hover:bg-slate-50 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-blue-500 focus-visible:ring-offset-2 sm:w-auto">
+                {t('viewClient')}
+              </button>
+            ) : null}
+          </InfoCard>
         </div>
-        <div className="space-y-3">
-          {activeScheduleEvents.length > 0 ? activeScheduleEvents.map((event) => (
-            <article key={event.id} className="rounded-2xl border border-slate-200 bg-slate-50 p-4">
-              <div className="flex flex-col justify-between gap-3 sm:flex-row sm:items-start">
-                <div>
-                  <div className="flex flex-wrap items-center gap-2">
-                    <h3 className="font-bold text-slate-950">{t(event.title)}</h3>
-                    <span className="rounded-full bg-blue-100 px-2.5 py-1 text-xs font-bold text-blue-700">{tStatus(t, event.type)}</span>
-                  </div>
-                  <div className="mt-2 grid gap-2 text-sm text-slate-600 sm:grid-cols-3">
-                    <p className="inline-flex items-center gap-1"><CalendarDays className="h-4 w-4 text-slate-400" /> {event.displayDate || event.date}</p>
-                    <p className="inline-flex items-center gap-1"><Clock className="h-4 w-4 text-slate-400" /> {event.time || `${event.startTime || ''}${event.endTime ? ` - ${event.endTime}` : ''}`}</p>
-                    <p className="inline-flex items-center gap-1"><MapPin className="h-4 w-4 text-slate-400" /> {event.location || currentLead.address || currentLead.location}</p>
-                  </div>
-                  {event.notes && <p className="mt-2 text-sm text-slate-500">{event.notes}</p>}
-                </div>
-                <div className="flex shrink-0 items-start gap-2">
-                  <button onClick={() => onExportEvent?.(event)} className="inline-flex items-center justify-center gap-2 rounded-2xl border border-blue-200 bg-blue-50 px-3 py-2 text-xs font-bold text-blue-700 hover:bg-blue-100">
-                    <Download className="h-4 w-4" /> {t('exportToCalendar')}
+
+        <div className="min-w-0 [&>article]:h-full xl:col-span-3">
+          <InfoCard title={t('customerPortal')} bodyClassName="space-y-3">
+            <div className={`rounded-2xl border px-4 py-3 ${portalShareUrl ? 'border-emerald-200 bg-emerald-50 text-emerald-800' : 'border-slate-200 bg-slate-50 text-slate-600'}`}>
+              <p className="text-sm font-bold">{t(portalShareUrl ? 'clientLinkReady' : 'clientLinkUnavailable')}</p>
+              <p className="mt-1 text-sm leading-6">{t(portalShareUrl ? 'clientPortalCardHelp' : 'projectPortalUnavailableHelp')}</p>
+            </div>
+            {portalShareUrl ? (
+              <div className="grid gap-2">
+                <a href={portalShareUrl} target="_blank" rel="noopener noreferrer" className="inline-flex min-h-11 w-full items-center justify-center gap-2 rounded-2xl bg-blue-600 px-4 py-2.5 text-sm font-bold text-white transition hover:bg-blue-700 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-blue-500 focus-visible:ring-offset-2">
+                  {t('openCustomerPortal')} <ExternalLink className="h-4 w-4" aria-hidden="true" />
+                </a>
+                <div className="grid gap-2 min-[380px]:grid-cols-2">
+                  <button type="button" onClick={copyPortalLink} className="inline-flex min-h-11 w-full items-center justify-center gap-2 rounded-2xl border border-slate-200 bg-white px-3 py-2.5 text-sm font-bold text-slate-800 transition hover:bg-slate-50 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-blue-500 focus-visible:ring-offset-2">
+                    <Copy className="h-4 w-4 shrink-0" aria-hidden="true" /> {t('copyLink')}
                   </button>
-                  <ActionMenu
-                    label={<MoreVertical className="h-4 w-4" aria-hidden="true" />}
-                    ariaLabel={t('eventActions')}
-                    showChevron={false}
-                    buttonClassName="inline-flex min-h-11 min-w-11 items-center justify-center rounded-2xl border border-slate-200 bg-white p-2 text-slate-600 transition hover:bg-slate-50 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-blue-500 focus-visible:ring-offset-2"
-                    items={[
-                      {
-                        id: `edit-event-${event.id}`,
-                        label: t('edit'),
-                        icon: <Edit3 className="h-4 w-4" aria-hidden="true" />,
-                        onClick: () => onEditScheduleEvent?.(event),
-                      },
-                      {
-                        id: `archive-event-${event.id}`,
-                        label: t('archive'),
-                        icon: <Archive className="h-4 w-4" aria-hidden="true" />,
-                        onClick: () => setScheduleConfirmAction({ mode: 'archive', event }),
-                        className: archiveMenuItemClasses,
-                      },
-                    ]}
-                  />
+                  <button type="button" onClick={() => setShowPortalLinkModal(true)} className="inline-flex min-h-11 w-full items-center justify-center gap-2 rounded-2xl border border-slate-200 bg-white px-3 py-2.5 text-sm font-bold text-slate-800 transition hover:bg-slate-50 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-blue-500 focus-visible:ring-offset-2">
+                    <Share2 className="h-4 w-4 shrink-0" aria-hidden="true" /> {t('sendLinkToClient')}
+                  </button>
                 </div>
               </div>
-            </article>
-          )) : (
-            <div className="rounded-2xl border border-dashed border-slate-300 bg-slate-50 p-6 text-center">
-              <p className="font-bold text-slate-900">{t('noProjectSchedule')}</p>
-              <p className="mt-1 text-sm text-slate-500">{t('noProjectScheduleHelp')}</p>
-            </div>
-          )}
+            ) : null}
+          </InfoCard>
         </div>
-        {archivedScheduleEvents.length > 0 && (
-          <div className="mt-5 space-y-3 border-t border-slate-200 pt-5">
-            <div>
-              <h3 className="text-sm font-bold uppercase tracking-wide text-slate-500">{t('archivedScheduleEvents')}</h3>
-              <p className="text-sm text-slate-500">{t('archivedViewHelp')}</p>
-            </div>
-            {archivedScheduleEvents.map((event) => (
-              <article key={event.id} className="rounded-2xl border border-amber-200 bg-amber-50/70 p-4">
-                <div className="flex items-start justify-between gap-3">
-                  <div>
-                    <div className="flex flex-wrap items-center gap-2">
-                      <h4 className="font-bold text-slate-950">{t(event.title)}</h4>
-                      <span className="rounded-full bg-white px-2.5 py-1 text-xs font-bold text-amber-800">{t('archived')}</span>
-                    </div>
-                    <p className="mt-1 text-sm text-slate-600">{event.displayDate || event.date} · {event.location || currentLead.address || currentLead.location}</p>
-                  </div>
-                  <ActionMenu
-                    label={<MoreVertical className="h-4 w-4" aria-hidden="true" />}
-                    ariaLabel={t('eventActions')}
-                    showChevron={false}
-                    buttonClassName="inline-flex min-h-11 min-w-11 items-center justify-center rounded-2xl border border-slate-200 bg-white p-2 text-slate-600 transition hover:bg-slate-50 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-blue-500 focus-visible:ring-offset-2"
-                    items={[
-                      {
-                        id: `restore-event-${event.id}`,
-                        label: t('restore'),
-                        icon: <Undo2 className="h-4 w-4" aria-hidden="true" />,
-                        onClick: async () => {
-                          try {
-                            const response = await dataProvider.events.restore?.(event.id, { contractorId })
-                            if (response?.error) throw response.error
-                          } catch (err) {
-                            if (USE_SUPABASE_EVENTS) return
-                          }
-                          setProjectEventRecords((current) => sortProjectEvents(current.map((entry) => (
-                            entry.id === event.id ? { ...entry, archivedAt: null, archived_at: null } : entry
-                          ))))
-                          onRestoreScheduleEvent?.(event.id)
-                        },
-                        className: 'text-emerald-700 hover:bg-emerald-50 focus-visible:bg-emerald-50',
-                      },
-                      {
-                        id: `delete-event-${event.id}`,
-                        label: t('deletePermanently'),
-                        icon: <Trash2 className="h-4 w-4" aria-hidden="true" />,
-                        tone: 'destructive',
-                        onClick: () => setScheduleConfirmAction({ mode: 'delete', event }),
-                        className: 'text-red-700 hover:bg-red-50 focus-visible:bg-red-50',
-                      },
-                    ]}
-                  />
+
+        {(currentLead.priority || currentLead.source || currentLead.projectType || currentLead.notes || currentLead.description) ? (
+          <div className="min-w-0 md:col-span-2 [&>article]:h-full xl:col-span-6">
+            <InfoCard title={recordDetailsTitle}>
+              {currentLead.priority ? <DetailRow label={t('priority')} value={currentLead.priority} /> : null}
+              {currentLead.source ? <DetailRow label={t('source')} value={currentLead.source} /> : null}
+              {currentLead.projectType ? <DetailRow label={t('projectType')} value={currentLead.projectType} /> : null}
+              {currentLead.notes || currentLead.description ? (
+                <div className="border-t border-slate-100 pt-3">
+                  <p className="text-sm font-medium text-slate-500">{t('notes')}</p>
+                  <p className="mt-1.5 whitespace-pre-wrap break-words text-sm font-semibold leading-6 text-slate-900 [overflow-wrap:anywhere]">{currentLead.notes || currentLead.description}</p>
                 </div>
-              </article>
-            ))}
+              ) : null}
+            </InfoCard>
           </div>
-        )}
+        ) : null}
       </section>
+
       </div>
 
       <JobFormModal
@@ -1997,22 +2022,24 @@ function ProjectDetailPageContent({ lead, companySettings, clients = [], schedul
                 ) : null}
               </div>
               <div className="flex items-center gap-2">
-                <button
-                  type="button"
-                  onClick={() => setPhotoConfirmAction({ photo: selectedPhoto })}
-                  disabled={deletingPhotoId === selectedPhoto.id}
-                  className="rounded-2xl border border-red-200 bg-white p-2 text-red-600 hover:bg-red-50 disabled:cursor-not-allowed disabled:opacity-60"
-                  aria-label={t('deletePhoto')}
-                >
-                  <Trash2 className="h-4 w-4" />
-                </button>
+                {!projectIsArchived ? (
+                  <button
+                    type="button"
+                    onClick={() => setPhotoConfirmAction({ photo: selectedPhoto })}
+                    disabled={deletingPhotoId === selectedPhoto.id}
+                    className="inline-flex h-11 w-11 items-center justify-center rounded-2xl border border-red-200 bg-white text-red-600 transition hover:bg-red-50 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-red-500 focus-visible:ring-offset-2 disabled:cursor-not-allowed disabled:opacity-60"
+                    aria-label={t('deletePhoto')}
+                  >
+                    <Trash2 className="h-4 w-4" aria-hidden="true" />
+                  </button>
+                ) : null}
                 <button
                   type="button"
                   onClick={() => setSelectedPhotoId('')}
-                  className="rounded-2xl border border-slate-200 p-2 text-slate-500 hover:bg-slate-50"
+                  className="inline-flex h-11 w-11 items-center justify-center rounded-2xl border border-slate-200 text-slate-500 transition hover:bg-slate-50 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-blue-500 focus-visible:ring-offset-2"
                   aria-label={t('close')}
                 >
-                  <X className="h-5 w-5" />
+                  <X className="h-5 w-5" aria-hidden="true" />
                 </button>
               </div>
             </div>
@@ -2143,7 +2170,7 @@ function ProjectDetailPageContent({ lead, companySettings, clients = [], schedul
                 throw response.error
               }
               const archivedAt = new Date().toISOString()
-              setProjectEventRecords((current) => sortProjectEvents(current.map((event) => (
+              setProjectEventRecords((current) => sortScheduleEvents(current.map((event) => (
                 event.id === scheduleConfirmAction.event.id ? { ...event, archivedAt, archived_at: archivedAt } : event
               ))))
               onArchiveScheduleEvent?.(scheduleConfirmAction.event.id)

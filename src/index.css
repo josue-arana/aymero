@@ -16,6 +16,13 @@ body {
   min-height: 100vh;
 }
 
+button,
+input,
+select,
+textarea {
+  font: inherit;
+}
+
 .dragging {
   opacity: 0.45;
 }
@@ -30,4 +37,13 @@ body {
 
 @media (prefers-reduced-motion: reduce) {
   .onboarding-step-enter { animation: none; }
+
+  *,
+  *::before,
+  *::after {
+    scroll-behavior: auto !important;
+    animation-duration: 0.01ms !important;
+    animation-iteration-count: 1 !important;
+    transition-duration: 0.01ms !important;
+  }
 }

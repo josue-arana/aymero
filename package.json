@@ -21,7 +21,9 @@
     "verify:action-menus": "node scripts/verify-action-menus.mjs",
     "verify:estimate-share-resolution": "node scripts/verify-estimate-share-resolution.mjs",
     "verify:dashboard-consistency": "node scripts/verify-dashboard-consistency.mjs",
-    "verify:customer-delivery-polish": "node scripts/verify-customer-delivery-polish.mjs"
+    "verify:customer-delivery-polish": "node scripts/verify-customer-delivery-polish.mjs",
+    "verify:ui-consistency": "node scripts/verify-ui-consistency.mjs",
+    "verify:project-workspace": "node scripts/verify-project-workspace.mjs"
   },
   "dependencies": {
     "@vitejs/plugin-react": "latest",

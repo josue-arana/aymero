@@ -3,6 +3,7 @@ import { Archive, CheckCircle2, Clock, DollarSign, FileText, MoreVertical, Send,
 import { MetricCard } from '../components/ui/MetricCard'
 import { SelectField } from '../components/ui/SelectField'
 import { StatusBadge } from '../components/ui/StatusBadge'
+import { FilterChip } from '../components/ui/FilterChip'
 import { currency } from '../utils/formatters'
 import { archiveMenuItemClasses } from '../utils/buttonStyles'
 import { createTranslator, tStatus } from '../translations'
@@ -263,9 +264,9 @@ export function InvoicesPage({ leads, clients = [], invoices: invoiceRecords = [
 
         <div className="mb-5 flex gap-2 overflow-x-auto pb-1">
           {invoiceFilters.map((filter) => (
-            <button key={filter} onClick={() => setSelectedFilter(filter)} className={`shrink-0 rounded-full px-4 py-2 text-sm font-bold transition ${selectedFilter === filter ? 'bg-blue-600 text-white shadow-sm' : 'bg-slate-100 text-slate-600 hover:bg-slate-200'}`}>
+            <FilterChip key={filter} selected={selectedFilter === filter} onClick={() => setSelectedFilter(filter)}>
               {filter === 'All' ? t('all') : filter === 'Archived' ? t('archived') : tStatus(t, filter)}
-            </button>
+            </FilterChip>
           ))}
         </div>
 
@@ -285,14 +286,14 @@ export function InvoicesPage({ leads, clients = [], invoices: invoiceRecords = [
             </thead>
             <tbody className="divide-y divide-slate-100">
               {filteredInvoices.map((invoice) => (
-                <tr key={invoice.id} onClick={() => onViewInvoice(invoice.id)} className="cursor-pointer bg-white transition hover:bg-blue-50/40">
+                <tr key={invoice.id} onClick={() => onViewInvoice(invoice.id)} onKeyDown={(event) => { if (event.target !== event.currentTarget || (event.key !== 'Enter' && event.key !== ' ')) return; event.preventDefault(); onViewInvoice(invoice.id) }} tabIndex={0} role="button" aria-label={t('viewInvoice')} className="cursor-pointer bg-white transition hover:bg-blue-50/40 focus-visible:bg-blue-50/60 focus-visible:outline-none">
                   <td className="px-4 py-4 font-bold text-slate-950">{invoice.number}</td>
                   <td className="px-4 py-4"><p className="font-bold text-slate-950">{invoice.client}</p><p className="text-sm text-slate-500">{invoice.projectTitle}</p></td>
                   <td className="px-4 py-4 text-right font-bold text-slate-900">{currency.format(invoice.amount)}</td>
                   <td className="px-4 py-4 text-right font-medium text-slate-700">{currency.format(invoice.amountPaid)}</td>
                   <td className="px-4 py-4 text-right font-bold text-slate-900">{currency.format(invoice.remainingBalance)}</td>
                   <td className="px-4 py-4 font-medium text-slate-700">{invoice.dueDate}</td>
-                  <td className="px-4 py-4"><StatusBadge status={invoice.isArchived ? 'Archived' : invoice.status} t={t} /></td>
+                  <td className="px-4 py-4"><div className="flex flex-wrap gap-2"><StatusBadge status={invoice.status} t={t} />{invoice.isArchived ? <StatusBadge status="Archived" t={t} /> : null}</div></td>
                   <td className="px-4 py-4 text-right">{renderInvoiceActions(invoice)}</td>
                 </tr>
               ))}
@@ -302,14 +303,14 @@ export function InvoicesPage({ leads, clients = [], invoices: invoiceRecords = [
 
         <div className="space-y-3 lg:hidden">
           {filteredInvoices.map((invoice) => (
-            <article key={invoice.id} onClick={() => onViewInvoice(invoice.id)} className="rounded-3xl border border-slate-200 bg-white p-4 shadow-sm">
+            <article key={invoice.id} onClick={() => onViewInvoice(invoice.id)} onKeyDown={(event) => { if (event.target !== event.currentTarget || (event.key !== 'Enter' && event.key !== ' ')) return; event.preventDefault(); onViewInvoice(invoice.id) }} tabIndex={0} role="button" aria-label={t('viewInvoice')} className="rounded-3xl border border-slate-200 bg-white p-4 shadow-sm focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-blue-500/40">
               <div className="mb-4 flex items-start justify-between gap-3">
-                <div>
-                  <p className="text-xs font-bold uppercase tracking-wide text-slate-400">{invoice.number}</p>
-                  <h3 className="mt-1 font-bold text-slate-950">{invoice.client}</h3>
-                  <p className="text-sm text-slate-500">{invoice.projectTitle}</p>
+                <div className="min-w-0">
+                  <p className="break-words text-xs font-bold uppercase tracking-wide text-slate-400 [overflow-wrap:anywhere]">{invoice.number}</p>
+                  <h3 className="mt-1 break-words font-bold text-slate-950 [overflow-wrap:anywhere]">{invoice.client}</h3>
+                  <p className="break-words text-sm text-slate-500 [overflow-wrap:anywhere]">{invoice.projectTitle}</p>
                 </div>
-                <StatusBadge status={invoice.isArchived ? 'Archived' : invoice.status} t={t} />
+                <div className="flex flex-wrap justify-end gap-2"><StatusBadge status={invoice.status} t={t} />{invoice.isArchived ? <StatusBadge status="Archived" t={t} /> : null}</div>
               </div>
               <div className="grid gap-2 rounded-2xl bg-slate-50 p-3 text-sm sm:grid-cols-3">
                 <div><p className="text-xs font-semibold uppercase tracking-wide text-slate-400">{t('invoiceAmount')}</p><p className="font-bold text-slate-950">{currency.format(invoice.amount)}</p></div>

@@ -3,6 +3,7 @@ import { Archive, ClipboardList, MoreVertical, Plus, Search, Trash2, Undo2, User
 import { MetricCard } from '../components/ui/MetricCard'
 import { SelectField } from '../components/ui/SelectField'
 import { StatusBadge } from '../components/ui/StatusBadge'
+import { FilterChip } from '../components/ui/FilterChip'
 import { LeadFormModal } from '../components/leads/LeadFormModal'
 import { ConfirmRecordModal } from '../components/common/ConfirmRecordModal'
 import ActionMenu from '../components/common/ActionMenu'
@@ -289,9 +290,9 @@ export function LeadsPage({ leads, clients = [], archivedIds = [], onViewLead, o
 
         <div className="mb-5 flex gap-2 overflow-x-auto pb-1">
           {leadFilters.map((filter) => (
-            <button key={filter} onClick={() => setSelectedFilter(filter)} className={`shrink-0 rounded-full px-4 py-2 text-sm font-bold transition ${selectedFilter === filter ? 'bg-blue-600 text-white shadow-sm' : 'bg-slate-100 text-slate-600 hover:bg-slate-200'}`}>
+            <FilterChip key={filter} selected={selectedFilter === filter} onClick={() => setSelectedFilter(filter)}>
               {filter === 'All' ? t('all') : filter === 'Archived' ? t('archived') : tStatus(t, filter)}
-            </button>
+            </FilterChip>
           ))}
         </div>
 
@@ -323,7 +324,7 @@ export function LeadsPage({ leads, clients = [], archivedIds = [], onViewLead, o
                   <td className="px-4 py-4"><p className="font-bold text-slate-950">{lead.client}</p><p className="text-sm text-slate-500">{lead.projectTitle || lead.projectType}</p></td>
                   <td className="px-4 py-4 font-medium text-slate-700">{lead.phone || t('notAdded')}</td>
                   {isAnalyticsMode && <td className="px-4 py-4 text-right font-bold text-slate-900">{lead.leadEstimatedValueDisplay}</td>}
-                  <td className="px-4 py-4"><StatusBadge status={isLeadArchived(lead, archivedIds) ? 'Archived' : lead.status} t={t} /></td>
+                  <td className="px-4 py-4"><div className="flex flex-wrap gap-2"><StatusBadge status={lead.status} t={t} />{isLeadArchived(lead, archivedIds) ? <StatusBadge status="Archived" t={t} /> : null}</div></td>
                   {isAnalyticsMode && <td className="px-4 py-4"><StatusBadge status={getPriorityLabel(lead.priority, t)} t={t} /></td>}
                   {isAnalyticsMode && <td className="px-4 py-4 text-slate-600">{getLeadDisplayValue(lead.source, t) || t('notAdded')}</td>}
                   <td className="px-4 py-4 text-right">{renderLeadActions(lead)}</td>
@@ -346,8 +347,8 @@ export function LeadsPage({ leads, clients = [], archivedIds = [], onViewLead, o
               className="cursor-pointer rounded-3xl border border-slate-200 bg-white p-4 shadow-sm transition hover:border-blue-200 hover:bg-blue-50/30 focus:outline-none focus-visible:border-blue-300 focus-visible:bg-blue-50/40"
             >
               <div className="mb-4 flex items-start justify-between gap-3">
-                <div><h3 className="font-bold text-slate-950">{lead.client}</h3><p className="text-sm text-slate-500">{getLeadDisplayValue(lead.projectTitle || lead.projectType, t)}</p></div>
-                <StatusBadge status={isLeadArchived(lead, archivedIds) ? 'Archived' : lead.status} t={t} />
+                <div className="min-w-0"><h3 className="break-words font-bold text-slate-950 [overflow-wrap:anywhere]">{lead.client}</h3><p className="break-words text-sm text-slate-500 [overflow-wrap:anywhere]">{getLeadDisplayValue(lead.projectTitle || lead.projectType, t)}</p></div>
+                <div className="flex flex-wrap justify-end gap-2"><StatusBadge status={lead.status} t={t} />{isLeadArchived(lead, archivedIds) ? <StatusBadge status="Archived" t={t} /> : null}</div>
               </div>
               {!isAnalyticsMode ? (
                 <div className="grid grid-cols-2 gap-3 rounded-2xl bg-slate-50 p-3 text-sm">
@@ -357,7 +358,7 @@ export function LeadsPage({ leads, clients = [], archivedIds = [], onViewLead, o
                   </div>
                   <div>
                     <p className="text-xs font-bold uppercase tracking-wide text-slate-400">{t('email')}</p>
-                    <p className="truncate font-medium text-slate-700">{lead.email || t('notAdded')}</p>
+                    <p className="break-words font-medium text-slate-700 [overflow-wrap:anywhere]">{lead.email || t('notAdded')}</p>
                   </div>
                 </div>
               ) : (

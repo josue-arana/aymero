@@ -374,8 +374,8 @@ export function AuthOnboardingPage({
   const progress = (step / TOTAL_STEPS) * 100
 
   return (
-    <div className="min-h-screen bg-[radial-gradient(circle_at_top_left,_rgba(14,165,233,0.16),_transparent_28%),linear-gradient(145deg,_#f8fafc_0%,_#eff6ff_50%,_#ecfeff_100%)] text-slate-950">
-      <header className="border-b border-white/80 bg-white/75 px-4 py-3.5 backdrop-blur-xl sm:px-6 lg:px-10">
+    <div className="min-h-screen min-h-dvh bg-[radial-gradient(circle_at_top_left,_rgba(14,165,233,0.16),_transparent_28%),linear-gradient(145deg,_#f8fafc_0%,_#eff6ff_50%,_#ecfeff_100%)] pb-[env(safe-area-inset-bottom)] text-slate-950">
+      <header className="border-b border-white/80 bg-white/75 pb-3.5 pl-[max(1rem,env(safe-area-inset-left))] pr-[max(1rem,env(safe-area-inset-right))] pt-[max(0.875rem,env(safe-area-inset-top))] backdrop-blur-xl sm:pl-[max(1.5rem,env(safe-area-inset-left))] sm:pr-[max(1.5rem,env(safe-area-inset-right))] lg:pl-[max(2.5rem,env(safe-area-inset-left))] lg:pr-[max(2.5rem,env(safe-area-inset-right))]">
         <div className="mx-auto flex max-w-7xl items-center justify-between gap-4">
           <BrandLogo
             variant="horizontal"
@@ -391,7 +391,7 @@ export function AuthOnboardingPage({
             ) : null}
             <LanguageToggleButton language={language} setLanguage={setLanguage} t={t} />
             {isReopen ? (
-              <button type="button" onClick={onClose} aria-label={t('close')} className="flex h-10 w-10 items-center justify-center rounded-xl text-slate-500 hover:bg-slate-100 focus:outline-none focus:ring-4 focus:ring-blue-100">
+              <button type="button" onClick={onClose} aria-label={t('close')} className="flex h-11 w-11 items-center justify-center rounded-xl text-slate-500 hover:bg-slate-100 focus:outline-none focus:ring-4 focus:ring-blue-100">
                 <X className="h-5 w-5" />
               </button>
             ) : null}
@@ -419,7 +419,7 @@ export function AuthOnboardingPage({
           </ol>
         </aside>
 
-        <main className="flex min-w-0 flex-col px-4 py-6 sm:px-8 sm:py-10 lg:px-14 lg:py-12">
+        <main className="flex min-w-0 flex-col pb-6 pl-[max(1rem,env(safe-area-inset-left))] pr-[max(1rem,env(safe-area-inset-right))] pt-6 sm:pb-10 sm:pl-[max(2rem,env(safe-area-inset-left))] sm:pr-[max(2rem,env(safe-area-inset-right))] sm:pt-10 lg:pb-12 lg:pl-[max(3.5rem,env(safe-area-inset-left))] lg:pr-[max(3.5rem,env(safe-area-inset-right))] lg:pt-12">
           <div className="mx-auto flex w-full max-w-3xl flex-1 flex-col">
             <div>
               <div className="flex items-center justify-between gap-4 text-xs font-bold uppercase tracking-[0.2em] text-slate-500">
@@ -448,7 +448,7 @@ export function AuthOnboardingPage({
             </section>
 
             {step < TOTAL_STEPS ? (
-              <footer className="sticky bottom-0 -mx-4 flex flex-col-reverse gap-3 border-t border-white/80 bg-white/85 px-4 py-4 backdrop-blur-xl sm:static sm:mx-0 sm:flex-row sm:items-center sm:justify-between sm:border-0 sm:bg-transparent sm:px-0 sm:py-0">
+              <footer className="sticky bottom-0 -mx-4 flex flex-col-reverse gap-3 border-t border-white/80 bg-white/85 px-4 pb-[max(1rem,env(safe-area-inset-bottom))] pt-4 backdrop-blur-xl sm:static sm:mx-0 sm:flex-row sm:items-center sm:justify-between sm:border-0 sm:bg-transparent sm:px-0 sm:py-0">
                 <div>
                   {step > 1 ? (
                     <button type="button" onClick={goBack} disabled={isSaving} className="inline-flex min-h-12 w-full items-center justify-center gap-2 rounded-2xl px-5 text-sm font-bold text-slate-600 hover:bg-white disabled:opacity-50 sm:w-auto">
