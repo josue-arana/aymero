@@ -233,6 +233,13 @@ function getFriendlyPaymentSaveErrorMessage(t, errorMessage = '') {
     return t('projectRequiredBeforePayment')
   }
 
+  if (
+    normalizedMessage.includes('payments_lead_id_fkey')
+    || (normalizedMessage.includes('foreign key constraint') && normalizedMessage.includes('lead_id'))
+  ) {
+    return t('paymentSaveFailed')
+  }
+
   return errorMessage || t('paymentSaveFailed')
 }
 
@@ -1262,7 +1269,7 @@ function ProjectDetailPageContent({ lead, companySettings, clients = [], invoice
         contractId: resolvedContract?.id || currentLead.contractId || currentLead.contract_id || null,
         estimateId: resolvedEstimate?.id || currentLead.estimateId || currentLead.estimate_id || null,
         invoiceId: currentLead.invoiceId || currentLead.invoice_id || null,
-        leadId: linkedLeadId || currentLead.leadId || currentLead.id,
+        leadId: linkedLeadId || currentLead.leadId || currentLead.lead_id || null,
       }, {
         createdAt: editingPayment?.createdAt,
         status: editingPayment?.status || 'Recorded',
@@ -1714,7 +1721,14 @@ function ProjectDetailPageContent({ lead, companySettings, clients = [], invoice
                 </div>
               </div>
             ) : (
-              <div className="rounded-2xl border border-dashed border-slate-300 bg-slate-50 p-4 text-sm text-slate-500">{t('noEstimates')}</div>
+              <div className="flex flex-col items-start gap-3 rounded-2xl border border-dashed border-slate-300 bg-slate-50 p-4 text-sm text-slate-500 sm:flex-row sm:items-center sm:justify-between">
+                <span>{t('noEstimates')}</span>
+                {!projectIsArchived ? (
+                  <button type="button" onClick={() => navigate(`/projects/${currentLead.id}/estimate`, { state: { source: 'project', projectId: currentLead.id, leadId: linkedLeadId } })} className="inline-flex min-h-11 w-full items-center justify-center rounded-2xl border border-slate-200 bg-white px-4 py-2.5 text-sm font-bold text-slate-800 transition hover:bg-slate-100 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-blue-500 focus-visible:ring-offset-2 sm:w-auto">
+                    {t('createEstimate')}
+                  </button>
+                ) : null}
+              </div>
             )}
 
             {resolvedContract ? (

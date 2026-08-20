@@ -16,10 +16,26 @@ export function resolveLinkedLeadId(record = {}, fallback = '') {
   return (
     normalizeLookupId(record?.leadId)
     || normalizeLookupId(record?.lead_id)
-    || normalizeLookupId(record?.id)
     || normalizeLookupId(fallback)
     || ''
   )
+}
+
+export function findProjectByLookup(projects = [], ...ids) {
+  const normalizedIds = new Set(
+    ids
+      .flat()
+      .map(normalizeLookupId)
+      .filter(Boolean)
+  )
+
+  if (normalizedIds.size === 0) return null
+
+  return projects.find((project) => [
+    project?.id,
+    project?.projectId,
+    project?.project_id,
+  ].map(normalizeLookupId).some((id) => normalizedIds.has(id))) || null
 }
 
 export function findLeadByProjectLookup(leads = [], ...ids) {
@@ -89,12 +105,12 @@ export function getProjectsForClient(client = {}, projects = []) {
 
 export function getEstimateForProject(project = {}, estimates = []) {
   const projectId = resolveLinkedProjectId(project)
-  const leadId = resolveLinkedLeadId(project)
+  const leadId = resolveLinkedLeadId(project, project?.isProjectRecord === false ? project?.id : '')
   const estimateId = normalizeLookupId(project?.estimateId || project?.estimate_id)
 
   return dedupeById(estimates, ['projectId', 'project_id', 'leadId', 'lead_id', 'number', 'estimateNumber'])
     .find((estimate) => {
-      const estimateProjectId = resolveLinkedProjectId(estimate)
+      const estimateProjectId = normalizeLookupId(estimate?.projectId || estimate?.project_id)
       const estimateLeadId = resolveLinkedLeadId(estimate)
       const currentEstimateId = normalizeLookupId(estimate?.id)
 
@@ -107,13 +123,13 @@ export function getEstimateForProject(project = {}, estimates = []) {
 
 export function getContractForProject(project = {}, contracts = [], estimate = null) {
   const projectId = resolveLinkedProjectId(project)
-  const leadId = resolveLinkedLeadId(project)
+  const leadId = resolveLinkedLeadId(project, project?.isProjectRecord === false ? project?.id : '')
   const contractId = normalizeLookupId(project?.contractId || project?.contract_id)
   const estimateId = normalizeLookupId(estimate?.id || project?.estimateId || project?.estimate_id)
 
   return dedupeById(contracts, ['projectId', 'project_id', 'estimateId', 'estimate_id', 'number', 'contractNumber'])
     .find((contract) => {
-      const contractProjectId = resolveLinkedProjectId(contract)
+      const contractProjectId = normalizeLookupId(contract?.projectId || contract?.project_id)
       const contractLeadId = resolveLinkedLeadId(contract)
       const currentContractId = normalizeLookupId(contract?.id)
       const contractEstimateId = normalizeLookupId(contract?.estimateId || contract?.estimate_id)
