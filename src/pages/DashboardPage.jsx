@@ -11,6 +11,7 @@ import { calculateOutstandingInvoiceBalance, getInvoiceRemainingBalance, isColle
 import { calculateProjectPaymentSummary } from '../utils/projectPayments'
 import { isRecordArchived } from '../utils/archiveLifecycle'
 import { isClientVisibleScheduleEvent } from '../utils/scheduleEvents'
+import { findRelatedClient } from '../utils/clients'
 import {
   deriveDashboardProjectStatus,
   findDashboardLinkedLead,
@@ -308,6 +309,7 @@ function SampleWorkspaceGuide({ guide, onOpenItem, onDismiss, onCreateLead, t })
 
 export function DashboardPage({
   leads,
+  clients = [],
   metrics,
   scheduleEvents = [],
   invoices = [],
@@ -624,11 +626,14 @@ export function DashboardPage({
     .map((project) => {
       const projectPayments = getDashboardProjectPayments(payments, project)
       const paymentSummary = calculateProjectPaymentSummary(project, projectPayments)
+      const relatedClient = findRelatedClient(clients, project)
 
       return {
         id: project.dashboardProjectId,
         title: resolveDisplayTitle(project, t('project')),
-        client: resolveClientName(project, t('client')),
+        client: relatedClient?.displayName
+          || relatedClient?.name
+          || resolveClientName(project, t('client')),
         status: deriveDashboardProjectStatus(project, {
           contracts,
           payments,
@@ -640,7 +645,7 @@ export function DashboardPage({
       }
     })
     .sort((left, right) => right.timestamp - left.timestamp)
-    .slice(0, 4), [archivedProjectIds, contracts, leads, payments, projects, scheduleEvents, t])
+    .slice(0, 4), [archivedProjectIds, clients, contracts, leads, payments, projects, scheduleEvents, t])
 
   return (
     <div className="mx-auto w-full max-w-7xl space-y-6 overflow-x-hidden">

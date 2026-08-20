@@ -22,7 +22,7 @@ import { getProjectsContractorId } from '../services/system/projectsRuntimeServi
 import { readLinkedContractDraft } from '../utils/contractLinks'
 import { formatContractDisplayNumber, generateContractNumber } from '../utils/contractNumber'
 import { isPrintWindowBlockedError, printDocumentElement } from '../utils/printDocument'
-import { dedupeById, findLeadByProjectLookup, resolveLinkedProjectId } from '../utils/projectIdentity'
+import { dedupeById, findLeadByProjectLookup, findProjectByLookup, resolveLinkedProjectId } from '../utils/projectIdentity'
 import { createTranslator } from '../translations'
 import { findRelatedClient } from '../utils/clients'
 import { buildContractNotesAndTermsItems, buildContractWorkBreakdownFromEstimate, buildGeneratedContractPaymentTerms, hasContractWorkBreakdown, normalizeContractWorkBreakdown, resolveContractAcceptanceLegalText, stripLeadingBulletMarker } from '../utils/contractDocument'
@@ -681,7 +681,7 @@ function ScaledContractPreview({ children }) {
   )
 }
 
-export function ContractRoute({ companySettings, leads, clients = [], onSaveContract, onMarkContractSigned, onMarkContractUnsigned, onArchiveContract, t, appLanguage = 'en' }) {
+export function ContractRoute({ companySettings, leads, clients = [], projects = [], onSaveContract, onMarkContractSigned, onMarkContractUnsigned, onArchiveContract, t, appLanguage = 'en' }) {
   const { id, leadId } = useParams()
   const location = useLocation()
   const navigate = useNavigate()
@@ -690,7 +690,7 @@ export function ContractRoute({ companySettings, leads, clients = [], onSaveCont
   const projectId = location.state?.projectId || id || leadId
   const contractSource = location.state?.source || 'project'
   const sourceLeadId = location.state?.leadId || null
-  const lead = findLeadByProjectLookup(leads, projectId)
+  const lead = findLeadByProjectLookup(leads, projectId) || findProjectByLookup(projects, projectId)
   const [loadedContract, setLoadedContract] = useState(null)
   const [linkedProject, setLinkedProject] = useState(null)
   const backLabel = contractSource === 'estimate' ? t('backToEstimateBuilder') : t('backToProjectWorkspace')

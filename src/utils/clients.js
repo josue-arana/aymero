@@ -29,7 +29,7 @@ export function findRelatedClient(clients = [], record = {}) {
   }) || null
 }
 
-export function buildClientProfiles(leads = [], customClients = []) {
+export function buildClientProfiles(leads = [], customClients = [], projects = []) {
   const clientMap = new Map()
   const slugToClientId = new Map()
 
@@ -128,6 +128,81 @@ export function buildClientProfiles(leads = [], customClients = []) {
     }
 
     if (slug) slugToClientId.set(slug, clientKey)
+  })
+
+  projects.forEach((project) => {
+    const projectClientId = String(project?.clientId || project?.client_id || '').trim()
+    const projectClientName = project?.client || project?.clientName || project?.customerName || ''
+    const projectClientSlug = getClientSlug(projectClientName)
+    const clientKey = projectClientId && clientMap.has(projectClientId)
+      ? projectClientId
+      : slugToClientId.get(projectClientSlug) || projectClientId || projectClientSlug
+
+    if (!clientKey) return
+
+    const existing = clientMap.get(clientKey)
+    const contractAmount = Number(project?.portal?.contractAmount ?? project?.contractValue ?? project?.estimatedValue ?? project?.value ?? 0) || 0
+    const paid = Number(project?.portal?.amountPaid ?? project?.amountPaid ?? project?.paid ?? 0) || 0
+    const balance = Number(project?.portal?.outstandingBalance ?? project?.remainingBalance ?? project?.remaining ?? Math.max(contractAmount - paid, 0)) || 0
+    const projectId = String(project?.id || project?.projectId || project?.project_id || '').trim()
+    const resolvedClientName = projectClientName || existing?.displayName || existing?.name || 'Unknown Client'
+    const projectRecord = {
+      ...project,
+      id: projectId || project?.id,
+      projectId: projectId || project?.projectId || project?.project_id || null,
+      project_id: projectId || project?.project_id || project?.projectId || null,
+      clientId: projectClientId || clientKey,
+      client: resolvedClientName,
+      clientName: resolvedClientName,
+      customerName: resolvedClientName,
+      isProjectRecord: true,
+      projectValue: contractAmount,
+      amountPaid: paid,
+      outstandingBalance: balance,
+      latestStatus: project?.projectStatus || project?.status,
+    }
+
+    if (existing) {
+      const duplicateIndex = existing.projects.findIndex((candidate) => {
+        const candidateProjectId = String(candidate?.projectId || candidate?.project_id || '').trim()
+        return Boolean(projectId && (candidateProjectId === projectId || String(candidate?.id || '').trim() === projectId))
+      })
+
+      if (duplicateIndex >= 0) {
+        existing.projects[duplicateIndex] = { ...existing.projects[duplicateIndex], ...projectRecord }
+      } else {
+        existing.projects.push(projectRecord)
+      }
+      existing.latestProjectStatus = projectRecord.latestStatus || existing.latestProjectStatus
+      return
+    }
+
+    const preferredLanguage = readRecordLanguage(project)
+    clientMap.set(clientKey, {
+      id: clientKey,
+      name: resolvedClientName,
+      displayName: resolvedClientName,
+      phone: project?.phone || '',
+      email: project?.email || '',
+      address: project?.address || project?.location || 'Address not added',
+      preferredLanguage,
+      preferred_language: preferredLanguage,
+      language: preferredLanguage,
+      latestProjectStatus: projectRecord.latestStatus || 'Lead',
+      projectCount: 1,
+      totalProjectValue: contractAmount,
+      outstandingBalance: balance,
+      repeatClient: false,
+      projects: [projectRecord],
+      notes: [],
+    })
+  })
+
+  clientMap.forEach((client) => {
+    client.projectCount = client.projects.length
+    client.totalProjectValue = client.projects.reduce((total, project) => total + (Number(project?.projectValue ?? project?.value ?? project?.estimatedValue ?? 0) || 0), 0)
+    client.outstandingBalance = client.projects.reduce((total, project) => total + (Number(project?.outstandingBalance ?? project?.remainingBalance ?? project?.remaining ?? 0) || 0), 0)
+    client.repeatClient = Boolean(client.repeatClient || client.projectCount > 1)
   })
 
   return Array.from(clientMap.values()).sort((a, b) => a.name.localeCompare(b.name))

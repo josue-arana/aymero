@@ -25,7 +25,7 @@ import { readLinkedEstimateDraft, writeLinkedEstimateDrafts } from '../utils/est
 import { formatEstimateDisplayNumber, generateEstimateNumber } from '../utils/estimateNumber'
 import { isPrintWindowBlockedError, printDocumentElement } from '../utils/printDocument'
 import { createTranslator, tStatus } from '../translations'
-import { findLeadByProjectLookup } from '../utils/projectIdentity'
+import { findLeadByProjectLookup, findProjectByLookup } from '../utils/projectIdentity'
 import { findRelatedClient } from '../utils/clients'
 import { resolveEstimateArchiveState } from '../utils/archiveLifecycle'
 import {
@@ -971,7 +971,7 @@ function EstimatePreviewCard({ uiT, t: documentT, ...documentProps }) {
   )
 }
 
-export function EstimateBuilderRoute({ companySettings, leads, clients = [], estimates = [], archivedIds = [], onSaveEstimate, onConvertEstimate, onSyncEstimateContract, onArchiveEstimate, onRestoreEstimate, onDeleteEstimate, t, appLanguage = 'en' }) {
+export function EstimateBuilderRoute({ companySettings, leads, clients = [], projects = [], estimates = [], archivedIds = [], onSaveEstimate, onConvertEstimate, onSyncEstimateContract, onArchiveEstimate, onRestoreEstimate, onDeleteEstimate, t, appLanguage = 'en' }) {
   const { id, leadId, estimateId } = useParams()
   const location = useLocation()
   const navigate = useNavigate()
@@ -979,7 +979,9 @@ export function EstimateBuilderRoute({ companySettings, leads, clients = [], est
   const contractorId = getProjectsContractorId({ contractor, company, session })
   const projectId = id || leadId
   const isDirectEstimateRoute = Boolean(estimateId)
-  const routeLead = isDirectEstimateRoute ? null : findLeadByProjectLookup(leads, projectId)
+  const actualRouteLead = isDirectEstimateRoute ? null : findLeadByProjectLookup(leads, projectId)
+  const routeProject = isDirectEstimateRoute ? null : findProjectByLookup(projects, projectId)
+  const routeLead = actualRouteLead || routeProject
   const cachedDirectEstimate = isDirectEstimateRoute
     ? estimates.find((estimate) => estimate.id === estimateId) || null
     : null
@@ -1119,7 +1121,7 @@ export function EstimateBuilderRoute({ companySettings, leads, clients = [], est
 
       const cachedEstimate = readLinkedEstimateDraft(routeLead || projectId, [projectId, routeLead.id])
       const relatedProjectId = routeLead.projectId || routeLead.project_id || projectId || null
-      const relatedLeadId = routeLead.id || sourceLeadId || null
+      const relatedLeadId = routeLead.leadId || routeLead.lead_id || actualRouteLead?.id || sourceLeadId || null
       const knownEstimateId = routeLead.estimateId || routeLead.portal?.estimate?.id || cachedEstimate?.id || null
 
       try {
@@ -1152,7 +1154,7 @@ export function EstimateBuilderRoute({ companySettings, leads, clients = [], est
 
         const response = await dataProvider.estimates.list({
           contractorId,
-          ...(relatedProjectId && relatedProjectId !== routeLead.id ? { projectId: relatedProjectId } : {}),
+          ...(relatedProjectId ? { projectId: relatedProjectId } : {}),
           ...(relatedLeadId ? { leadId: relatedLeadId } : {}),
           includeArchived: true,
         })
@@ -1185,7 +1187,7 @@ export function EstimateBuilderRoute({ companySettings, leads, clients = [], est
     return () => {
       isCancelled = true
     }
-  }, [cachedDirectEstimate, contractorId, estimateId, isDirectEstimateRoute, leads, projectId, routeLead?.estimateId, routeLead?.id, routeLead?.portal?.estimate?.id, routeLead?.projectId, routeLead?.project_id, sourceLeadId, t])
+  }, [actualRouteLead?.id, cachedDirectEstimate, contractorId, estimateId, isDirectEstimateRoute, leads, projectId, routeLead?.estimateId, routeLead?.id, routeLead?.leadId, routeLead?.lead_id, routeLead?.portal?.estimate?.id, routeLead?.projectId, routeLead?.project_id, sourceLeadId, t])
 
   useEffect(() => {
     if (isDirectEstimateRoute) return undefined

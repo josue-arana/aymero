@@ -235,7 +235,7 @@ export function JobFormModal({ isOpen, mode = 'create', project = null, clients 
           </section>
         )}
 
-        <section className="grid gap-4 sm:grid-cols-2">
+        <section className="grid min-w-0 gap-4 sm:grid-cols-2">
           <TextField label={t('client')} value={form.client} onChange={(value) => updateField('client', value)} required />
           <TextField label={t('jobTitle')} value={form.projectTitle} onChange={(value) => updateField('projectTitle', value)} required />
           <div>
@@ -290,7 +290,7 @@ export function JobFormModal({ isOpen, mode = 'create', project = null, clients 
 
 function TextField({ label, value, onChange, type = 'text', placeholder = '', required = false }) {
   return (
-    <div>
+    <div className="min-w-0">
       <label className="mb-2 block text-sm font-bold text-slate-700">{label}</label>
       <input
         value={value}
@@ -298,7 +298,7 @@ function TextField({ label, value, onChange, type = 'text', placeholder = '', re
         type={type}
         required={required}
         placeholder={placeholder}
-        className="w-full rounded-2xl border border-slate-200 px-4 py-3 text-sm outline-none transition focus:border-blue-500 focus:ring-4 focus:ring-blue-100"
+        className="block min-w-0 max-w-full appearance-none rounded-2xl border border-slate-200 px-4 py-3 text-sm outline-none transition [inline-size:100%] focus:border-blue-500 focus:ring-4 focus:ring-blue-100"
       />
     </div>
   )

@@ -149,7 +149,7 @@ function formatRelativeTimestamp(value, t = (key) => key) {
   return weeks === 1 ? `1 ${t('weekAgo')}` : `${weeks} ${t('weeksAgo')}`
 }
 
-export function ClientProfilePage({ leads, customClients = [], archivedClientIds = [], onBack, onOpenProject, onOpenLead, onOpenEstimate, onOpenContract, onCreateJob, onUpdateClient, onArchiveClient, onRestoreClient, onDeleteClient, language = 'en', t }) {
+export function ClientProfilePage({ leads, customClients = [], projects = [], archivedClientIds = [], onBack, onOpenProject, onOpenLead, onOpenEstimate, onOpenContract, onCreateJob, onUpdateClient, onArchiveClient, onRestoreClient, onDeleteClient, language = 'en', t }) {
   const { clientId } = useParams()
   const [isEditOpen, setIsEditOpen] = useState(false)
   const [confirmAction, setConfirmAction] = useState(null)
@@ -159,7 +159,7 @@ export function ClientProfilePage({ leads, customClients = [], archivedClientIds
   const contractorRuntimeId = getClientsContractorId({ contractor, company, session })
   const showAnalyticsSections = isAnalyticsMode
   const showDocumentInsightSections = isAnalyticsMode
-  const clients = useMemo(() => buildClientProfiles(leads, customClients), [leads, customClients])
+  const clients = useMemo(() => buildClientProfiles(leads, customClients, projects), [leads, customClients, projects])
   const client = clients.find((item) => item.id === clientId)
   const isArchived = isClientArchived(client, archivedClientIds)
   const clientContact = resolveClientContactActions(client)

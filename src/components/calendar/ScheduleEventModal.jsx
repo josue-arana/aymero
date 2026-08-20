@@ -73,15 +73,38 @@ function buildEventTitle({ eventType, client, project, t }) {
   return eventTypeLabel
 }
 
-export function ScheduleEventModal({ isOpen, leads = [], initialLeadId = '', context = 'event', editingEvent = null, onClose, onSave, t }) {
+export function ScheduleEventModal({ isOpen, leads = [], projects = [], clients = [], initialLeadId = '', initialProjectId = '', context = 'event', editingEvent = null, onClose, onSave, t }) {
   const dateRef = useRef(null)
   const isSubmittingRef = useRef(false)
   const [autoState, setAutoState] = useState(emptyAutoState)
   const [isSubmitting, setIsSubmitting] = useState(false)
-  const defaultLead = useMemo(() => leads.find((lead) => matchesLeadRecord(lead, initialLeadId)) || leads[0], [initialLeadId, leads])
+  const scheduleRecords = useMemo(() => {
+    const projectRecords = projects.map((project) => {
+      const clientId = project?.clientId || project?.client_id || ''
+      const client = clients.find((candidate) => candidate.id === clientId)
+
+      return {
+        ...project,
+        id: project.id || project.projectId || project.project_id,
+        projectId: project.id || project.projectId || project.project_id,
+        leadId: project.leadId || project.lead_id || null,
+        client: project.client || project.clientName || client?.displayName || client?.name || '',
+        clientName: project.clientName || project.client || client?.displayName || client?.name || '',
+        __relationshipType: 'project',
+      }
+    })
+    const projectIds = new Set(projectRecords.flatMap((project) => [project.id, project.projectId, project.project_id]).filter(Boolean))
+    const leadRecords = leads
+      .filter((lead) => !projectIds.has(lead.projectId || lead.project_id))
+      .map((lead) => ({ ...lead, leadId: lead.id, __relationshipType: 'lead' }))
+
+    return [...projectRecords, ...leadRecords]
+  }, [clients, leads, projects])
+  const initialRelationshipId = initialProjectId || initialLeadId
+  const defaultLead = useMemo(() => scheduleRecords.find((lead) => matchesLeadRecord(lead, initialRelationshipId)) || scheduleRecords[0], [initialRelationshipId, scheduleRecords])
   const buildDefaultForm = () => {
     const baseLead = editingEvent
-      ? leads.find((lead) => matchesLeadRecord(lead, editingEvent.leadId || editingEvent.projectId))
+      ? scheduleRecords.find((lead) => matchesLeadRecord(lead, editingEvent.projectId || editingEvent.leadId))
       : defaultLead
     const clientName = getLeadDisplayName(baseLead, t)
     const projectTitle = getLeadProjectTitle(baseLead, t)
@@ -97,7 +120,7 @@ export function ScheduleEventModal({ isOpen, leads = [], initialLeadId = '', con
       return {
         title: editingEvent.title || generatedTitle,
         type: editingEvent.type || 'Site Visit',
-        leadId: editingEvent.leadId || baseLead?.id || defaultLead?.id || '',
+        leadId: editingEvent.projectId || editingEvent.project_id || editingEvent.leadId || editingEvent.lead_id || baseLead?.id || defaultLead?.id || '',
         date: editingEvent.date || todayIso(),
         startTime: editingEvent.startTime || '09:00',
         endTime: editingEvent.endTime || '10:00',
@@ -126,7 +149,7 @@ export function ScheduleEventModal({ isOpen, leads = [], initialLeadId = '', con
     if (!isOpen) return
 
     const nextForm = buildDefaultForm()
-    const matchedLead = leads.find((lead) => matchesLeadRecord(lead, nextForm.leadId))
+    const matchedLead = scheduleRecords.find((lead) => matchesLeadRecord(lead, nextForm.leadId))
     const generatedTitle = buildEventTitle({
       eventType: nextForm.type,
       client: matchedLead ? getLeadDisplayName(matchedLead, t) : '',
@@ -142,7 +165,7 @@ export function ScheduleEventModal({ isOpen, leads = [], initialLeadId = '', con
       generatedLocation,
       locationManuallyEdited: Boolean(editingEvent?.location && editingEvent.location !== generatedLocation),
     })
-  }, [editingEvent, initialLeadId, isOpen, leads, t])
+  }, [editingEvent, initialRelationshipId, isOpen, scheduleRecords, t])
 
   useEffect(() => {
     if (isOpen) return
@@ -151,10 +174,10 @@ export function ScheduleEventModal({ isOpen, leads = [], initialLeadId = '', con
     setIsSubmitting(false)
   }, [isOpen])
 
-  const selectedLead = leads.find((lead) => matchesLeadRecord(lead, form.leadId))
+  const selectedLead = scheduleRecords.find((lead) => matchesLeadRecord(lead, form.leadId))
   const filteredLeads = (() => {
-    if (!selectedLead?.client) return leads
-    return leads.filter((lead) => getLeadDisplayName(lead, t) === getLeadDisplayName(selectedLead, t))
+    if (!selectedLead?.client) return scheduleRecords
+    return scheduleRecords.filter((lead) => getLeadDisplayName(lead, t) === getLeadDisplayName(selectedLead, t))
   })()
 
   if (!isOpen) return null
@@ -209,7 +232,7 @@ export function ScheduleEventModal({ isOpen, leads = [], initialLeadId = '', con
     }
 
     if (field === 'leadId') {
-      const nextLead = leads.find((lead) => matchesLeadRecord(lead, value))
+      const nextLead = scheduleRecords.find((lead) => matchesLeadRecord(lead, value))
       const generatedTitle = buildEventTitle({
         eventType: form.type,
         client: nextLead ? getLeadDisplayName(nextLead, t) : '',
@@ -269,7 +292,7 @@ export function ScheduleEventModal({ isOpen, leads = [], initialLeadId = '', con
     event.preventDefault()
     if (isSubmittingRef.current) return
 
-    const lead = leads.find((item) => matchesLeadRecord(item, form.leadId))
+    const lead = scheduleRecords.find((item) => matchesLeadRecord(item, form.leadId))
     isSubmittingRef.current = true
     setIsSubmitting(true)
 
@@ -278,9 +301,9 @@ export function ScheduleEventModal({ isOpen, leads = [], initialLeadId = '', con
       ...(editingEvent ? { id: editingEvent.id } : {}),
       ...form,
       title: form.title.trim() || tStatus(t, form.type),
-      leadId: lead?.id || form.leadId,
+      leadId: lead?.leadId || lead?.lead_id || (lead?.__relationshipType === 'lead' ? lead.id : null),
       clientId: lead?.clientId || lead?.client_id || editingEvent?.clientId || null,
-      projectId: editingEvent?.projectId || editingEvent?.project_id || lead?.projectId || lead?.project_id || null,
+      projectId: editingEvent?.projectId || editingEvent?.project_id || lead?.projectId || lead?.project_id || (lead?.__relationshipType === 'project' ? lead.id : null),
       clientName: lead?.client || t('unknownClient'),
       projectTitle: lead?.projectTitle || lead?.projectType || t('unknownProject'),
       eventType: form.type,
@@ -320,7 +343,7 @@ export function ScheduleEventModal({ isOpen, leads = [], initialLeadId = '', con
           <label>
             <span className="mb-1 block text-sm font-bold text-slate-700">{t('client')}</span>
             <SelectField disabled={isSubmitting} value={form.leadId} onChange={(event) => updateField('leadId', event.target.value)} className="bg-white">
-              {leads.map((lead) => <option key={lead.id} value={lead.id}>{lead.client}</option>)}
+              {scheduleRecords.map((lead) => <option key={lead.id} value={lead.id}>{lead.client}</option>)}
             </SelectField>
           </label>
 

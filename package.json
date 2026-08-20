@@ -23,7 +23,8 @@
     "verify:dashboard-consistency": "node scripts/verify-dashboard-consistency.mjs",
     "verify:customer-delivery-polish": "node scripts/verify-customer-delivery-polish.mjs",
     "verify:ui-consistency": "node scripts/verify-ui-consistency.mjs",
-    "verify:project-workspace": "node scripts/verify-project-workspace.mjs"
+    "verify:project-workspace": "node scripts/verify-project-workspace.mjs",
+    "verify:direct-project-lifecycle": "node scripts/verify-direct-project-lifecycle.mjs"
   },
   "dependencies": {
     "@vitejs/plugin-react": "latest",

@@ -65,7 +65,7 @@ import { normalizeClientPreferredLanguageFields, normalizeDocumentLanguageOverri
 import { buildLeadPipelineTransition, getLeadPipelineStage, leadPipelineStageOrder, leadPipelineStages, normalizeLeadPipelineStage } from './utils/leadPipeline'
 import { calculateProjectPaymentSummary, dedupePayments, normalizePaymentRecord } from './utils/projectPayments'
 import { isRecordArchived, resolveEstimateArchiveState } from './utils/archiveLifecycle'
-import { createLocalRecordId, dedupeById, findLeadByProjectLookup, resolveLinkedLeadId, resolveLinkedProjectId } from './utils/projectIdentity'
+import { createLocalRecordId, dedupeById, findLeadByProjectLookup, findProjectByLookup, resolveLinkedLeadId, resolveLinkedProjectId } from './utils/projectIdentity'
 import { buildPortalShareUrl, resolvePortalRouteId } from './utils/portal'
 import { buildContractWorkBreakdownFromEstimate, isGeneratedContractScopeText } from './utils/contractDocument'
 import { SAMPLE_GUIDE_ITEM_KEYS, SAMPLE_WORKSPACE_VERSION, createSampleWorkspace, removeSampleWorkspace, updateSampleWorkspaceGuide, upgradeSampleWorkspace as upgradeSampleWorkspaceRecords } from './services/sampleWorkspaceService'
@@ -407,7 +407,7 @@ function hydrateLeadEstimateData(lead) {
 function matchesLinkedEstimate(lead, estimate) {
   if (!lead || !estimate) return false
 
-  const leadId = resolveLinkedLeadId(lead)
+  const leadId = resolveLinkedLeadId(lead, lead.id)
   const projectId = resolveLinkedProjectId(lead)
 
   if (estimate.projectId || estimate.project_id) {
@@ -424,7 +424,7 @@ function matchesLinkedEstimate(lead, estimate) {
 function matchesLinkedContract(lead, contract, estimate = null) {
   if (!lead || !contract) return false
 
-  const leadId = resolveLinkedLeadId(lead)
+  const leadId = resolveLinkedLeadId(lead, lead.id)
   const projectId = resolveLinkedProjectId(lead)
 
   if (contract.projectId || contract.project_id) {
@@ -566,7 +566,7 @@ function ContractorFlowApp() {
   const [invoiceRecords, setInvoiceRecords] = useState([])
   const [persistedPayments, setPersistedPayments] = useState([])
   const [areInvoicesLoaded, setAreInvoicesLoaded] = useState(false)
-  const [scheduleModalState, setScheduleModalState] = useState({ isOpen: false, leadId: '', context: 'event', editingEvent: null, origin: '' })
+  const [scheduleModalState, setScheduleModalState] = useState({ isOpen: false, leadId: '', projectId: '', context: 'event', editingEvent: null, origin: '' })
   const [jobModalState, setJobModalState] = useState({ isOpen: false, initialClientId: '', initialClient: null, origin: '' })
   const [isDashboardLeadModalOpen, setIsDashboardLeadModalOpen] = useState(false)
   const [dashboardSuccessMessage, setDashboardSuccessMessage] = useState('')
@@ -1462,7 +1462,7 @@ function ContractorFlowApp() {
     const project = persistedProjects.find((record) => record.id === projectId) || { id: projectId }
     return !isRecordArchived(project, archives.projectIds)
   }), [activeLeads, archives.deletedProjectIds, archives.projectIds, persistedProjects])
-  const clients = useMemo(() => buildClientProfiles(visibleLeads, customClients).filter((client) => !archives.deletedClientIds.includes(client.id)), [visibleLeads, customClients, archives.deletedClientIds])
+  const clients = useMemo(() => buildClientProfiles(visibleLeads, customClients, persistedProjects).filter((client) => !archives.deletedClientIds.includes(client.id)), [visibleLeads, customClients, persistedProjects, archives.deletedClientIds])
   const visibleScheduleEvents = useMemo(() => sortScheduleEventRecords(scheduleEvents.filter((event) => !archives.deletedScheduleEventIds.includes(event.id))), [scheduleEvents, archives.deletedScheduleEventIds])
   const activeScheduleEvents = useMemo(() => visibleScheduleEvents.filter((event) => !archives.scheduleEventIds.includes(event.id) && !event.archivedAt), [visibleScheduleEvents, archives.scheduleEventIds])
   const invoices = useMemo(() => dedupeInvoiceRecords(
@@ -1874,20 +1874,26 @@ function buildWorkspaceJobRecord(job, clientRecord = null) {
       ...workspaceJob,
       leadPipelineStage: workspaceJob.leadPipelineStage || leadPipelineStages.CONVERTED_TO_JOB,
     }
+    const linkedLeadId = nextJob.leadId || nextJob.lead_id || ''
 
-    updateArchiveList('leadIds', nextJob.id, 'remove')
-    updateArchiveList('deletedLeadIds', nextJob.id, 'remove')
-    if (nextJob.leadPipelineStage) {
-      writeLeadPipelineStage(nextJob.id, nextJob.leadPipelineStage)
+    updateArchiveList('projectIds', nextJob.id, 'remove')
+    updateArchiveList('deletedProjectIds', nextJob.id, 'remove')
+    setPersistedProjects((current) => dedupeById([nextJob, ...current.filter((item) => item.id !== nextJob.id)]))
+
+    if (linkedLeadId) {
+      writeLeadPipelineStage(linkedLeadId, nextJob.leadPipelineStage)
+      setLeads((current) => current.map((lead) => (
+        lead.id === linkedLeadId
+          ? {
+              ...lead,
+              projectId: nextJob.id,
+              project_id: nextJob.id,
+              projectStatus: nextJob.projectStatus,
+              leadPipelineStage: nextJob.leadPipelineStage,
+            }
+          : lead
+      )))
     }
-    setLeads((current) => {
-      const existing = current.find((item) => item.id === nextJob.id)
-      if (existing) {
-        return current.map((item) => (item.id === nextJob.id ? { ...item, ...nextJob, id: nextJob.id } : item))
-      }
-
-      return [nextJob, ...current]
-    })
     showToast(t('jobCreated'))
   }
 
@@ -2377,7 +2383,8 @@ function buildWorkspaceJobRecord(job, clientRecord = null) {
       const response = await dataProvider?.projects?.create?.(jobDraft, { contractorId: projectsContractorId })
 
       if (response?.error) {
-        showToast(response.error.message || t('jobSaveFailed'), 'error')
+        showToast(t('jobSaveFailed'), 'error')
+        logLeadDevError('[dev] Direct Project creation failed.', response.error, { jobDraft })
         return
       }
 
@@ -2390,7 +2397,8 @@ function buildWorkspaceJobRecord(job, clientRecord = null) {
         navigate(appRoutes.projects.replace(':id', persistedProjectId))
       }
     } catch (err) {
-      showToast(err?.message || t('jobSaveFailed'), 'error')
+      showToast(t('jobSaveFailed'), 'error')
+      logLeadDevError('[dev] Direct Project creation threw an unexpected error.', err, { jobDraft })
     }
   }
 
@@ -2731,22 +2739,25 @@ function buildWorkspaceJobRecord(job, clientRecord = null) {
     }
   }
 
-  function recordProjectPayment(leadId, payment) {
-    const sourceLead = findLeadByProjectLookup(leads, leadId)
-
-    if (!sourceLead) {
-      return
-    }
-
+  function recordProjectPayment(projectId, payment) {
+    const sourceProject = findProjectByLookup(persistedProjects, projectId, payment?.projectId, payment?.project_id)
+    const sourceLead = findLeadByProjectLookup(leads, sourceProject?.leadId, sourceProject?.lead_id, payment?.leadId, payment?.lead_id)
     const portal = sourceLead?.portal || {}
-    const relatedProjectId = payment?.projectId || payment?.project_id || resolvePaymentProjectId(sourceLead)
+    const relatedProjectId = payment?.projectId || payment?.project_id || sourceProject?.id || resolvePaymentProjectId(sourceLead)
     const paymentEntry = normalizePaymentRecord({
       id: payment?.id || `payment-${Date.now()}`,
       ...payment,
-      clientId: sourceLead?.clientId || sourceLead?.client_id || null,
+      clientId: payment?.clientId || payment?.client_id || sourceProject?.clientId || sourceProject?.client_id || sourceLead?.clientId || sourceLead?.client_id || null,
       projectId: relatedProjectId,
-      leadId: sourceLead?.leadId || sourceLead?.lead_id || sourceLead?.id || leadId,
+      leadId: payment?.leadId || payment?.lead_id || sourceProject?.leadId || sourceProject?.lead_id || sourceLead?.id || null,
     })
+    setPersistedPayments((current) => dedupePayments([paymentEntry, ...current.filter((entry) => entry.id !== paymentEntry.id)]))
+
+    if (!sourceLead) {
+      showToast(t('paymentRecorded'))
+      return
+    }
+
     const existingPayments = dedupePayments([
       ...(Array.isArray(portal.payments) ? portal.payments : []),
       ...(Array.isArray(portal.paymentHistory) ? portal.paymentHistory : []),
@@ -2761,22 +2772,25 @@ function buildWorkspaceJobRecord(job, clientRecord = null) {
     })
   }
 
-  function updateProjectPayment(leadId, payment) {
-    const sourceLead = findLeadByProjectLookup(leads, leadId)
-
-    if (!sourceLead) {
-      return
-    }
-
+  function updateProjectPayment(projectId, payment) {
+    const sourceProject = findProjectByLookup(persistedProjects, projectId, payment?.projectId, payment?.project_id)
+    const sourceLead = findLeadByProjectLookup(leads, sourceProject?.leadId, sourceProject?.lead_id, payment?.leadId, payment?.lead_id)
     const portal = sourceLead?.portal || {}
-    const relatedProjectId = payment?.projectId || payment?.project_id || resolvePaymentProjectId(sourceLead)
+    const relatedProjectId = payment?.projectId || payment?.project_id || sourceProject?.id || resolvePaymentProjectId(sourceLead)
     const paymentEntry = normalizePaymentRecord({
       id: payment?.id || `payment-${Date.now()}`,
       ...payment,
-      clientId: sourceLead?.clientId || sourceLead?.client_id || null,
+      clientId: payment?.clientId || payment?.client_id || sourceProject?.clientId || sourceProject?.client_id || sourceLead?.clientId || sourceLead?.client_id || null,
       projectId: relatedProjectId,
-      leadId: sourceLead?.leadId || sourceLead?.lead_id || sourceLead?.id || leadId,
+      leadId: payment?.leadId || payment?.lead_id || sourceProject?.leadId || sourceProject?.lead_id || sourceLead?.id || null,
     })
+    setPersistedPayments((current) => dedupePayments([paymentEntry, ...current.filter((entry) => entry.id !== paymentEntry.id)]))
+
+    if (!sourceLead) {
+      showToast(t('paymentUpdated'))
+      return
+    }
+
     const existingPayments = dedupePayments([
       ...(Array.isArray(portal.payments) ? portal.payments : []),
       ...(Array.isArray(portal.paymentHistory) ? portal.paymentHistory : []),
@@ -2790,10 +2804,13 @@ function buildWorkspaceJobRecord(job, clientRecord = null) {
     })
   }
 
-  function deleteProjectPayment(leadId, payment) {
-    const sourceLead = findLeadByProjectLookup(leads, leadId)
+  function deleteProjectPayment(projectId, payment) {
+    const sourceProject = findProjectByLookup(persistedProjects, projectId, payment?.projectId, payment?.project_id)
+    const sourceLead = findLeadByProjectLookup(leads, sourceProject?.leadId, sourceProject?.lead_id, payment?.leadId, payment?.lead_id)
+    setPersistedPayments((current) => current.filter((entry) => entry.id !== payment?.id))
 
     if (!sourceLead) {
+      showToast(t('paymentDeleted'))
       return
     }
 
@@ -2841,33 +2858,76 @@ function buildWorkspaceJobRecord(job, clientRecord = null) {
     const sourceLead = findLeadByProjectLookup(leads, leadId)
 
     if (!sourceLead) {
-      const directEstimate = estimate?.id
-        ? persistedEstimates.find((item) => item.id === estimate.id) || estimate
-        : null
+      const sourceProject = findProjectByLookup(persistedProjects, leadId, estimate?.projectId, estimate?.project_id)
+      const directEstimate = persistedEstimates.find((item) => (
+        item.id === estimate?.id
+        || (sourceProject?.id && (item.projectId === sourceProject.id || item.project_id === sourceProject.id))
+      )) || null
 
-      if (directEstimate?.id && (USE_SUPABASE || USE_SUPABASE_ESTIMATES)) {
-        const response = await dataProvider.estimates.update(directEstimate.id, {
-          ...directEstimate,
-          ...estimate,
-        }, { contractorId: projectsContractorId })
+      if (!sourceProject?.id) return null
+
+      const nextEstimateId = estimate?.id || directEstimate?.id || createLocalRecordId('estimate')
+      const lineItems = Array.isArray(estimate?.lineItems) ? estimate.lineItems : []
+      const directEstimateDraft = {
+        ...(directEstimate || {}),
+        ...estimate,
+        id: nextEstimateId,
+        contractorId: estimate?.contractorId || estimate?.contractor_id || sourceProject.contractorId || projectsContractorId || undefined,
+        clientId: estimate?.clientId || estimate?.client_id || sourceProject.clientId || sourceProject.client_id || null,
+        client_id: estimate?.clientId || estimate?.client_id || sourceProject.clientId || sourceProject.client_id || null,
+        projectId: sourceProject.id,
+        project_id: sourceProject.id,
+        leadId: sourceProject.leadId || sourceProject.lead_id || null,
+        lead_id: sourceProject.leadId || sourceProject.lead_id || null,
+        projectTitle: estimate?.projectTitle || sourceProject.projectTitle || sourceProject.title || 'Estimate',
+        number: estimate?.number || directEstimate?.number || generateEstimateNumber({ ...sourceProject, ...estimate, id: nextEstimateId, projectId: sourceProject.id }),
+        total: resolveEstimateTotal(sourceProject, estimate, toSafeNumber(directEstimate?.total)),
+        lineItems,
+        pricingMode: estimate?.pricingMode || (lineItems.length ? 'detailed' : 'simple'),
+        status: estimate?.status || directEstimate?.status || 'Draft',
+      }
+
+      try {
+        const response = directEstimate?.id
+          ? await dataProvider.estimates.update(directEstimate.id, directEstimateDraft, { contractorId: projectsContractorId })
+          : await dataProvider.estimates.create(directEstimateDraft, { contractorId: projectsContractorId })
 
         if (response?.error) {
-          showToast(response.error.message || t('estimateSaveFailed'), 'error')
+          showToast(t('estimateSaveFailed'), 'error')
+          logEstimateDevError('[dev] Direct-project estimate persistence failed.', response.error, {
+            projectId: sourceProject.id,
+            estimate: directEstimateDraft,
+          })
           return null
         }
 
         const persistedEstimate = {
-          ...directEstimate,
-          ...estimate,
+          ...directEstimateDraft,
           ...(response?.data || {}),
-          id: directEstimate.id,
+          id: response?.data?.id || directEstimate?.id || nextEstimateId,
         }
         upsertPersistedEstimateRecord(persistedEstimate)
+        setPersistedProjects((current) => current.map((project) => (
+          project.id === sourceProject.id
+            ? {
+                ...project,
+                estimateId: persistedEstimate.id,
+                estimatedValue: persistedEstimate.total,
+                value: persistedEstimate.total,
+                portal: { ...(project.portal || {}), estimate: persistedEstimate },
+              }
+            : project
+        )))
         showToast(t('estimateSaved'))
         return persistedEstimate
+      } catch (error) {
+        showToast(t('estimateSaveFailed'), 'error')
+        logEstimateDevError('[dev] Direct-project estimate save failed.', error, {
+          projectId: sourceProject.id,
+          estimate: directEstimateDraft,
+        })
+        return null
       }
-
-      return null
     }
 
     const portal = sourceLead?.portal || {}
@@ -3505,39 +3565,49 @@ function buildWorkspaceJobRecord(job, clientRecord = null) {
 
     const contractPromise = (async () => {
       const sourceLead = findLeadByProjectLookup(leads, leadId)
+      const sourceProject = findProjectByLookup(persistedProjects, leadId)
+      const relationshipContext = sourceLead || sourceProject
 
-      if (!sourceLead) {
+      if (!relationshipContext) {
         return null
       }
 
       const baseEstimate = hasEstimateData(estimateInput)
         ? estimateInput
-        : hasEstimateData(sourceLead?.portal?.estimate)
-          ? sourceLead.portal.estimate
-          : readLinkedEstimateDraft(sourceLead, leadId)
+        : persistedEstimates.find((estimate) => sourceProject?.id && (estimate.projectId === sourceProject.id || estimate.project_id === sourceProject.id))
+          || (hasEstimateData(relationshipContext?.portal?.estimate)
+            ? relationshipContext.portal.estimate
+            : readLinkedEstimateDraft(relationshipContext, leadId))
 
       const persistedEstimate = hasEstimateData(baseEstimate)
         ? await saveEstimate(leadId, {
             ...baseEstimate,
             status: 'Converted to Contract',
-            projectId: resolvePersistedProjectLink(baseEstimate, sourceLead),
-            clientId: baseEstimate?.clientId || sourceLead?.clientId || sourceLead?.client_id || null,
+            projectId: resolvePersistedProjectLink(baseEstimate, relationshipContext),
+            clientId: baseEstimate?.clientId || relationshipContext?.clientId || relationshipContext?.client_id || null,
           })
         : null
 
       const estimateRecord = persistedEstimate || baseEstimate || null
-      const conversionResult = await ensureProjectForLeadConversion(sourceLead, {
-        leadId,
-        estimateRecord,
-        silent: true,
-      })
+      const conversionResult = sourceLead
+        ? await ensureProjectForLeadConversion(sourceLead, {
+            leadId,
+            estimateRecord,
+            silent: true,
+          })
+        : {
+            linkedProjectId: sourceProject.id,
+            persistedLead: sourceProject,
+            linkedEstimate: estimateRecord,
+            linkedClientRecord: clients.find((client) => client.id === (sourceProject.clientId || sourceProject.client_id)) || null,
+          }
 
       if (!conversionResult?.linkedProjectId) {
         showToast(t('contractRequiresRealProject'), 'error')
         return null
       }
 
-      const refreshedLead = conversionResult.persistedLead || findLeadByProjectLookup(leads, leadId) || sourceLead
+      const refreshedLead = conversionResult.persistedLead || findLeadByProjectLookup(leads, leadId) || relationshipContext
       const linkedEstimateRecord = conversionResult.linkedEstimate || estimateRecord
       const relatedProjectId = conversionResult.linkedProjectId || resolvePersistedProjectLink(linkedEstimateRecord, refreshedLead)
       const {
@@ -3604,7 +3674,7 @@ function buildWorkspaceJobRecord(job, clientRecord = null) {
       const nextContractId = createLocalRecordId('contract')
       const contractPayload = {
         id: nextContractId,
-        leadId: refreshedLead?.id || leadId,
+        leadId: sourceLead?.id || sourceProject?.leadId || sourceProject?.lead_id || null,
         contractorId: projectsContractorId,
         clientId: conversionResult.linkedClientRecord?.id || refreshedLead?.clientId || refreshedLead?.client_id || linkedEstimateRecord?.clientId || null,
         projectId: relatedProjectId,
@@ -3633,7 +3703,11 @@ function buildWorkspaceJobRecord(job, clientRecord = null) {
         })
 
         if (response?.error) {
-          showToast(response.error.message || t('contractSaveFailed'), 'error')
+          showToast(t('contractSaveFailed'), 'error')
+          logLeadDevError('[dev] Contract persistence failed.', response.error, {
+            projectId: relatedProjectId,
+            leadId: sourceLead?.id || null,
+          })
           return null
         }
 
@@ -3646,7 +3720,11 @@ function buildWorkspaceJobRecord(job, clientRecord = null) {
         showToast(t('contractSaved'))
         return persistedContract
       } catch (error) {
-        showToast(error?.message || t('contractSaveFailed'), 'error')
+        showToast(t('contractSaveFailed'), 'error')
+        logLeadDevError('[dev] Contract persistence threw an unexpected error.', error, {
+          projectId: relatedProjectId,
+          leadId: sourceLead?.id || null,
+        })
         return null
       }
     })()
@@ -3788,39 +3866,49 @@ function buildWorkspaceJobRecord(job, clientRecord = null) {
 
   async function syncContractFromEstimate(leadId, estimateInput = null, { force = false } = {}) {
     const sourceLead = findLeadByProjectLookup(leads, leadId)
+    const sourceProject = findProjectByLookup(persistedProjects, leadId, estimateInput?.projectId, estimateInput?.project_id)
+    const relationshipContext = sourceLead || sourceProject
 
-    if (!sourceLead) {
-      return { contract: null, blockedReason: 'missing_lead' }
+    if (!relationshipContext) {
+      return { contract: null, blockedReason: 'missing_project' }
     }
 
     const baseEstimate = hasEstimateData(estimateInput)
       ? estimateInput
-      : hasEstimateData(sourceLead?.portal?.estimate)
-        ? sourceLead.portal.estimate
-        : readLinkedEstimateDraft(sourceLead, leadId)
+      : persistedEstimates.find((estimate) => sourceProject?.id && (estimate.projectId === sourceProject.id || estimate.project_id === sourceProject.id))
+        || (hasEstimateData(relationshipContext?.portal?.estimate)
+          ? relationshipContext.portal.estimate
+          : readLinkedEstimateDraft(relationshipContext, leadId))
 
     const persistedEstimate = hasEstimateData(baseEstimate)
       ? await saveEstimate(leadId, {
           ...baseEstimate,
           status: 'Converted to Contract',
-          projectId: resolvePersistedProjectLink(baseEstimate, sourceLead),
-          clientId: baseEstimate?.clientId || sourceLead?.clientId || sourceLead?.client_id || null,
+          projectId: resolvePersistedProjectLink(baseEstimate, relationshipContext),
+          clientId: baseEstimate?.clientId || relationshipContext?.clientId || relationshipContext?.client_id || null,
         })
       : null
 
     const estimateRecord = persistedEstimate || baseEstimate || null
-    const conversionResult = await ensureProjectForLeadConversion(sourceLead, {
-      leadId,
-      estimateRecord,
-      silent: true,
-    })
+    const conversionResult = sourceLead
+      ? await ensureProjectForLeadConversion(sourceLead, {
+          leadId,
+          estimateRecord,
+          silent: true,
+        })
+      : {
+          linkedProjectId: sourceProject.id,
+          persistedLead: sourceProject,
+          linkedEstimate: estimateRecord,
+          linkedClientRecord: clients.find((client) => client.id === (sourceProject.clientId || sourceProject.client_id)) || null,
+        }
 
     if (!conversionResult?.linkedProjectId) {
       showToast(t('contractRequiresRealProject'), 'error')
       return { contract: null, blockedReason: 'missing_project' }
     }
 
-    const refreshedLead = conversionResult.persistedLead || findLeadByProjectLookup(leads, leadId) || sourceLead
+    const refreshedLead = conversionResult.persistedLead || findLeadByProjectLookup(leads, leadId) || relationshipContext
     const linkedEstimateRecord = conversionResult.linkedEstimate || estimateRecord
     const relatedProjectId = conversionResult.linkedProjectId || resolvePersistedProjectLink(linkedEstimateRecord, refreshedLead)
     const existingContract = await findExistingLinkedContract({
@@ -3851,7 +3939,7 @@ function buildWorkspaceJobRecord(job, clientRecord = null) {
 
     const syncedContractPayload = {
       ...existingContract,
-      leadId: refreshedLead?.id || existingContract.leadId || leadId,
+      leadId: sourceLead?.id || sourceProject?.leadId || sourceProject?.lead_id || existingContract.leadId || null,
       clientId: conversionResult.linkedClientRecord?.id || refreshedLead?.clientId || refreshedLead?.client_id || linkedEstimateRecord?.clientId || existingContract.clientId || null,
       projectId: relatedProjectId || existingContract.projectId || existingContract.project_id || null,
       project_id: relatedProjectId || existingContract.project_id || existingContract.projectId || null,
@@ -4215,12 +4303,19 @@ function buildWorkspaceJobRecord(job, clientRecord = null) {
     updateScheduleEvent(eventId, response?.data || completionUpdates)
   }
 
-  function openScheduleModal({ leadId = '', context = 'event', event = null, origin = '' } = {}) {
-    setScheduleModalState({ isOpen: true, leadId: leadId || event?.leadId || '', context, editingEvent: event, origin })
+  function openScheduleModal({ leadId = '', projectId = '', context = 'event', event = null, origin = '' } = {}) {
+    setScheduleModalState({
+      isOpen: true,
+      leadId: leadId || event?.leadId || event?.lead_id || '',
+      projectId: projectId || event?.projectId || event?.project_id || '',
+      context,
+      editingEvent: event,
+      origin,
+    })
   }
 
   function closeScheduleModal() {
-    setScheduleModalState({ isOpen: false, leadId: '', context: 'event', editingEvent: null, origin: '' })
+    setScheduleModalState({ isOpen: false, leadId: '', projectId: '', context: 'event', editingEvent: null, origin: '' })
   }
 
   function openJobModal({ clientId = '', client = null, origin = '' } = {}) {
@@ -4271,12 +4366,25 @@ function buildWorkspaceJobRecord(job, clientRecord = null) {
     URL.revokeObjectURL(url)
   }
 
-  function openProject(leadId) {
-    const matchingLead = findLeadByProjectLookup(visibleLeads, leadId)
+  function openProject(recordId) {
+    const persistedProject = findProjectByLookup(persistedProjects, recordId)
+    if (persistedProject?.id) {
+      navigate(`/projects/${persistedProject.id}`, {
+        state: {
+          source: 'project',
+          projectId: persistedProject.id,
+          leadId: persistedProject.leadId || persistedProject.lead_id || null,
+        },
+      })
+      setSidebarOpen(false)
+      return
+    }
+
+    const matchingLead = findLeadByProjectLookup(visibleLeads, recordId)
     const routeId = matchingLead?.projectId || matchingLead?.project_id || ''
 
     if (!routeId) {
-      navigate(`/leads/${matchingLead?.id || leadId}`)
+      navigate(`/leads/${matchingLead?.id || recordId}`)
       setSidebarOpen(false)
       return
     }
@@ -4285,7 +4393,7 @@ function buildWorkspaceJobRecord(job, clientRecord = null) {
       state: {
         source: 'project',
         projectId: routeId,
-        leadId: matchingLead?.id || leadId,
+        leadId: matchingLead?.id || null,
       },
     })
     setSidebarOpen(false)
@@ -4322,24 +4430,26 @@ function buildWorkspaceJobRecord(job, clientRecord = null) {
       return
     }
 
-    const matchingLead = findLeadByProjectLookup(visibleLeads, leadId)
-    const hasProject = Boolean(matchingLead?.projectId || matchingLead?.project_id)
-    const routeId = hasProject ? resolveLinkedProjectId(matchingLead, leadId) : (matchingLead?.id || leadId)
+    const matchingProject = findProjectByLookup(persistedProjects, estimateRecord?.projectId, estimateRecord?.project_id, leadId)
+    const matchingLead = findLeadByProjectLookup(visibleLeads, leadId, matchingProject?.leadId, matchingProject?.lead_id)
+    const hasProject = Boolean(matchingProject?.id || matchingLead?.projectId || matchingLead?.project_id)
+    const routeId = matchingProject?.id || (hasProject ? resolveLinkedProjectId(matchingLead, leadId) : (matchingLead?.id || leadId))
 
     navigate(`/projects/${routeId}/estimate`, {
       state: {
         source: hasProject ? 'project' : 'lead',
         projectId: routeId,
-        leadId: matchingLead?.id || leadId,
+        leadId: matchingLead?.id || matchingProject?.leadId || matchingProject?.lead_id || null,
       },
     })
     setSidebarOpen(false)
   }
 
   function openContractForLead(leadId, options = {}) {
-    const matchingLead = findLeadByProjectLookup(visibleLeads, leadId)
-    const routeId = options.projectId || resolveLinkedProjectId(matchingLead, leadId)
-    const routeLeadId = options.leadId || matchingLead?.id || leadId
+    const matchingProject = findProjectByLookup(persistedProjects, options.projectId, leadId)
+    const matchingLead = findLeadByProjectLookup(visibleLeads, leadId, matchingProject?.leadId, matchingProject?.lead_id)
+    const routeId = options.projectId || matchingProject?.id || resolveLinkedProjectId(matchingLead, leadId)
+    const routeLeadId = options.leadId || matchingLead?.id || matchingProject?.leadId || matchingProject?.lead_id || null
 
     navigate(`/projects/${routeId}/contract`, {
       state: {
@@ -4375,6 +4485,7 @@ function buildWorkspaceJobRecord(job, clientRecord = null) {
   const dashboardPage = (
     <DashboardPage
       leads={activeDashboardLeads}
+      clients={clients}
       metrics={metrics}
       scheduleEvents={activeScheduleEvents}
       invoices={activeInvoices}
@@ -4425,18 +4536,18 @@ function buildWorkspaceJobRecord(job, clientRecord = null) {
       <Route path={appRoutes.leads} element={<LeadsPage leads={visibleLeads} clients={clients} archivedIds={archives.leadIds} onViewLead={openLead} onCreateLead={saveLeadRecord} onArchiveLead={archiveRecord.lead} onRestoreLead={restoreRecord.lead} onDeleteLead={deleteRecord.lead} language={language} t={t} />} />
       <Route path={appRoutes.leadDetail} element={<LeadRoute leads={visibleLeads} clients={clients} archivedIds={archives.leadIds} onBack={() => navigate(appRoutes.leads)} onOpenProject={openProject} onDuplicateLead={duplicateLead} onConvertLeadToJob={(leadId) => transitionLeadStage(leadId, leadPipelineStages.CONVERTED_TO_JOB)} onTransitionLeadStage={transitionLeadStage} onUpdateLead={updateLead} onArchiveLead={archiveRecord.lead} onRestoreLead={restoreRecord.lead} onDeleteLead={deleteRecord.lead} language={language} t={t} />} />
       <Route path={appRoutes.estimates} element={<EstimatesPage leads={visibleLeads} estimates={persistedEstimates} contracts={persistedContracts} archivedIds={archives.leadIds} onOpenEstimate={openEstimateForLead} onConvertEstimate={async (leadId, estimate) => { const contract = await ensureContractForLead(leadId, estimate); if (contract) openContractForLead(leadId, { source: 'estimate', projectId: contract.projectId || contract.project_id || undefined, leadId }) }} onArchiveEstimate={archiveEstimateRecord} onRestoreEstimate={restoreEstimateRecord} onDeleteEstimate={deleteEstimateRecord} t={t} />} />
-      <Route path={appRoutes.estimateDetail} element={<EstimateBuilderRoute companySettings={companySettings} leads={visibleLeads} clients={clients} estimates={persistedEstimates} archivedIds={archives.leadIds} onSaveEstimate={saveEstimate} onConvertEstimate={async (leadId, estimate) => { const contract = await ensureContractForLead(leadId, estimate); if (contract) openContractForLead(leadId, { source: 'estimate', projectId: contract.projectId || contract.project_id || undefined, leadId }); return contract }} onSyncEstimateContract={async (leadId, estimate, options = {}) => syncContractFromEstimate(leadId, estimate, options)} onArchiveEstimate={archiveEstimateRecord} onRestoreEstimate={restoreEstimateRecord} onDeleteEstimate={deleteEstimateRecord} t={t} appLanguage={language} />} />
+      <Route path={appRoutes.estimateDetail} element={<EstimateBuilderRoute companySettings={companySettings} leads={visibleLeads} clients={clients} projects={persistedProjects} estimates={persistedEstimates} archivedIds={archives.leadIds} onSaveEstimate={saveEstimate} onConvertEstimate={async (leadId, estimate) => { const contract = await ensureContractForLead(leadId, estimate); if (contract) openContractForLead(leadId, { source: 'estimate', projectId: contract.projectId || contract.project_id || undefined, leadId }); return contract }} onSyncEstimateContract={async (leadId, estimate, options = {}) => syncContractFromEstimate(leadId, estimate, options)} onArchiveEstimate={archiveEstimateRecord} onRestoreEstimate={restoreEstimateRecord} onDeleteEstimate={deleteEstimateRecord} t={t} appLanguage={language} />} />
       <Route path={appRoutes.contracts} element={<ContractsPage leads={activeLeads} contracts={persistedContracts} onViewContract={openContractForLead} onRestoreContract={restoreContractRecord} onDeleteContract={deleteContractRecord} t={t} />} />
       <Route path={appRoutes.jobs} element={<JobsPage leads={visibleLeads} clients={clients} archivedIds={archives.projectIds} sampleWorkspace={companySettings?.sampleWorkspace} onViewJob={openCalendarProject} onViewLead={openLead} onCreateJob={() => openJobModal()} onArchiveJob={archiveRecord.job} onRestoreJob={restoreRecord.job} onDeleteJob={deleteRecord.job} t={t} />} />
       <Route path={appRoutes.calendar} element={<CalendarPage leads={activeLeads} scheduleEvents={activeScheduleEvents} onCreateEvent={(event) => createScheduleEvent(event, 'event')} onExportEvent={exportScheduleEvent} onViewProject={openCalendarProject} onViewLead={openLead} onMarkComplete={markScheduleEventComplete} t={t} language={language} />} />
       <Route path={appRoutes.clients} element={<ClientsPage leads={visibleLeads} customClients={customClients} archivedClientIds={archives.clientIds} onOpenClient={openClient} onCreateClient={createClient} onArchiveClient={archiveRecord.client} onRestoreClient={restoreRecord.client} onDeleteClient={deleteRecord.client} language={language} t={t} />} />
-      <Route path={appRoutes.clientProfile} element={<ClientProfilePage leads={visibleLeads} customClients={customClients} archivedClientIds={archives.clientIds} onBack={() => navigate('/clients')} onOpenProject={openProject} onOpenLead={openLead} onOpenEstimate={openEstimateForLead} onOpenContract={openContractForLead} onCreateJob={(client) => openJobModal({ clientId: client?.id, client })} onUpdateClient={updateClient} onArchiveClient={archiveRecord.client} onRestoreClient={restoreRecord.client} onDeleteClient={deleteRecord.client} language={language} t={t} />} />
+      <Route path={appRoutes.clientProfile} element={<ClientProfilePage leads={visibleLeads} customClients={customClients} projects={persistedProjects} archivedClientIds={archives.clientIds} onBack={() => navigate('/clients')} onOpenProject={openProject} onOpenLead={openLead} onOpenEstimate={openEstimateForLead} onOpenContract={openContractForLead} onCreateJob={(client) => openJobModal({ clientId: client?.id, client })} onUpdateClient={updateClient} onArchiveClient={archiveRecord.client} onRestoreClient={restoreRecord.client} onDeleteClient={deleteRecord.client} language={language} t={t} />} />
       <Route path={appRoutes.invoices} element={<InvoicesPage leads={visibleLeads} clients={clients} invoices={invoices} archivedIds={archives.invoiceIds} deletedIds={archives.deletedInvoiceIds} onViewInvoice={(invoiceId) => navigate(`/invoices/${invoiceId}`)} onRecordPayment={(invoiceId) => navigate(`/invoices/${invoiceId}`)} onArchiveInvoice={archiveRecord.invoice} onRestoreInvoice={restoreRecord.invoice} onDeleteInvoice={deleteRecord.invoice} onInvoiceSent={markInvoiceSent} t={t} appLanguage={language} />} />
       <Route path={appRoutes.invoiceDetail} element={<InvoiceDetailRoute companySettings={companySettings} leads={visibleLeads} clients={clients} invoices={invoices} invoicesLoaded={areInvoicesLoaded} archivedIds={archives.invoiceIds} deletedIds={archives.deletedInvoiceIds} onUpdateInvoice={updateInvoice} onRecordInvoicePayment={recordInvoicePayment} onMarkInvoicePaid={markInvoicePaid} onInvoiceSent={markInvoiceSent} onArchiveInvoice={archiveRecord.invoice} onRestoreInvoice={restoreRecord.invoice} onDeleteInvoice={deleteRecord.invoice} t={t} appLanguage={language} />} />
       <Route path={appRoutes.settings} element={<SettingsPage settings={companySettings} onSaveSettings={(settings) => { setCompanySettings(settings); showToast(t('settingsSaved')) }} onOpenCompanySetup={() => { setIsCompanySetupReopen(true); setOnboardingSessionActive(true) }} onCreateSampleData={installSampleWorkspace} onUpdateSampleData={updateInstalledSampleWorkspace} onRemoveSampleData={uninstallSampleWorkspace} onReopenSampleGuide={async () => { const result = await persistSampleGuide({ ...(companySettings?.sampleWorkspace?.guide || {}), dismissed: false }); if (!result?.error) navigate(appRoutes.dashboard); return result }} onOpenSampleWorkspace={() => navigate(appRoutes.dashboard)} language={language} setLanguage={setLanguage} portalLanguage={portalLanguage} setPortalLanguage={setPortalLanguage} t={t} />} />
       <Route path={appRoutes.projects} element={<ProjectRoute companySettings={companySettings} leads={visibleLeads} clients={clients} invoices={activeInvoices} scheduleEvents={visibleScheduleEvents} archivedIds={archives.projectIds} archivedScheduleEventIds={archives.scheduleEventIds} onBack={() => navigate('/dashboard')} onOpenPortal={openPortal} onOpenContract={openContractForLead} onConvertEstimate={async (leadId) => { const contract = await ensureContractForLead(leadId); if (contract) openContractForLead(leadId, { source: 'project', projectId: contract.projectId || contract.project_id || undefined, leadId }) }} onUpdateLead={updateLead} onRecordPayment={recordProjectPayment} onUpdatePayment={updateProjectPayment} onDeletePayment={deleteProjectPayment} onUploadPhotos={uploadProjectPhotos} onScheduleEvent={openScheduleModal} onExportEvent={exportScheduleEvent} onArchiveScheduleEvent={archiveRecord.scheduleEvent} onRestoreScheduleEvent={restoreRecord.scheduleEvent} onDeleteScheduleEvent={deleteRecord.scheduleEvent} onArchiveProject={archiveRecord.project} onRestoreProject={restoreRecord.project} onDeleteProject={deleteRecord.project} language={language} t={t} />} />
-      <Route path={appRoutes.projectEstimate} element={<EstimateBuilderRoute companySettings={companySettings} leads={visibleLeads} clients={clients} estimates={persistedEstimates} archivedIds={archives.leadIds} onSaveEstimate={saveEstimate} onConvertEstimate={async (leadId, estimate) => { const contract = await ensureContractForLead(leadId, estimate); if (contract) openContractForLead(leadId, { source: 'estimate', projectId: contract.projectId || contract.project_id || undefined, leadId }); return contract }} onSyncEstimateContract={async (leadId, estimate, options = {}) => syncContractFromEstimate(leadId, estimate, options)} onArchiveEstimate={archiveEstimateRecord} onRestoreEstimate={restoreEstimateRecord} onDeleteEstimate={deleteEstimateRecord} t={t} appLanguage={language} />} />
-      <Route path={appRoutes.projectContract} element={<ContractRoute companySettings={companySettings} leads={visibleLeads} clients={clients} onSaveContract={saveContract} onMarkContractSigned={markContractSigned} onMarkContractUnsigned={markContractUnsigned} onArchiveContract={archiveContractRecord} t={t} appLanguage={language} />} />
+      <Route path={appRoutes.projectEstimate} element={<EstimateBuilderRoute companySettings={companySettings} leads={visibleLeads} clients={clients} projects={persistedProjects} estimates={persistedEstimates} archivedIds={archives.leadIds} onSaveEstimate={saveEstimate} onConvertEstimate={async (leadId, estimate) => { const contract = await ensureContractForLead(leadId, estimate); if (contract) openContractForLead(leadId, { source: 'estimate', projectId: contract.projectId || contract.project_id || undefined, leadId }); return contract }} onSyncEstimateContract={async (leadId, estimate, options = {}) => syncContractFromEstimate(leadId, estimate, options)} onArchiveEstimate={archiveEstimateRecord} onRestoreEstimate={restoreEstimateRecord} onDeleteEstimate={deleteEstimateRecord} t={t} appLanguage={language} />} />
+      <Route path={appRoutes.projectContract} element={<ContractRoute companySettings={companySettings} leads={visibleLeads} clients={clients} projects={persistedProjects} onSaveContract={saveContract} onMarkContractSigned={markContractSigned} onMarkContractUnsigned={markContractUnsigned} onArchiveContract={archiveContractRecord} t={t} appLanguage={language} />} />
       <Route path={appRoutes.portal} element={<PortalRoute companySettings={companySettings} projects={visibleLeads} clients={clients} onBack={() => navigate(-1)} t={portalT} language={portalLanguage} setLanguage={setPortalLanguage} />} />
       <Route path={appRoutes.login} element={<LoginPage t={t} language={language} setLanguage={setLanguage} />} />
       <Route path={appRoutes.signup} element={<SignupPage t={t} language={language} setLanguage={setLanguage} />} />
@@ -4575,7 +4686,10 @@ function buildWorkspaceJobRecord(job, clientRecord = null) {
         <ScheduleEventModal
           isOpen={scheduleModalState.isOpen}
           leads={activeLeads}
+          projects={persistedProjects.filter((project) => !project.archivedAt && !project.archived_at)}
+          clients={clients}
           initialLeadId={scheduleModalState.leadId}
+          initialProjectId={scheduleModalState.projectId}
           context={scheduleModalState.context}
           editingEvent={scheduleModalState.editingEvent}
           onClose={closeScheduleModal}
@@ -4614,6 +4728,7 @@ function buildWorkspaceJobRecord(job, clientRecord = null) {
                 navigate(savedProjectId ? appRoutes.projects.replace(':id', savedProjectId) : appRoutes.calendar)
               }
             } catch (error) {
+              showToast(t('eventUpdateFailed'), 'error')
               logLeadDevError('[dev] Failed to save schedule event.', error, {
                 event,
                 context: scheduleModalState.context,
@@ -4647,14 +4762,14 @@ function ProjectRoute({ companySettings, leads, clients, invoices = [], schedule
       onOpenContract={onOpenContract}
       onConvertEstimate={onConvertEstimate}
       onUpdateLead={onUpdateLead}
-      onRecordPayment={(payment) => onRecordPayment?.(leadRecordId, payment)}
-      onUpdatePayment={(payment) => onUpdatePayment?.(leadRecordId, payment)}
-      onDeletePayment={(payment) => onDeletePayment?.(leadRecordId, payment)}
+      onRecordPayment={(payment) => onRecordPayment?.(projectId, payment)}
+      onUpdatePayment={(payment) => onUpdatePayment?.(projectId, payment)}
+      onDeletePayment={(payment) => onDeletePayment?.(projectId, payment)}
       onUploadPhotos={(photos, options) => onUploadPhotos?.(leadRecordId, photos, options)}
       scheduleEvents={scheduleEvents}
       archivedScheduleEventIds={archivedScheduleEventIds}
-      onScheduleEvent={() => onScheduleEvent?.({ leadId: leadRecordId, context: 'job' })}
-      onEditScheduleEvent={(event) => onScheduleEvent?.({ leadId: leadRecordId, context: 'job', event })}
+      onScheduleEvent={() => onScheduleEvent?.({ projectId, leadId: leadRecordId, context: 'job' })}
+      onEditScheduleEvent={(event) => onScheduleEvent?.({ projectId, leadId: leadRecordId, context: 'job', event })}
       onExportEvent={onExportEvent}
       onArchiveScheduleEvent={onArchiveScheduleEvent}
       onRestoreScheduleEvent={onRestoreScheduleEvent}
