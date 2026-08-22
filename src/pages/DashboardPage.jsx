@@ -374,6 +374,7 @@ export function DashboardPage({
 
   const needsAttentionItems = useMemo(() => {
     const items = []
+    const handledEstimateIds = new Set()
     const upcomingWindowEnd = addDays(new Date(), 3)
 
     leads.forEach((lead) => {
@@ -384,28 +385,8 @@ export function DashboardPage({
       const goToLeadOrProject = () => (hasProject ? onOpenProject?.(lead.id) : onLeadClick?.(lead.id))
 
       const estimate = lead?.portal?.estimate || null
-      if (isDashboardPendingEstimate({
-        estimate,
-        lead,
-        contract: lead?.portal?.contract || null,
-        archivedLeadIds,
-      })) {
-        const estimateStatus = String(estimate?.status || '').trim().toLowerCase()
-        const requiresFollowUp = estimateStatus === 'sent'
-          || stage === leadPipelineStages.ESTIMATE_SENT
-          || stage === leadPipelineStages.FOLLOW_UP
-        items.push({
-          id: `estimate-${requiresFollowUp ? 'followup' : 'draft'}-${lead.id}`,
-          eyebrow: t('estimate'),
-          title: projectTitle,
-          description: clientName,
-          meta: t(getLeadNextStepKey(requiresFollowUp ? leadPipelineStages.ESTIMATE_SENT : leadPipelineStages.ESTIMATE_CREATED)),
-          priority: requiresFollowUp ? 25 : 30,
-          timestamp: toTimestamp(estimate?.updatedAt || estimate?.updated_at || estimate?.dateCreated || estimate?.createdAt || estimate?.created_at || lead?.createdAt || lead?.created_at),
-          onClick: onOpenEstimate ? () => onOpenEstimate(lead.id, estimate) : goToLeadOrProject,
-        })
-      }
-
+      if (estimate?.id) handledEstimateIds.add(String(estimate.id))
+      const estimateStatus = String(estimate?.status || '').trim().toLowerCase()
       const contract = lead?.portal?.contract
       const contractStatus = String(contract?.status || '').trim().toLowerCase()
       const hasContract = Boolean(
@@ -416,6 +397,48 @@ export function DashboardPage({
         || contract?.created_at
         || contract?.status
       )
+      if (isDashboardPendingEstimate({
+        estimate,
+        lead,
+        contract: lead?.portal?.contract || null,
+        archivedLeadIds,
+      })) {
+        const requiresFollowUp = estimateStatus === 'sent'
+          || stage === leadPipelineStages.ESTIMATE_SENT
+          || stage === leadPipelineStages.FOLLOW_UP
+        items.push({
+          id: `estimate-${requiresFollowUp ? 'followup' : 'draft'}-${lead.id}`,
+          eyebrow: t('estimate'),
+          title: projectTitle,
+          description: clientName,
+          meta: requiresFollowUp ? t('dashboardEstimateWaitingForClient') : t(getLeadNextStepKey(leadPipelineStages.ESTIMATE_CREATED)),
+          priority: requiresFollowUp ? 25 : 30,
+          timestamp: toTimestamp(estimate?.updatedAt || estimate?.updated_at || estimate?.dateCreated || estimate?.createdAt || estimate?.created_at || lead?.createdAt || lead?.created_at),
+          onClick: onOpenEstimate ? () => onOpenEstimate(lead.id, estimate) : goToLeadOrProject,
+        })
+      } else if (estimate && !isRecordArchived(estimate) && estimateStatus === 'approved' && !hasContract) {
+        items.push({
+          id: `estimate-approved-${lead.id}`,
+          eyebrow: t('estimateApprovedByClient'),
+          title: projectTitle,
+          description: clientName,
+          meta: t('dashboardEstimateReadyForContract'),
+          priority: 12,
+          timestamp: toTimestamp(estimate?.approvedAt || estimate?.approved_at || estimate?.updatedAt || estimate?.updated_at),
+          onClick: onOpenEstimate ? () => onOpenEstimate(lead.id, estimate) : goToLeadOrProject,
+        })
+      } else if (estimate && !isRecordArchived(estimate) && estimateStatus === 'rejected') {
+        items.push({
+          id: `estimate-rejected-${lead.id}`,
+          eyebrow: t('estimateDeclinedByClient'),
+          title: projectTitle,
+          description: clientName,
+          meta: t('dashboardEstimateNeedsReview'),
+          priority: 18,
+          timestamp: toTimestamp(estimate?.rejectedAt || estimate?.rejected_at || estimate?.updatedAt || estimate?.updated_at),
+          onClick: onOpenEstimate ? () => onOpenEstimate(lead.id, estimate) : goToLeadOrProject,
+        })
+      }
 
       if (hasContract && !isRecordArchived(contract) && ['draft', 'sent', 'pending', 'pending_signature', 'viewed'].includes(contractStatus || 'draft')) {
         items.push({
@@ -429,6 +452,42 @@ export function DashboardPage({
           onClick: onOpenContract ? () => onOpenContract(lead.id) : goToLeadOrProject,
         })
       }
+    })
+
+    estimates.forEach((estimate) => {
+      if (!estimate?.id || handledEstimateIds.has(String(estimate.id)) || isRecordArchived(estimate)) return
+
+      const estimateStatus = String(estimate.status || '').trim().toLowerCase()
+      if (!['sent', 'approved', 'rejected'].includes(estimateStatus)) return
+
+      const linkedLead = findDashboardLinkedLead(leads, estimate)
+      const estimateProjectId = estimate.projectId || estimate.project_id || linkedLead?.projectId || linkedLead?.project_id || ''
+      const linkedProject = projects.find((project) => project.id === estimateProjectId) || null
+      if (linkedLead && archivedLeadIds.some((id) => String(id) === String(linkedLead.id))) return
+      if (linkedProject && archivedProjectIds.some((id) => String(id) === String(linkedProject.id))) return
+      const linkedContract = contracts.find((contract) => (
+        (contract.estimateId || contract.estimate_id) === estimate.id
+        || (estimateProjectId && (contract.projectId || contract.project_id) === estimateProjectId)
+      )) || null
+      if (estimateStatus === 'approved' && linkedContract && !isRecordArchived(linkedContract)) return
+
+      const statusPresentation = estimateStatus === 'approved'
+        ? { eyebrow: t('estimateApprovedByClient'), meta: t('dashboardEstimateReadyForContract'), priority: 12, timestamp: estimate.approvedAt || estimate.approved_at }
+        : estimateStatus === 'rejected'
+          ? { eyebrow: t('estimateDeclinedByClient'), meta: t('dashboardEstimateNeedsReview'), priority: 18, timestamp: estimate.rejectedAt || estimate.rejected_at }
+          : { eyebrow: t('estimate'), meta: t('dashboardEstimateWaitingForClient'), priority: 25, timestamp: estimate.sentAt || estimate.sent_at }
+      const routeEstimate = { ...estimate, routeUsesEstimateId: true }
+
+      items.push({
+        id: `persisted-estimate-${estimateStatus}-${estimate.id}`,
+        eyebrow: statusPresentation.eyebrow,
+        title: linkedProject?.projectTitle || linkedProject?.title || estimate.projectTitle || estimate.title || t('estimate'),
+        description: resolveClientName(linkedLead || estimate, t('client')),
+        meta: statusPresentation.meta,
+        priority: statusPresentation.priority,
+        timestamp: toTimestamp(statusPresentation.timestamp || estimate.updatedAt || estimate.updated_at || estimate.createdAt || estimate.created_at),
+        onClick: onOpenEstimate ? () => onOpenEstimate(estimate.leadId || estimate.lead_id || estimateProjectId || estimate.id, routeEstimate) : null,
+      })
     })
 
     scheduleEvents.forEach((event) => {
@@ -495,7 +554,7 @@ export function DashboardPage({
         return left.timestamp - right.timestamp
       })
       .slice(0, 6)
-  }, [archivedLeadIds, invoices, leads, leadsById, onLeadClick, onOpenContract, onOpenEstimate, onOpenInvoice, onOpenProject, scheduleEvents, t, todayKey])
+  }, [archivedLeadIds, archivedProjectIds, contracts, estimates, invoices, leads, leadsById, onLeadClick, onOpenContract, onOpenEstimate, onOpenInvoice, onOpenProject, projects, scheduleEvents, t, todayKey])
 
   const recentActivityItems = useMemo(() => {
     const items = []

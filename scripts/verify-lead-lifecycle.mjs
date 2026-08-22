@@ -51,7 +51,14 @@ const approved = resolveLeadLifecycle({
   estimates: [{ ...draftEstimate, status: 'Approved', approvedAt: '2026-08-16T13:00:00.000Z' }],
 })
 assert.equal(approved.stage, leadPipelineStages.ESTIMATE_APPROVED)
-assert.deepEqual(actionTypes(approved), ['convertToJob'])
+assert.deepEqual(actionTypes(approved), ['createContract'])
+
+const rejected = resolveLeadLifecycle({
+  lead: activeLead,
+  estimates: [{ ...draftEstimate, status: 'Rejected', rejectedAt: '2026-08-16T13:30:00.000Z' }],
+})
+assert.equal(rejected.stage, leadPipelineStages.ESTIMATE_CREATED)
+assert.deepEqual(actionTypes(rejected), ['editEstimate', 'resendEstimate'])
 
 // An active Project is stronger than Estimate or stale Lead metadata.
 const project = { id: 'project-a', leadId: activeLead.id, status: 'In Progress' }

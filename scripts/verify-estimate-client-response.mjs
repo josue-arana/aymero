@@ -69,7 +69,7 @@ assert.match(publicPageSource, /responseView\.isConverted/)
 assert.match(publicPageSource, /isSubmittingResponse \? undefined/)
 assert.match(publicPageSource, /ariaLabelledBy="public-estimate-confirm-title"/)
 assert.match(leadDetailSource, /estimate\?\.rejectedAt \|\| estimate\?\.rejected_at/)
-assert.match(estimateBuilderSource, /projectAvailable && !estimateWasRejected/)
+assert.match(estimateBuilderSource, /projectAvailable && estimateCanCreateContract && !hasLinkedContract/)
 assert.match(dashboardConsistencySource, /DASHBOARD_PENDING_ESTIMATE_STATUSES\.includes\(explicitStatus\)/)
 
 const responseTranslationKeys = [

@@ -8,6 +8,7 @@ import { ConfirmRecordModal } from '../components/common/ConfirmRecordModal'
 import { useToast } from '../components/common/ToastProvider'
 import { LeadFormModal } from '../components/leads/LeadFormModal'
 import { LeadProgress } from '../components/leads/LeadProgress'
+import { StatusBadge } from '../components/ui/StatusBadge'
 import { USE_SUPABASE_LEADS } from '../config/backendConfig'
 import { appRoutes } from '../config/appRoutes'
 import { useAuth } from '../contexts/AuthContext'
@@ -19,7 +20,6 @@ import { archiveMenuItemClasses } from '../utils/buttonStyles'
 import { getLeadPipelineStage, leadPipelineStages } from '../utils/leadPipeline'
 import { resolveLeadLifecycle, selectPrimaryLeadEstimate } from '../utils/leadLifecycle'
 import { getLanguageLocale } from '../utils/language'
-import { tStatus } from '../translations'
 
 function logLeadDetailDevError(message, error, meta) {
   if (!import.meta.env.DEV) return
@@ -625,6 +625,12 @@ export function LeadDetailPage({
       case 'sendEstimate':
         openEstimateBuilder({ openSend: true })
         return
+      case 'resendEstimate':
+        openEstimateBuilder({ openSend: true })
+        return
+      case 'createContract':
+        openRelatedEstimate()
+        return
       case 'markEstimateSent':
         await handleWorkflowTransition(leadPipelineStages.ESTIMATE_SENT)
         return
@@ -700,7 +706,7 @@ export function LeadDetailPage({
   }
 
   const moreMenuItems = [
-    leadHasEstimate && !lifecycle.isDraftEstimate
+    leadHasEstimate && ['sent', 'follow-up'].includes(lifecycle.estimateStatusKind)
       ? {
           id: 'edit-estimate',
           label: t('editEstimate'),
@@ -736,7 +742,8 @@ export function LeadDetailPage({
   function getLifecycleActionIcon(actionType) {
     if (actionType === 'restoreLead') return <Undo2 className="h-4 w-4" />
     if (['convertToJob', 'scheduleJob', 'viewJob'].includes(actionType)) return <BriefcaseBusiness className="h-4 w-4" />
-    if (actionType === 'sendEstimate') return <Send className="h-4 w-4" />
+    if (['sendEstimate', 'resendEstimate'].includes(actionType)) return <Send className="h-4 w-4" />
+    if (actionType === 'createContract') return <ClipboardList className="h-4 w-4" />
     if (actionType === 'editEstimate') return <Edit3 className="h-4 w-4" />
     return <ClipboardList className="h-4 w-4" />
   }
@@ -1010,8 +1017,8 @@ function RelatedRecordSection({ eyebrow, title, amount = '', status = '', isArch
       {amount ? <p className="mt-3 break-words text-xl font-bold text-slate-950">{amount}</p> : null}
       {(status || isArchived) ? (
         <div className="mt-2 flex flex-wrap gap-2">
-          {status ? <span className="inline-flex max-w-full break-words rounded-full bg-white px-2.5 py-1 text-left text-[11px] font-bold text-slate-600 ring-1 ring-slate-200">{status}</span> : null}
-          {isArchived ? <span className="inline-flex rounded-full bg-amber-50 px-2.5 py-1 text-[11px] font-bold text-amber-800 ring-1 ring-amber-200">{t('archived')}</span> : null}
+          {status ? <StatusBadge status={status} t={t} /> : null}
+          {isArchived ? <StatusBadge status="Archived" t={t} /> : null}
         </div>
       ) : null}
       {onAction ? (
@@ -1031,7 +1038,7 @@ function RelatedLeadRecordsCard({ estimate, estimateTotal, project, estimateIsAr
   if (!estimate && !project) return null
 
   const estimateTitle = estimate?.number || estimate?.estimateNumber || estimate?.title || t('relatedEstimate')
-  const estimateStatus = estimate?.status ? tStatus(t, estimate.status) : ''
+  const estimateStatus = estimate?.status || ''
   const projectTitle = project?.projectTitle || project?.title || t('relatedProject')
   const projectStatus = project?.projectStatus || project?.status
 
@@ -1056,7 +1063,7 @@ function RelatedLeadRecordsCard({ estimate, estimateTotal, project, estimateIsAr
             <RelatedRecordSection
               eyebrow={t('project')}
               title={projectTitle}
-              status={projectStatus ? tStatus(t, projectStatus) : ''}
+              status={projectStatus || ''}
               isArchived={projectIsArchived}
               actionLabel={t('openProject')}
               onAction={onOpenProject}

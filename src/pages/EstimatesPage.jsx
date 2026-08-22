@@ -16,6 +16,7 @@ import { dedupeById, findLeadByProjectLookup, resolveLinkedProjectId } from '../
 import estimatesHeroBackground from '../assets/page-heroes/estimates-bg.png'
 import { buildHeroBackgroundStyle } from '../utils/heroBackground'
 import { resolveEstimateArchiveState } from '../utils/archiveLifecycle'
+import { canCreateContractFromEstimate, normalizeEstimateFinalizationStatus } from '../utils/estimateFinalization'
 
 const estimateFilters = ['All', 'Archived', 'Draft', 'Sent', 'Approved', 'Rejected', 'Converted to Contract']
 
@@ -38,6 +39,7 @@ export function EstimatesPage({ leads, estimates = [], contracts = [], archivedI
     const estimate = lead.portal?.estimate || {}
     const contract = lead.portal?.contract || null
     const archiveState = resolveEstimateArchiveState({ estimate, lead, contract, archivedLeadIds: archivedIds })
+    const status = getEstimateStatus(lead)
 
     return {
       id: lead.id,
@@ -47,10 +49,14 @@ export function EstimatesPage({ leads, estimates = [], contracts = [], archivedI
       client: lead.client,
       projectTitle: lead.projectTitle || lead.projectType,
       amount: estimate.total || lead.value,
-      status: getEstimateStatus(lead),
+      status,
       dateCreated: estimate.dateCreated || estimate.createdAt || contract?.signedDate || 'June 2026',
       hasLinkedContract: Boolean(contract?.id || contract?.number || contract?.contractNumber),
-      nextAction: (contract?.id || contract?.number || contract?.contractNumber) ? t('viewContract') : t('convertToContract'),
+      nextAction: (contract?.id || contract?.number || contract?.contractNumber)
+        ? t('viewContract')
+        : status === 'Approved'
+          ? t('createContract')
+          : '',
       isArchived: archiveState.isArchived,
       archiveSource: archiveState.source,
       routeUsesEstimateId: false,
@@ -89,7 +95,11 @@ export function EstimatesPage({ leads, estimates = [], contracts = [], archivedI
       status: estimate.status || 'Draft',
       dateCreated: estimate.dateCreated || estimate.createdAt || estimate.created_at || 'June 2026',
       hasLinkedContract: Boolean(linkedContract?.id || linkedContract?.number || linkedContract?.contractNumber),
-      nextAction: (linkedContract?.id || linkedContract?.number || linkedContract?.contractNumber) ? t('viewContract') : t('convertToContract'),
+      nextAction: (linkedContract?.id || linkedContract?.number || linkedContract?.contractNumber)
+        ? t('viewContract')
+        : estimate.status === 'Approved'
+          ? t('createContract')
+          : '',
       isArchived: archiveState.isArchived,
       archiveSource: archiveState.source,
       routeUsesEstimateId: true,
@@ -105,9 +115,12 @@ export function EstimatesPage({ leads, estimates = [], contracts = [], archivedI
     ? activeEstimates
     : selectedFilter === 'Archived'
       ? estimateRows.filter((estimate) => estimate.isArchived)
-      : activeEstimates.filter((estimate) => estimate.status === selectedFilter)
+      : activeEstimates.filter((estimate) => (
+          estimate.status === selectedFilter
+          || (selectedFilter === 'Draft' && estimate.status === 'Saved')
+        ))
 
-  const draftCount = activeEstimates.filter((estimate) => estimate.status === 'Draft').length
+  const draftCount = activeEstimates.filter((estimate) => ['Draft', 'Saved'].includes(estimate.status)).length
   const sentCount = activeEstimates.filter((estimate) => estimate.status === 'Sent').length
   const approvedCount = activeEstimates.filter((estimate) => estimate.status === 'Approved' || estimate.status === 'Converted to Contract').length
   const totalValue = activeEstimates.reduce((sum, estimate) => sum + estimate.amount, 0)
@@ -149,7 +162,13 @@ export function EstimatesPage({ leads, estimates = [], contracts = [], archivedI
 
   function renderEstimateActions(estimate, compact = false) {
     const isArchived = estimate.isArchived
-    const showProjectAction = !isArchived && estimate.canUseProjectActions !== false
+    const lifecycleStatus = normalizeEstimateFinalizationStatus(estimate.status)
+    const showProjectAction = !isArchived
+      && estimate.canUseProjectActions !== false
+      && (estimate.hasLinkedContract || canCreateContractFromEstimate(lifecycleStatus))
+    const primaryEstimateActionLabel = ['draft', 'saved'].includes(lifecycleStatus)
+      ? t('editEstimate')
+      : t('viewEstimate')
     const moreMenuItems = isArchived
       ? [
           {
@@ -200,8 +219,8 @@ export function EstimatesPage({ leads, estimates = [], contracts = [], archivedI
     }
     return (
       <div className={actionLayoutClasses}>
-        <button onClick={(event) => { event.stopPropagation(); onOpenEstimate(estimate.routeId, estimate) }} className="inline-flex min-h-[44px] w-full items-center justify-center whitespace-nowrap rounded-xl bg-slate-950 px-3 py-2 text-xs font-bold text-white hover:bg-slate-800">{t('viewEstimate')}</button>
-        {showProjectAction ? <button onClick={(event) => { event.stopPropagation(); onConvertEstimate(estimate.sourceLeadId, estimate) }} className="inline-flex min-h-[44px] w-full items-center justify-center whitespace-nowrap rounded-xl border border-blue-200 bg-blue-50 px-3 py-2 text-xs font-bold text-blue-700 hover:bg-blue-100">{estimate.hasLinkedContract ? t('viewContract') : t('convertToContract')}</button> : null}
+        <button onClick={(event) => { event.stopPropagation(); onOpenEstimate(estimate.routeId, estimate) }} className="inline-flex min-h-[44px] w-full items-center justify-center whitespace-nowrap rounded-xl bg-slate-950 px-3 py-2 text-xs font-bold text-white hover:bg-slate-800">{primaryEstimateActionLabel}</button>
+        {showProjectAction ? <button onClick={(event) => { event.stopPropagation(); onConvertEstimate(estimate.sourceLeadId, estimate) }} className="inline-flex min-h-[44px] w-full items-center justify-center whitespace-nowrap rounded-xl border border-blue-200 bg-blue-50 px-3 py-2 text-xs font-bold text-blue-700 hover:bg-blue-100">{estimate.hasLinkedContract ? t('viewContract') : t('createContract')}</button> : null}
         <ActionMenu
           label={compact ? <MoreVertical className="h-4 w-4" /> : t('more')}
           ariaLabel={t('more')}

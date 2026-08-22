@@ -1,6 +1,6 @@
 import { useEffect, useMemo, useRef, useState } from 'react'
 import { useLocation, useNavigate, useParams } from 'react-router-dom'
-import { Archive, ChevronDown, MapPin, Trash2, Undo2, UserRound } from 'lucide-react'
+import { Archive, CheckCircle2, ChevronDown, MapPin, Trash2, Undo2, UserRound, XCircle } from 'lucide-react'
 import { SelectField } from '../components/ui/SelectField'
 import { AymeroLoader } from '../components/common/AymeroLoader'
 import { InfoCard } from '../components/ui/InfoCard'
@@ -41,6 +41,15 @@ import {
 } from '../utils/estimateDocument'
 import { normalizeDocumentLanguageOverride, resolveClientFacingLanguage } from '../utils/language'
 import { getPaymentTermLabel, getPaymentTermOptions, isKnownPaymentTermValue } from '../utils/paymentTerms'
+import {
+  buildEstimateResendTransition,
+  buildEstimateRevisionReset,
+  canCreateContractFromEstimate,
+  canEditEstimate,
+  canSendEstimate,
+  normalizeEstimateFinalizationStatus,
+  shouldConfirmSentEstimateEdit,
+} from '../utils/estimateFinalization'
 import {
   ESTIMATE_DOCUMENT_SOURCE_PADDING,
   ESTIMATE_DOCUMENT_SOURCE_WIDTH,
@@ -216,7 +225,8 @@ export function EstimateBuilderPage({ lead, clientRecord = null, t, appLanguage 
   const [showSendModal, setShowSendModal] = useState(false)
   const [sendDocumentLink, setSendDocumentLink] = useState(publicEstimateLink)
   const [showPreviewModal, setShowPreviewModal] = useState(false)
-  const [isEditing, setIsEditing] = useState(true)
+  const [isEditing, setIsEditing] = useState(() => !isArchived && (!hasExistingEstimate || ['draft', 'saved'].includes(normalizeEstimateFinalizationStatus(savedEstimate.status))))
+  const [showSentEditConfirmation, setShowSentEditConfirmation] = useState(false)
   const [isSavingEstimate, setIsSavingEstimate] = useState(false)
   const estimateSaveGuardRef = useRef(false)
   const autoSendAttemptedRef = useRef(false)
@@ -290,10 +300,15 @@ export function EstimateBuilderPage({ lead, clientRecord = null, t, appLanguage 
     setLineItems(nextDraftState.lineItems)
     setLineItemAmountInputs(nextDraftState.lineItemAmountInputs)
 
+    if (draftOwnerChanged) {
+      setIsEditing(!isArchived && (!hasExistingEstimate || ['draft', 'saved'].includes(normalizeEstimateFinalizationStatus(savedEstimate.status))))
+      setShowSentEditConfirmation(false)
+    }
+
     lastInitializedSourceKeyRef.current = draftSourceKey
     lastInitializedOwnerKeyRef.current = draftOwnerKey
     draftDirtyRef.current = false
-  }, [companySettings, draftEstimateT, draftOwnerKey, draftSourceKey, lead, savedEstimate])
+  }, [companySettings, draftEstimateT, draftOwnerKey, draftSourceKey, hasExistingEstimate, isArchived, lead, savedEstimate])
 
   useEffect(() => {
     if (hasExistingEstimate && !settingsInteractionRef.current) {
@@ -361,7 +376,13 @@ export function EstimateBuilderPage({ lead, clientRecord = null, t, appLanguage 
   )
   const estimateUpdatedDate = formatReliableDate(savedEstimate.updatedAt || savedEstimate.updated_at)
   const estimateStatus = tStatus(t, savedEstimate.status || 'Draft')
-  const estimateWasRejected = String(savedEstimate.status || '').trim().toLowerCase() === 'rejected'
+  const estimateLifecycleStatus = normalizeEstimateFinalizationStatus(savedEstimate.status)
+  const estimateApprovedDate = formatReliableDate(savedEstimate.approvedAt || savedEstimate.approved_at)
+  const estimateRejectedDate = formatReliableDate(savedEstimate.rejectedAt || savedEstimate.rejected_at)
+  const estimateCanBeEdited = canEditEstimate(estimateLifecycleStatus)
+  const estimateCanBeSent = canSendEstimate(estimateLifecycleStatus)
+  const estimateCanCreateContract = canCreateContractFromEstimate(estimateLifecycleStatus)
+  const isPostSendRevision = isEditing && ['sent', 'rejected'].includes(estimateLifecycleStatus)
   const jobLocation = lead?.address || lead?.location || ''
   const estimateDocumentModel = useMemo(() => normalizeEstimateDocument({
     pricingMode,
@@ -458,7 +479,7 @@ export function EstimateBuilderPage({ lead, clientRecord = null, t, appLanguage 
   }
 
   async function saveEstimate() {
-    const result = await persistEstimate({}, { stopEditing: true })
+    const result = await persistEstimate(isPostSendRevision ? buildEstimateRevisionReset() : {}, { stopEditing: true })
     if (!result) {
       return null
     }
@@ -468,7 +489,10 @@ export function EstimateBuilderPage({ lead, clientRecord = null, t, appLanguage 
   async function handleOpenSendModal() {
     if (isEstimateActionPending || estimateSaveGuardRef.current) return
 
-    const result = await persistEstimate({ status: savedEstimate.status || 'Draft' })
+    const result = await persistEstimate(
+      isPostSendRevision ? buildEstimateRevisionReset() : { status: savedEstimate.status || 'Draft' },
+      { stopEditing: isPostSendRevision },
+    )
     const persistedEstimate = result || (hasExistingEstimate ? savedEstimate : null)
     const shareResolution = resolvePublicEstimateShare(persistedEstimate)
     const nextShareLink = shareResolution.url || publicEstimateLink
@@ -477,6 +501,15 @@ export function EstimateBuilderPage({ lead, clientRecord = null, t, appLanguage 
     })
     setSendDocumentLink(nextShareLink)
     setShowSendModal(true)
+  }
+
+  function handleRequestEdit() {
+    if (!estimateCanBeEdited) return
+    if (shouldConfirmSentEstimateEdit(estimateLifecycleStatus)) {
+      setShowSentEditConfirmation(true)
+      return
+    }
+    setIsEditing(true)
   }
 
   async function handleConvertToContract() {
@@ -657,6 +690,26 @@ export function EstimateBuilderPage({ lead, clientRecord = null, t, appLanguage 
               ) : null}
             </div>
             {isArchived && <span className="mt-4 inline-flex rounded-full bg-amber-100 px-3 py-1 text-xs font-bold text-amber-800">{t('archived')}</span>}
+            {!isArchived && estimateLifecycleStatus === 'approved' ? (
+              <div role="status" className="mt-5 flex max-w-xl items-start gap-3 rounded-2xl border border-emerald-300/25 bg-emerald-400/10 p-4 text-emerald-50">
+                <CheckCircle2 className="mt-0.5 h-5 w-5 shrink-0 text-emerald-300" aria-hidden="true" />
+                <div className="min-w-0">
+                  <p className="font-bold">{t('estimateApprovedByClient')}</p>
+                  {estimateApprovedDate ? <p className="mt-1 text-sm text-emerald-100">{t('estimateApprovedOn', { date: estimateApprovedDate })}</p> : null}
+                  <p className="mt-2 text-sm font-semibold text-white">{t('estimateRecommendedCreateContract')}</p>
+                </div>
+              </div>
+            ) : null}
+            {!isArchived && estimateLifecycleStatus === 'rejected' ? (
+              <div role="status" className="mt-5 flex max-w-xl items-start gap-3 rounded-2xl border border-rose-300/25 bg-rose-400/10 p-4 text-rose-50">
+                <XCircle className="mt-0.5 h-5 w-5 shrink-0 text-rose-300" aria-hidden="true" />
+                <div className="min-w-0">
+                  <p className="font-bold">{t('estimateDeclinedByClient')}</p>
+                  {estimateRejectedDate ? <p className="mt-1 text-sm text-rose-100">{t('estimateDeclinedOn', { date: estimateRejectedDate })}</p> : null}
+                  <p className="mt-2 text-sm font-semibold text-white">{t('estimateRecommendedUpdateOrResend')}</p>
+                </div>
+              </div>
+            ) : null}
           </div>
           <dl className="grid grid-cols-2 gap-px overflow-hidden rounded-2xl bg-white/10 ring-1 ring-white/10">
             <div className="min-w-0 bg-white/[0.04] p-4">
@@ -901,24 +954,27 @@ export function EstimateBuilderPage({ lead, clientRecord = null, t, appLanguage 
 
         <aside className="min-w-0 space-y-4 lg:sticky lg:top-24 lg:self-start">
           <EstimatePreviewCard {...estimatePreviewProps} uiT={t} />
-          {!isEditing && (
-            <button disabled={isEstimateActionPending} onClick={() => setIsEditing(true)} className="w-full rounded-2xl border border-slate-200 bg-white px-4 py-4 text-sm font-bold text-slate-800 hover:bg-slate-50 disabled:cursor-not-allowed disabled:opacity-60">{t('editEstimate')}</button>
+          {!isArchived && !isEditing && estimateCanBeEdited && (
+            <button disabled={isEstimateActionPending} onClick={handleRequestEdit} className="w-full rounded-2xl border border-slate-200 bg-white px-4 py-4 text-sm font-bold text-slate-800 hover:bg-slate-50 disabled:cursor-not-allowed disabled:opacity-60">{t('editEstimate')}</button>
           )}
-          {isEditing && (
+          {!isArchived && isEditing && (
             <button disabled={isSavingEstimate} onClick={saveEstimate} className="w-full rounded-2xl border border-slate-200 bg-white px-4 py-4 text-sm font-bold text-slate-800 hover:bg-slate-50 disabled:cursor-not-allowed disabled:opacity-60">{isSavingEstimate ? t('saving') : t('saveEstimate')}</button>
           )}
           <button onClick={handlePrint} className="w-full rounded-2xl bg-slate-950 px-4 py-4 text-sm font-bold text-white hover:bg-slate-800">{t('print')}</button>
           <button onClick={() => setShowPreviewModal(true)} className="hidden w-full rounded-2xl border border-slate-200 bg-white px-4 py-4 text-sm font-bold text-slate-800 hover:bg-slate-50 sm:block">{t('previewPdf')}</button>
           <button onClick={handleDownloadPdf} className="w-full rounded-2xl border border-slate-200 bg-white px-4 py-4 text-sm font-bold text-slate-800 hover:bg-slate-50">{t('saveAsPdf')}</button>
-          <button disabled={isEstimateActionPending} onClick={handleOpenSendModal} className="w-full rounded-2xl border border-blue-200 bg-blue-50 px-4 py-4 text-sm font-bold text-blue-700 hover:bg-blue-100 disabled:cursor-not-allowed disabled:opacity-60">{t('sendToCustomer')}</button>
-          {projectAvailable && !estimateWasRejected && (hasLinkedContract ? (
+          {!isArchived && estimateCanBeSent ? <button disabled={isEstimateActionPending} onClick={handleOpenSendModal} className="w-full rounded-2xl border border-blue-200 bg-blue-50 px-4 py-4 text-sm font-bold text-blue-700 hover:bg-blue-100 disabled:cursor-not-allowed disabled:opacity-60">{t(['sent', 'rejected'].includes(estimateLifecycleStatus) ? 'resendEstimate' : 'sendEstimate')}</button> : null}
+          {!isArchived && projectAvailable && (estimateLifecycleStatus === 'converted' || hasLinkedContract) ? (
+            <button disabled={isEstimateActionPending} onClick={onOpenContract} className="w-full rounded-2xl border border-slate-200 bg-white px-4 py-4 text-sm font-bold text-slate-800 hover:bg-slate-50 disabled:cursor-not-allowed disabled:opacity-60">{t('viewContract')}</button>
+          ) : null}
+          {!isArchived && projectAvailable && estimateCanCreateContract && !hasLinkedContract ? (
+            <button disabled={isEstimateActionPending} onClick={handleConvertToContract} className="w-full rounded-2xl bg-blue-600 px-4 py-4 text-sm font-bold text-white hover:bg-blue-700 disabled:cursor-not-allowed disabled:bg-blue-400">{isConvertingEstimate ? t('saving') : t('createContract')}</button>
+          ) : null}
+          {!isArchived && projectAvailable && hasLinkedContract && estimateLifecycleStatus === 'approved' ? (
             <>
-              <button disabled={isEstimateActionPending} onClick={onOpenContract} className="w-full rounded-2xl border border-slate-200 bg-white px-4 py-4 text-sm font-bold text-slate-800 hover:bg-slate-50 disabled:cursor-not-allowed disabled:opacity-60">{t('viewContract')}</button>
               <button disabled={isEstimateActionPending} onClick={() => { if (linkedContractIsSigned) { setConfirmAction({ mode: 'sync-contract' }); return } handleSyncContract(false) }} className="w-full rounded-2xl bg-blue-600 px-4 py-4 text-sm font-bold text-white hover:bg-blue-700 disabled:cursor-not-allowed disabled:bg-blue-400">{isConvertingEstimate ? t('saving') : t('syncContractFromEstimate')}</button>
             </>
-          ) : (
-            <button disabled={isEstimateActionPending} onClick={handleConvertToContract} className="w-full rounded-2xl bg-blue-600 px-4 py-4 text-sm font-bold text-white hover:bg-blue-700 disabled:cursor-not-allowed disabled:bg-blue-400">{isConvertingEstimate ? t('saving') : t('convertToContract')}</button>
-          ))}
+          ) : null}
           {isArchived ? (
             <>
               <button disabled={isEstimateActionPending} onClick={onRestoreEstimate} className="w-full rounded-2xl border border-emerald-200 bg-emerald-50 px-4 py-4 text-sm font-bold text-emerald-700 hover:bg-emerald-100 disabled:cursor-not-allowed disabled:opacity-60"><Undo2 className="mr-2 inline h-4 w-4" />{t(archiveSource === 'lead' ? 'restoreLeadAndEstimate' : 'restore')}</button>
@@ -931,9 +987,23 @@ export function EstimateBuilderPage({ lead, clientRecord = null, t, appLanguage 
       </div>
       <ConfirmRecordModal isOpen={Boolean(confirmAction)} mode={confirmAction?.mode === 'delete' ? 'delete' : 'archive'} title={confirmAction?.mode === 'delete' ? t('confirmPermanentDelete') : confirmAction?.mode === 'sync-contract' ? t('confirmSyncSignedContract') : t('confirmArchive')} message={confirmAction?.mode === 'delete' ? t('permanentDeleteHelp') : confirmAction?.mode === 'sync-contract' ? t('signedContractSyncWarning') : t('archiveHelp')} confirmLabel={confirmAction?.mode === 'delete' ? t('deletePermanently') : confirmAction?.mode === 'sync-contract' ? t('syncContractFromEstimate') : t('archive')} onCancel={() => setConfirmAction(null)} onConfirm={async () => { if (confirmAction?.mode === 'archive') { await onArchiveEstimate?.() } if (confirmAction?.mode === 'delete') { await onDeleteEstimate?.(); onBack?.() } if (confirmAction?.mode === 'sync-contract') { await handleSyncContract(true) } setConfirmAction(null) }} t={t} />
       <SendToCustomerModal isOpen={showSendModal} documentType="estimate" customer={{ name: lead.client, phone: lead.phone, email: lead.email }} projectTitle={lead.projectTitle || lead.projectType} amountLabel={t('estimatedTotal')} amountValue={currency.format(estimateTotal)} documentLink={sendDocumentLink} companyName={companySettings?.company?.name || ''} onClose={() => setShowSendModal(false)} onSent={async () => {
-        const result = await persistEstimate({ status: 'Sent', sentAt: savedEstimate.sentAt || savedEstimate.sent_at || new Date().toISOString() }, { closeSendModal: true })
+        const result = await persistEstimate(buildEstimateResendTransition(), { closeSendModal: true, stopEditing: true })
         return Boolean(result)
       }} t={t} contentT={estimateT} />
+      <ModalShell
+        isOpen={showSentEditConfirmation}
+        onBackdropClick={() => setShowSentEditConfirmation(false)}
+        panelClassName="max-w-md"
+        ariaLabelledBy="sent-estimate-edit-title"
+        ariaDescribedBy="sent-estimate-edit-help"
+      >
+        <h2 id="sent-estimate-edit-title" className="text-xl font-bold text-slate-950">{t('sentEstimateEditTitle')}</h2>
+        <p id="sent-estimate-edit-help" className="mt-3 text-sm leading-6 text-slate-600">{t('sentEstimateEditHelp')}</p>
+        <div className="mt-6 flex flex-col-reverse gap-3 sm:flex-row sm:justify-end">
+          <button type="button" onClick={() => setShowSentEditConfirmation(false)} className="min-h-12 rounded-2xl border border-slate-300 bg-white px-5 py-3 text-sm font-bold text-slate-700 hover:bg-slate-50">{t('cancel')}</button>
+          <button type="button" onClick={() => { setShowSentEditConfirmation(false); setIsEditing(true) }} className="min-h-12 rounded-2xl bg-slate-950 px-5 py-3 text-sm font-bold text-white hover:bg-slate-800">{t('continueEditing')}</button>
+        </div>
+      </ModalShell>
       <ModalShell isOpen={showPreviewModal} onBackdropClick={() => setShowPreviewModal(false)} panelClassName="p-2 sm:max-w-[64rem] sm:p-3 lg:max-w-[68rem]">
         <div className="rounded-3xl bg-white text-slate-950">
           <div className="p-1">
@@ -1296,7 +1366,7 @@ export function EstimateBuilderRoute({ companySettings, leads, clients = [], pro
       backLabel={backLabel}
       isArchived={estimateArchiveState.isArchived}
       archiveSource={estimateArchiveState.source}
-      projectAvailable={isDirectEstimateRoute ? projectAvailable : true}
+      projectAvailable={isDirectEstimateRoute ? (projectAvailable || Boolean(linkedLead?.id && !isOrphanedProject)) : true}
       publicEstimateLink={publicEstimateLink}
       isOrphanedProject={isDirectEstimateRoute ? isOrphanedProject : false}
       openSendOnLoad={openSendOnLoad}
