@@ -3013,13 +3013,9 @@ function buildWorkspaceJobRecord(job, clientRecord = null) {
       const estimateTotal = resolveEstimateTotal(sourceLead, persistedEstimate)
       const nextPipelineStage = persistedEstimate.status === 'Sent'
         ? leadPipelineStages.ESTIMATE_SENT
-        : persistedEstimate.status === 'Approved'
+        : ['Approved', 'Converted to Contract'].includes(persistedEstimate.status)
           ? leadPipelineStages.ESTIMATE_APPROVED
-          : persistedEstimate.status === 'Converted to Contract'
-            ? leadPipelineStages.ESTIMATE_APPROVED
-            : [leadPipelineStages.ESTIMATE_SENT, leadPipelineStages.FOLLOW_UP, leadPipelineStages.ESTIMATE_APPROVED, leadPipelineStages.READY_FOR_JOB, leadPipelineStages.CONVERTED_TO_JOB].includes(getLeadPipelineStage(sourceLead))
-              ? getLeadPipelineStage(sourceLead)
-              : leadPipelineStages.ESTIMATE_CREATED
+          : leadPipelineStages.ESTIMATE_CREATED
 
       writeLinkedEstimateDrafts([leadId, relatedProjectId, persistedEstimate.id], persistedEstimate)
       upsertPersistedEstimateRecord(persistedEstimate)

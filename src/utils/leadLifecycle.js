@@ -226,8 +226,8 @@ export function resolveLeadLifecycle({
         stage: leadPipelineStages.ESTIMATE_APPROVED,
         stageLabelKey: 'leadProgressApproved',
         progressStep: 'approved',
-        nextStepKey: 'leadNextStepConvertToJob',
-        actions: [{ actionType: 'convertToJob', labelKey: 'convertToJob', variant: 'primary' }],
+        nextStepKey: activeContract ? 'leadNextStepReviewContract' : 'leadNextStepCreateContract',
+        actions: [{ actionType: 'createContract', labelKey: activeContract ? 'viewContract' : 'createContract', variant: 'primary' }],
       })
     }
 
@@ -258,11 +258,16 @@ export function resolveLeadLifecycle({
       stage: leadPipelineStages.ESTIMATE_CREATED,
       stageLabelKey: estimateStatusKind === 'rejected' ? 'rejected' : 'leadLifecycleStageEstimateDraft',
       progressStep: 'estimate',
-      nextStepKey: estimateStatusKind === 'rejected' ? 'leadNextStepReviewEstimate' : 'leadNextStepFinishOrSendEstimate',
-      actions: [
-        { actionType: 'editEstimate', labelKey: 'editEstimate', variant: 'secondary' },
-        { actionType: 'sendEstimate', labelKey: 'sendEstimate', variant: 'primary' },
-      ],
+      nextStepKey: estimateStatusKind === 'rejected' ? 'leadNextStepUpdateEstimate' : 'leadNextStepFinishOrSendEstimate',
+      actions: estimateStatusKind === 'rejected'
+        ? [
+            { actionType: 'editEstimate', labelKey: 'editEstimate', variant: 'secondary' },
+            { actionType: 'resendEstimate', labelKey: 'resendEstimate', variant: 'primary' },
+          ]
+        : [
+            { actionType: 'editEstimate', labelKey: 'editEstimate', variant: 'secondary' },
+            { actionType: 'sendEstimate', labelKey: 'sendEstimate', variant: 'primary' },
+          ],
     })
   }
 
