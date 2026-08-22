@@ -3,7 +3,8 @@ import { matchPath, useLocation } from 'react-router-dom'
 import { EstimatePdfTemplate } from '../components/estimates/EstimatePdfTemplate'
 import { PaginatedEstimatePreview } from '../components/estimates/PaginatedEstimatePreview'
 import { AymeroLoader } from '../components/common/AymeroLoader'
-import { getPublicEstimateByToken } from '../services/publicPortalService'
+import { ModalShell } from '../components/common/ModalShell'
+import { getPublicEstimateByToken, respondToPublicEstimate } from '../services/publicPortalService'
 import { createTranslator } from '../translations'
 import { normalizeEstimateDocument, resolveEstimatePricingMode, resolveEstimateValidUntil } from '../utils/estimateDocument'
 import { getPaymentTermLabel } from '../utils/paymentTerms'
@@ -15,6 +16,7 @@ import {
 } from '../utils/estimatePagination'
 import { normalizeSupportedLanguage, resolveInitialSupportedLanguage } from '../utils/language'
 import { appRoutes } from '../config/appRoutes'
+import { getEstimateClientResponseView } from '../utils/estimateClientResponse'
 
 function formatClientAddress(client = {}, project = {}) {
   const locality = [client.city, client.state, client.postalCode].filter(Boolean).join(', ').replace(', ,', ',')
@@ -40,6 +42,9 @@ export function PublicEstimatePage() {
   const [language, setLanguage] = useState(initialLanguage)
   const [state, setState] = useState({ loading: true, payload: null, error: null })
   const [printError, setPrintError] = useState('')
+  const [confirmDecision, setConfirmDecision] = useState('')
+  const [isSubmittingResponse, setIsSubmittingResponse] = useState(false)
+  const [responseError, setResponseError] = useState('')
   const t = useMemo(() => createTranslator(language), [language])
 
   useEffect(() => {
@@ -145,6 +150,42 @@ export function PublicEstimatePage() {
     }
   }
 
+  async function handleEstimateResponse() {
+    if (!confirmDecision || isSubmittingResponse) return
+
+    setIsSubmittingResponse(true)
+    setResponseError('')
+    try {
+      const response = await respondToPublicEstimate(estimateToken, confirmDecision)
+      if (response.error || !response.data?.estimate) {
+        if (response.error?.code === 'ESTIMATE_NOT_FOUND') {
+          setConfirmDecision('')
+          setState({ loading: false, payload: null, error: response.error })
+          return
+        }
+
+        if (response.error?.code === 'ESTIMATE_RESPONSE_CONFLICT') {
+          const refreshed = await getPublicEstimateByToken(estimateToken)
+          if (!refreshed.error && refreshed.data?.estimate) {
+            setState({ loading: false, payload: refreshed.data, error: null })
+            setConfirmDecision('')
+            return
+          }
+        }
+
+        setResponseError(t('publicEstimateResponseError'))
+        return
+      }
+
+      setState({ loading: false, payload: response.data, error: null })
+      setConfirmDecision('')
+    } catch {
+      setResponseError(t('publicEstimateResponseError'))
+    } finally {
+      setIsSubmittingResponse(false)
+    }
+  }
+
   if (state.loading) {
     return (
       <AymeroLoader
@@ -166,6 +207,8 @@ export function PublicEstimatePage() {
     )
   }
 
+  const responseView = getEstimateClientResponseView(state.payload?.estimate?.status)
+
   return (
     <main className="min-h-[100dvh] bg-slate-100 pb-[max(1.5rem,env(safe-area-inset-bottom))] pl-[max(1rem,env(safe-area-inset-left))] pr-[max(1rem,env(safe-area-inset-right))] pt-[max(1rem,env(safe-area-inset-top))] sm:pl-[max(1.5rem,env(safe-area-inset-left))] sm:pr-[max(1.5rem,env(safe-area-inset-right))] sm:pt-[max(2rem,env(safe-area-inset-top))]">
       <div className="mx-auto w-full max-w-5xl">
@@ -184,6 +227,38 @@ export function PublicEstimatePage() {
             <EstimatePdfTemplate {...previewProps} />
           </PaginatedEstimatePreview>
         </section>
+        {responseView.isActionable ? (
+          <section aria-labelledby="public-estimate-response-title" className="mt-5 rounded-3xl border border-slate-200 bg-white p-5 shadow-sm sm:p-7">
+            <h2 id="public-estimate-response-title" className="text-xl font-bold text-slate-950">{t('publicEstimateResponseTitle')}</h2>
+            <p className="mt-2 max-w-2xl text-sm leading-6 text-slate-600">{t('publicEstimateResponseHelp')}</p>
+            <div className="mt-5 grid gap-3 sm:grid-cols-2">
+              <button type="button" onClick={() => { setResponseError(''); setConfirmDecision('approve') }} className="min-h-12 rounded-2xl bg-slate-950 px-5 py-3 text-sm font-bold text-white hover:bg-slate-800 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-blue-500 focus-visible:ring-offset-2">
+                {t('approveEstimate')}
+              </button>
+              <button type="button" onClick={() => { setResponseError(''); setConfirmDecision('decline') }} className="min-h-12 rounded-2xl border border-slate-300 bg-white px-5 py-3 text-sm font-bold text-slate-700 hover:bg-slate-50 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-blue-500 focus-visible:ring-offset-2">
+                {t('declineEstimate')}
+              </button>
+            </div>
+          </section>
+        ) : null}
+        {responseView.isApproved ? (
+          <section role="status" className="mt-5 rounded-3xl border border-emerald-200 bg-emerald-50 p-5 shadow-sm sm:p-7">
+            <h2 className="text-xl font-bold text-emerald-950">{t('publicEstimateApprovedTitle')}</h2>
+            <p className="mt-2 text-sm leading-6 text-emerald-800">{t('publicEstimateApprovedHelp')}</p>
+          </section>
+        ) : null}
+        {responseView.isRejected ? (
+          <section role="status" className="mt-5 rounded-3xl border border-slate-300 bg-white p-5 shadow-sm sm:p-7">
+            <h2 className="text-xl font-bold text-slate-950">{t('publicEstimateDeclinedTitle')}</h2>
+            <p className="mt-2 text-sm leading-6 text-slate-600">{t('publicEstimateDeclinedHelp')}</p>
+          </section>
+        ) : null}
+        {responseView.isConverted ? (
+          <section role="status" className="mt-5 rounded-3xl border border-blue-200 bg-blue-50 p-5 shadow-sm sm:p-7">
+            <h2 className="text-xl font-bold text-blue-950">{t('publicEstimateConvertedTitle')}</h2>
+            <p className="mt-2 text-sm leading-6 text-blue-800">{t('publicEstimateConvertedHelp')}</p>
+          </section>
+        ) : null}
       </div>
       <div style={{ pointerEvents: 'none', position: 'fixed', left: '-200vw', top: 0, zIndex: -1 }}>
         <div
@@ -200,6 +275,29 @@ export function PublicEstimatePage() {
           <EstimatePdfTemplate {...previewProps} />
         </div>
       </div>
+      <ModalShell
+        isOpen={Boolean(confirmDecision)}
+        onBackdropClick={isSubmittingResponse ? undefined : () => setConfirmDecision('')}
+        panelClassName="max-w-md"
+        ariaLabelledBy="public-estimate-confirm-title"
+        ariaDescribedBy="public-estimate-confirm-help"
+      >
+        <h2 id="public-estimate-confirm-title" className="text-xl font-bold text-slate-950">
+          {t(confirmDecision === 'approve' ? 'publicEstimateApproveConfirmTitle' : 'publicEstimateDeclineConfirmTitle')}
+        </h2>
+        <p id="public-estimate-confirm-help" className="mt-3 text-sm leading-6 text-slate-600">
+          {t(confirmDecision === 'approve' ? 'publicEstimateApproveConfirmHelp' : 'publicEstimateDeclineConfirmHelp')}
+        </p>
+        {responseError ? <p role="alert" className="mt-4 rounded-2xl border border-red-200 bg-red-50 px-4 py-3 text-sm font-semibold text-red-700">{responseError}</p> : null}
+        <div className="mt-6 flex flex-col-reverse gap-3 sm:flex-row sm:justify-end">
+          <button type="button" disabled={isSubmittingResponse} onClick={() => setConfirmDecision('')} className="min-h-12 rounded-2xl border border-slate-300 bg-white px-5 py-3 text-sm font-bold text-slate-700 hover:bg-slate-50 disabled:cursor-not-allowed disabled:opacity-60">
+            {t('cancel')}
+          </button>
+          <button type="button" disabled={isSubmittingResponse} onClick={handleEstimateResponse} className={`min-h-12 rounded-2xl px-5 py-3 text-sm font-bold text-white disabled:cursor-not-allowed disabled:opacity-60 ${confirmDecision === 'approve' ? 'bg-slate-950 hover:bg-slate-800' : 'bg-red-600 hover:bg-red-700'}`}>
+            {isSubmittingResponse ? t('saving') : t(confirmDecision === 'approve' ? 'approveEstimate' : 'declineEstimate')}
+          </button>
+        </div>
+      </ModalShell>
     </main>
   )
 }

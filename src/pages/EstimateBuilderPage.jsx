@@ -361,6 +361,7 @@ export function EstimateBuilderPage({ lead, clientRecord = null, t, appLanguage 
   )
   const estimateUpdatedDate = formatReliableDate(savedEstimate.updatedAt || savedEstimate.updated_at)
   const estimateStatus = tStatus(t, savedEstimate.status || 'Draft')
+  const estimateWasRejected = String(savedEstimate.status || '').trim().toLowerCase() === 'rejected'
   const jobLocation = lead?.address || lead?.location || ''
   const estimateDocumentModel = useMemo(() => normalizeEstimateDocument({
     pricingMode,
@@ -910,7 +911,7 @@ export function EstimateBuilderPage({ lead, clientRecord = null, t, appLanguage 
           <button onClick={() => setShowPreviewModal(true)} className="hidden w-full rounded-2xl border border-slate-200 bg-white px-4 py-4 text-sm font-bold text-slate-800 hover:bg-slate-50 sm:block">{t('previewPdf')}</button>
           <button onClick={handleDownloadPdf} className="w-full rounded-2xl border border-slate-200 bg-white px-4 py-4 text-sm font-bold text-slate-800 hover:bg-slate-50">{t('saveAsPdf')}</button>
           <button disabled={isEstimateActionPending} onClick={handleOpenSendModal} className="w-full rounded-2xl border border-blue-200 bg-blue-50 px-4 py-4 text-sm font-bold text-blue-700 hover:bg-blue-100 disabled:cursor-not-allowed disabled:opacity-60">{t('sendToCustomer')}</button>
-          {projectAvailable && (hasLinkedContract ? (
+          {projectAvailable && !estimateWasRejected && (hasLinkedContract ? (
             <>
               <button disabled={isEstimateActionPending} onClick={onOpenContract} className="w-full rounded-2xl border border-slate-200 bg-white px-4 py-4 text-sm font-bold text-slate-800 hover:bg-slate-50 disabled:cursor-not-allowed disabled:opacity-60">{t('viewContract')}</button>
               <button disabled={isEstimateActionPending} onClick={() => { if (linkedContractIsSigned) { setConfirmAction({ mode: 'sync-contract' }); return } handleSyncContract(false) }} className="w-full rounded-2xl bg-blue-600 px-4 py-4 text-sm font-bold text-white hover:bg-blue-700 disabled:cursor-not-allowed disabled:bg-blue-400">{isConvertingEstimate ? t('saving') : t('syncContractFromEstimate')}</button>

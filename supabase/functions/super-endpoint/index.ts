@@ -7,8 +7,9 @@ const corsHeaders = {
   'Cache-Control': 'no-store',
 }
 
-const tokenPattern = /^[a-zA-Z0-9_-]{20,200}$/
+const publicTokenPattern = /^[a-zA-Z0-9_-]{20,200}$/
 const internalUuidPattern = /^[0-9a-f]{8}-[0-9a-f]{4}-[1-5][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i
+const allowedEstimateDecisions = new Set(['approve', 'decline'])
 const projectStatusLabels: Record<string, string> = {
   lead: 'Lead',
   estimate: 'Estimate',
@@ -21,6 +22,42 @@ const projectStatusLabels: Record<string, string> = {
   completed: 'Completed',
   paid: 'Paid',
   cancelled: 'Cancelled',
+}
+const estimateStatusLabels: Record<string, string> = {
+  draft: 'Draft',
+  saved: 'Saved',
+  sent: 'Sent',
+  approved: 'Approved',
+  rejected: 'Rejected',
+  converted: 'Converted to Contract',
+}
+const estimateSelect = 'contractor_id, client_id, lead_id, estimate_number, title, scope_of_work, line_items, subtotal, discount_amount, tax_amount, total_amount, deposit_percentage, materials_included, payment_terms, estimate_language, status, sent_at, approved_at, rejected_at, converted_at, created_at, updated_at'
+
+function isValidOpaquePublicToken(token: unknown) {
+  const normalizedToken = String(token || '').trim()
+  return publicTokenPattern.test(normalizedToken) && !internalUuidPattern.test(normalizedToken)
+}
+
+function isPublicEstimateDecision(decision: unknown) {
+  return allowedEstimateDecisions.has(String(decision || '').trim().toLowerCase())
+}
+
+function resolveEstimateResponseTransition(status: unknown, decision: unknown) {
+  const currentStatus = String(status || '').trim().toLowerCase()
+  const normalizedDecision = String(decision || '').trim().toLowerCase()
+  if (!isPublicEstimateDecision(normalizedDecision)) {
+    return { kind: 'invalid', currentStatus, targetStatus: '' }
+  }
+
+  const targetStatus = normalizedDecision === 'approve' ? 'approved' : 'rejected'
+  if (currentStatus === targetStatus) {
+    return { kind: 'idempotent', currentStatus, targetStatus }
+  }
+  if (currentStatus === 'sent') {
+    return { kind: 'update', currentStatus, targetStatus }
+  }
+
+  return { kind: 'blocked', currentStatus, targetStatus }
 }
 
 function jsonResponse(body: unknown, status = 200) {
@@ -52,7 +89,11 @@ function mapEstimate(row: Record<string, unknown> | null) {
     materialsIncluded: row.materials_included !== false,
     paymentTerms: row.payment_terms || '',
     estimateLanguage: row.estimate_language || '',
-    status: row.status || '',
+    status: estimateStatusLabels[String(row.status || '').toLowerCase()] || '',
+    sentAt: row.sent_at || '',
+    approvedAt: row.approved_at || '',
+    rejectedAt: row.rejected_at || '',
+    convertedAt: row.converted_at || '',
     dateCreated: row.created_at || '',
     createdAt: row.created_at || '',
     validUntil: row.valid_until || '',
@@ -147,16 +188,22 @@ Deno.serve(async (request) => {
 
   let token = ''
   let resource = 'portal'
+  let action = ''
   try {
     const body = await request.json()
     token = String(body?.token || '').trim()
     resource = body?.resource === 'estimate' ? 'estimate' : 'portal'
+    action = String(body?.action || '').trim().toLowerCase()
   } catch {
     return jsonResponse({ error: 'Invalid request.' }, 400)
   }
 
-  if (!tokenPattern.test(token) || internalUuidPattern.test(token)) {
+  if (!isValidOpaquePublicToken(token)) {
     return jsonResponse({ error: resource === 'estimate' ? 'Estimate Not Found.' : 'Client Portal Not Found.' }, 404)
+  }
+
+  if (action && (resource !== 'estimate' || !isPublicEstimateDecision(action))) {
+    return jsonResponse({ error: 'Invalid estimate response.' }, 400)
   }
 
   const supabaseUrl = Deno.env.get('SUPABASE_URL') || ''
@@ -168,15 +215,65 @@ Deno.serve(async (request) => {
   })
 
   if (resource === 'estimate') {
-    const { data: estimateRow, error: estimateError } = await admin
+    const { data: resolvedEstimateRow, error: estimateError } = await admin
       .from('estimates')
-      .select('contractor_id, client_id, lead_id, estimate_number, title, scope_of_work, line_items, subtotal, discount_amount, tax_amount, total_amount, deposit_percentage, materials_included, payment_terms, estimate_language, status, created_at, updated_at')
+      .select(estimateSelect)
       .eq('public_share_token', token)
       .is('archived_at', null)
       .maybeSingle()
 
     if (estimateError) return jsonResponse({ error: 'Estimate service unavailable.' }, 500)
-    if (!estimateRow) return jsonResponse({ error: 'Estimate Not Found.' }, 404)
+    if (!resolvedEstimateRow) return jsonResponse({ error: 'Estimate Not Found.' }, 404)
+
+    let estimateRow = resolvedEstimateRow
+
+    if (action) {
+      const transition = resolveEstimateResponseTransition(estimateRow.status, action)
+
+      if (transition.kind === 'blocked') {
+        return jsonResponse({ error: 'This estimate can no longer accept that response.' }, 409)
+      }
+
+      if (transition.kind === 'update') {
+        const responseTimestamp = new Date().toISOString()
+        const updatePayload = action === 'approve'
+          ? { status: transition.targetStatus, approved_at: responseTimestamp, updated_at: responseTimestamp }
+          : { status: transition.targetStatus, rejected_at: responseTimestamp, updated_at: responseTimestamp }
+        const { data: updatedEstimateRow, error: updateError } = await admin
+          .from('estimates')
+          .update(updatePayload)
+          .eq('public_share_token', token)
+          .eq('contractor_id', estimateRow.contractor_id)
+          .eq('status', 'sent')
+          .is('archived_at', null)
+          .select(estimateSelect)
+          .maybeSingle()
+
+        if (updateError) return jsonResponse({ error: 'Unable to record the estimate response.' }, 500)
+
+        if (updatedEstimateRow) {
+          estimateRow = updatedEstimateRow
+        } else {
+          // A concurrent response or archive may have won after the initial read.
+          // Resolve the token again and apply the same state rules to the persisted row.
+          const { data: currentEstimateRow, error: currentEstimateError } = await admin
+            .from('estimates')
+            .select(estimateSelect)
+            .eq('public_share_token', token)
+            .is('archived_at', null)
+            .maybeSingle()
+
+          if (currentEstimateError) return jsonResponse({ error: 'Unable to record the estimate response.' }, 500)
+          if (!currentEstimateRow) return jsonResponse({ error: 'Estimate Not Found.' }, 404)
+          const concurrentTransition = resolveEstimateResponseTransition(currentEstimateRow.status, action)
+          if (concurrentTransition.kind !== 'idempotent') {
+            return jsonResponse({ error: 'This estimate can no longer accept that response.' }, 409)
+          }
+
+          estimateRow = currentEstimateRow
+        }
+      }
+    }
 
     const contractorId = estimateRow.contractor_id
     const [settingsResult, leadResult] = await Promise.all([
@@ -215,8 +312,7 @@ Deno.serve(async (request) => {
 
     const settings = settingsResult.data || {}
     const client = clientResult.data || {}
-    const { status: internalEstimateStatus, ...publicEstimate } = mapEstimate(estimateRow)!
-    void internalEstimateStatus
+    const publicEstimate = mapEstimate(estimateRow)!
 
     return jsonResponse({
       resource: 'estimate',
