@@ -96,7 +96,61 @@ export async function getPublicEstimateByToken(estimateToken, { signal } = {}) {
   }
 }
 
+export async function respondToPublicEstimate(estimateToken, decision, { signal } = {}) {
+  const token = String(estimateToken || '').trim()
+  const action = String(decision || '').trim().toLowerCase()
+  if (!token) {
+    return { data: null, error: createPortalError('Estimate Not Found.', 'ESTIMATE_NOT_FOUND', 404) }
+  }
+  if (!['approve', 'decline'].includes(action)) {
+    return { data: null, error: createPortalError('Invalid estimate response.', 'ESTIMATE_RESPONSE_INVALID', 400) }
+  }
+
+  const { supabaseUrl, supabaseAnonKey } = getSupabaseEnvironmentConfig()
+  if (!supabaseUrl || !supabaseAnonKey) {
+    return { data: null, error: createPortalError('Public estimate service is not configured.', 'ESTIMATE_SERVICE_NOT_CONFIGURED') }
+  }
+
+  try {
+    const response = await fetch(`${supabaseUrl.replace(/\/$/, '')}/functions/v1/super-endpoint`, {
+      method: 'POST',
+      signal,
+      headers: {
+        apikey: supabaseAnonKey,
+        Authorization: `Bearer ${supabaseAnonKey}`,
+        'Content-Type': 'application/json',
+      },
+      body: JSON.stringify({ token, resource: 'estimate', action }),
+    })
+    const payload = await response.json().catch(() => null)
+
+    if (!response.ok) {
+      const errorCode = response.status === 404
+        ? 'ESTIMATE_NOT_FOUND'
+        : response.status === 409
+          ? 'ESTIMATE_RESPONSE_CONFLICT'
+          : response.status === 400
+            ? 'ESTIMATE_RESPONSE_INVALID'
+            : 'ESTIMATE_RESPONSE_FAILED'
+      return {
+        data: null,
+        error: createPortalError(payload?.error || 'Unable to record the estimate response.', errorCode, response.status),
+      }
+    }
+
+    return { data: payload, error: null }
+  } catch (error) {
+    if (error?.name === 'AbortError') throw error
+
+    return {
+      data: null,
+      error: createPortalError(error?.message || 'Unable to record the estimate response.', 'ESTIMATE_RESPONSE_FAILED'),
+    }
+  }
+}
+
 export default {
   getByToken: getPublicPortalByToken,
   getEstimateByToken: getPublicEstimateByToken,
+  respondToEstimate: respondToPublicEstimate,
 }

@@ -9,7 +9,7 @@ const focusableSelector = [
   '[tabindex]:not([tabindex="-1"])',
 ].join(',')
 
-export function ModalShell({ isOpen, children, className = '', panelClassName = '', onBackdropClick }) {
+export function ModalShell({ isOpen, children, className = '', panelClassName = '', onBackdropClick, ariaLabelledBy, ariaDescribedBy }) {
   const panelRef = useRef(null)
   const onBackdropClickRef = useRef(onBackdropClick)
   onBackdropClickRef.current = onBackdropClick
@@ -71,6 +71,8 @@ export function ModalShell({ isOpen, children, className = '', panelClassName = 
         ref={panelRef}
         role="dialog"
         aria-modal="true"
+        aria-labelledby={ariaLabelledBy}
+        aria-describedby={ariaDescribedBy}
         tabIndex={-1}
         className={`min-w-0 max-h-[calc(100dvh-7.5rem)] w-full max-w-full overflow-x-hidden overflow-y-auto rounded-3xl bg-white p-5 shadow-2xl outline-none sm:max-h-[85vh] sm:p-6 ${panelClassName}`}
         onClick={(event) => event.stopPropagation()}

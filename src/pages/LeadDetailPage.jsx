@@ -106,6 +106,16 @@ function buildLeadActivityEvents({ lead, estimate, project, language, t }) {
           rank: 4,
         }
       : null,
+    hasSavedEstimate(estimate)
+      ? {
+          id: `lead-rejected-${estimate?.id || 'linked'}`,
+          type: 'rejected',
+          label: t('leadActivityEstimateDeclined'),
+          dateValue: estimate?.rejectedAt || estimate?.rejected_at,
+          detail: estimate?.number || estimate?.estimateNumber || '',
+          rank: 4,
+        }
+      : null,
     project?.id
       ? {
           id: `converted-to-job-${project.id}`,
