@@ -26,7 +26,8 @@
     "verify:project-workspace": "node scripts/verify-project-workspace.mjs",
     "verify:direct-project-lifecycle": "node scripts/verify-direct-project-lifecycle.mjs",
     "verify:estimate-client-response": "node scripts/verify-estimate-client-response.mjs",
-    "verify:estimate-finalization": "node scripts/verify-estimate-finalization.mjs"
+    "verify:estimate-finalization": "node scripts/verify-estimate-finalization.mjs",
+    "verify:estimate-polish": "node scripts/verify-estimate-polish.mjs"
   },
   "dependencies": {
     "@vitejs/plugin-react": "latest",

@@ -19,6 +19,7 @@ import { tStatus } from '../../translations'
 import { getPaymentTermLabel } from '../../utils/paymentTerms'
 import { resolveEstimatePricingMode } from '../../utils/estimateDocument'
 import { isUpcomingClientScheduleEvent } from '../../utils/scheduleEvents'
+import { getEstimatePortalStatusPresentation } from '../../utils/estimateClientResponse'
 import {
   buildContractNotesAndTermsItems as buildCanonicalContractNotesAndTermsItems,
   buildContractWorkBreakdownFromEstimate,
@@ -219,14 +220,21 @@ function DocumentPreviewModal({ isOpen, title, onClose, onPrimaryAction, primary
   )
 }
 
-function DocumentRow({ title, details = [], primaryAction = null, secondaryAction = null }) {
+function DocumentRow({ title, details = [], statusPresentation = null, primaryAction = null, secondaryAction = null, t = (key) => key }) {
   const visibleDetails = details.filter((detail) => detail?.label && detail?.value)
 
   return (
     <div data-portal-document-card="true" className="rounded-2xl border border-slate-200 bg-slate-50 p-4 sm:p-5">
       <div className="flex flex-col gap-3 lg:flex-row lg:items-center lg:justify-between">
         <div className="min-w-0 flex-1">
-          <p className="text-sm font-bold text-slate-950">{title}</p>
+          <div className="flex flex-wrap items-center gap-2">
+            <p className="text-sm font-bold text-slate-950">{title}</p>
+            {statusPresentation ? (
+              <span className={`inline-flex min-h-6 max-w-full items-center rounded-full px-2.5 py-1 text-xs font-bold leading-none ring-1 ${statusPresentation.className}`}>
+                {t(statusPresentation.labelKey)}
+              </span>
+            ) : null}
+          </div>
           {visibleDetails.length ? (
             <div data-portal-document-details="true" className="mt-2 grid gap-3 sm:grid-cols-2">
               {visibleDetails.map((detail) => (
@@ -307,6 +315,7 @@ export function PortalSummary({
   const contractNumber = contract ? getContractDisplayNumber(contract, project) : ''
   const contractSignedDate = resolveExplicitContractSignedDate(contract)
   const contractCardAmount = resolveContractCardAmount(contract)
+  const estimateStatusPresentation = getEstimatePortalStatusPresentation(estimate?.status)
   const contractOutputLanguage = contract?.contractLanguage && contract.contractLanguage !== 'match' ? contract.contractLanguage : null
   const contractDocumentT = useMemo(() => (
     contractOutputLanguage ? createTranslator(contractOutputLanguage) : t
@@ -510,6 +519,8 @@ export function PortalSummary({
               {hasEstimate ? (
                 <DocumentRow
                   title={t('estimate')}
+                  statusPresentation={estimateStatusPresentation}
+                  t={t}
                   details={[
                     { label: t('estimateAmount'), value: formatCurrencyValue(estimate?.total ?? estimate?.totalAmount ?? estimate?.amount, t('notAdded')) },
                   ]}
