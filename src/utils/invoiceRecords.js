@@ -127,6 +127,13 @@ export function findRelatedLeadForInvoice(leads = [], invoice = {}) {
     return linkedLead
   }
 
+  // A Project is the authoritative relationship when projectId is present.
+  // Falling back by Client here can attach a direct Client -> Project invoice
+  // to an unrelated historical Lead owned by the same Client.
+  if (invoice?.projectId || invoice?.project_id) {
+    return null
+  }
+
   const invoiceClientId = String(invoice?.clientId || invoice?.client_id || '').trim()
   const invoiceClientSlug = getClientSlug(invoice?.client || invoice?.clientName || invoice?.customerName || '')
 
@@ -238,5 +245,5 @@ export function hydrateInvoiceRecord(invoice = {}, { leads = [], payments = [], 
 }
 
 export function dedupeInvoiceRecords(records = []) {
-  return dedupeById(records, ['projectId', 'project_id', 'leadId', 'lead_id', 'number', 'invoiceNumber'])
+  return dedupeById(records, ['number', 'invoiceNumber', 'invoice_number'])
 }
