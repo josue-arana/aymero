@@ -1,5 +1,5 @@
 import { useMemo, useRef, useState } from 'react'
-import { Archive, CheckCircle2, Clock, DollarSign, FileText, MoreVertical, Send, Trash2, Undo2, XCircle } from 'lucide-react'
+import { Archive, CheckCircle2, Clock, DollarSign, FileText, MoreVertical, Plus, Send, Trash2, Undo2, XCircle } from 'lucide-react'
 import { MetricCard } from '../components/ui/MetricCard'
 import { SelectField } from '../components/ui/SelectField'
 import { StatusBadge } from '../components/ui/StatusBadge'
@@ -39,7 +39,7 @@ function formatLocalizedInvoiceDate(value, language = 'en') {
   })
 }
 
-export function InvoicesPage({ leads, clients = [], invoices: invoiceRecords = [], archivedIds = [], deletedIds = [], onViewInvoice, onRecordPayment, onArchiveInvoice, onRestoreInvoice, onDeleteInvoice, onInvoiceSent, t, appLanguage = 'en' }) {
+export function InvoicesPage({ leads, clients = [], invoices: invoiceRecords = [], archivedIds = [], deletedIds = [], onCreateInvoice, onViewInvoice, onRecordPayment, onArchiveInvoice, onRestoreInvoice, onDeleteInvoice, onInvoiceSent, t, appLanguage = 'en' }) {
   const [selectedFilter, setSelectedFilter] = useState('All')
   const [confirmAction, setConfirmAction] = useState(null)
   const [sendInvoice, setSendInvoice] = useState(null)
@@ -242,6 +242,9 @@ export function InvoicesPage({ leads, clients = [], invoices: invoiceRecords = [
             <h1 className="text-3xl font-bold tracking-tight sm:text-4xl">{t('invoicesManagement')}</h1>
             <p className="mt-3 max-w-2xl text-sm leading-6 text-slate-300 sm:text-base">{t('invoicesManagementHelp')}</p>
           </div>
+          <button type="button" onClick={onCreateInvoice} className="inline-flex min-h-12 w-full items-center justify-center gap-2 rounded-2xl bg-white px-5 py-3 text-sm font-bold text-slate-950 shadow-lg transition hover:bg-slate-100 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-blue-200 focus-visible:ring-offset-2 focus-visible:ring-offset-slate-950 md:w-auto">
+            <Plus className="h-4 w-4" aria-hidden="true" /> {t('newInvoice')}
+          </button>
         </div>
       </section>
 

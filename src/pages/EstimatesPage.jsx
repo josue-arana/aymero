@@ -16,14 +16,15 @@ import { dedupeById, findLeadByProjectLookup, resolveLinkedProjectId } from '../
 import estimatesHeroBackground from '../assets/page-heroes/estimates-bg.png'
 import { buildHeroBackgroundStyle } from '../utils/heroBackground'
 import { resolveEstimateArchiveState } from '../utils/archiveLifecycle'
-import { canCreateContractFromEstimate, normalizeEstimateFinalizationStatus } from '../utils/estimateFinalization'
+import { canCreateContractFromEstimate, canEditEstimate, normalizeEstimateFinalizationStatus } from '../utils/estimateFinalization'
 
-const estimateFilters = ['All', 'Archived', 'Draft', 'Sent', 'Approved', 'Rejected', 'Converted to Contract']
+const estimateFilters = ['All', 'Archived', 'Draft', 'Saved', 'Sent', 'Approved', 'Rejected', 'Converted to Contract']
 
 function getEstimateStatus(lead) {
   if (lead.portal?.contract?.status === 'Signed') return 'Converted to Contract'
   if (lead.portal?.contract?.id || lead.portal?.contract?.number || lead.portal?.contract?.contractNumber) return 'Converted to Contract'
-  if (lead.portal?.estimate?.status === 'Converted to Contract') return 'Converted to Contract'
+  const estimateStatus = String(lead.portal?.estimate?.status || '').trim()
+  if (['Draft', 'Saved', 'Sent', 'Approved', 'Rejected', 'Converted to Contract'].includes(estimateStatus)) return estimateStatus
   if (lead.status === 'Estimate Sent') return 'Sent'
   if (lead.status === 'Won') return 'Approved'
   if (lead.status === 'Contacted') return 'Draft'
@@ -51,6 +52,9 @@ export function EstimatesPage({ leads, estimates = [], contracts = [], archivedI
       amount: estimate.total || lead.value,
       status,
       dateCreated: estimate.dateCreated || estimate.createdAt || contract?.signedDate || 'June 2026',
+      updatedAt: estimate.updatedAt || estimate.updated_at || '',
+      approvedAt: estimate.approvedAt || estimate.approved_at || '',
+      rejectedAt: estimate.rejectedAt || estimate.rejected_at || '',
       hasLinkedContract: Boolean(contract?.id || contract?.number || contract?.contractNumber),
       nextAction: (contract?.id || contract?.number || contract?.contractNumber)
         ? t('viewContract')
@@ -108,7 +112,12 @@ export function EstimatesPage({ leads, estimates = [], contracts = [], archivedI
   }), [archivedIds, contracts, estimates, leads, t])
 
   const usesSupabaseEstimates = USE_SUPABASE || USE_SUPABASE_ESTIMATES
-  const estimateRows = usesSupabaseEstimates && persistedEstimates.length > 0 ? persistedEstimates : leadBackedEstimates
+  const estimateRows = [...(usesSupabaseEstimates && persistedEstimates.length > 0 ? persistedEstimates : leadBackedEstimates)]
+    .sort((left, right) => {
+      const leftTimestamp = Date.parse(left.updatedAt || left.approvedAt || left.rejectedAt || left.dateCreated || '') || 0
+      const rightTimestamp = Date.parse(right.updatedAt || right.approvedAt || right.rejectedAt || right.dateCreated || '') || 0
+      return rightTimestamp - leftTimestamp || String(left.estimateNumber || '').localeCompare(String(right.estimateNumber || ''))
+    })
 
   const activeEstimates = estimateRows.filter((estimate) => !estimate.isArchived)
   const filteredEstimates = selectedFilter === 'All'
@@ -166,7 +175,7 @@ export function EstimatesPage({ leads, estimates = [], contracts = [], archivedI
     const showProjectAction = !isArchived
       && estimate.canUseProjectActions !== false
       && (estimate.hasLinkedContract || canCreateContractFromEstimate(lifecycleStatus))
-    const primaryEstimateActionLabel = ['draft', 'saved'].includes(lifecycleStatus)
+    const primaryEstimateActionLabel = canEditEstimate(lifecycleStatus)
       ? t('editEstimate')
       : t('viewEstimate')
     const moreMenuItems = isArchived

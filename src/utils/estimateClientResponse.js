@@ -46,4 +46,24 @@ export function getEstimateClientResponseView(status) {
   }
 }
 
+export function getEstimatePortalStatusPresentation(status) {
+  const normalizedStatus = normalizeEstimateClientResponseStatus(status)
+  const presentations = {
+    sent: {
+      labelKey: 'portalEstimateAwaitingResponse',
+      className: 'bg-blue-50 text-blue-700 ring-blue-100',
+    },
+    approved: {
+      labelKey: 'portalEstimateApproved',
+      className: 'bg-emerald-50 text-emerald-700 ring-emerald-100',
+    },
+    rejected: {
+      labelKey: 'portalEstimateDeclined',
+      className: 'bg-rose-50 text-rose-700 ring-rose-100',
+    },
+  }
+
+  return presentations[normalizedStatus] || null
+}
+
 export default getEstimateClientResponseView

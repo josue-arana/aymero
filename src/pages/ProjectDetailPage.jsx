@@ -1,5 +1,5 @@
 import { Component, useEffect, useMemo, useState } from 'react'
-import { Archive, CalendarDays, Camera, ChevronLeft, ChevronRight, Copy, Edit3, ExternalLink, FileText, MapPin, MoreVertical, Share2, DollarSign, Trash2, Undo2, X } from 'lucide-react'
+import { Archive, CalendarDays, Camera, CheckCircle2, ChevronLeft, ChevronRight, Copy, Edit3, ExternalLink, FileText, MapPin, MoreVertical, Share2, DollarSign, Trash2, Undo2, X } from 'lucide-react'
 import { useLocation, useNavigate, useParams } from 'react-router-dom'
 import { ActionMenu } from '../components/common/ActionMenu'
 import { RecordBackButton } from '../components/common/RecordBackButton'
@@ -406,7 +406,7 @@ class ProjectDetailErrorBoundary extends Component {
   }
 }
 
-function ProjectDetailPageContent({ lead, companySettings, clients = [], invoices = [], scheduleEvents = [], archivedScheduleEventIds = [], isArchived = false, onBack, onOpenPortal, onOpenContract, onConvertEstimate, onUpdateLead, onRecordPayment, onUpdatePayment, onDeletePayment, onUploadPhotos, onScheduleEvent, onEditScheduleEvent, onExportEvent, onArchiveScheduleEvent, onRestoreScheduleEvent, onDeleteScheduleEvent, onArchiveProject, onRestoreProject, onDeleteProject, language = 'en', t }) {
+function ProjectDetailPageContent({ lead, companySettings, clients = [], invoices = [], scheduleEvents = [], archivedScheduleEventIds = [], isArchived = false, onBack, onOpenPortal, onOpenContract, onConvertEstimate, onCreateInvoice, onMarkProjectComplete, onUpdateLead, onRecordPayment, onUpdatePayment, onDeletePayment, onUploadPhotos, onScheduleEvent, onEditScheduleEvent, onExportEvent, onArchiveScheduleEvent, onRestoreScheduleEvent, onDeleteScheduleEvent, onArchiveProject, onRestoreProject, onDeleteProject, language = 'en', t }) {
   const { id, leadId } = useParams()
   const location = useLocation()
   const navigate = useNavigate()
@@ -1109,14 +1109,15 @@ function ProjectDetailPageContent({ lead, companySettings, clients = [], invoice
     return <ProjectDetailFallbackState onBack={onBack} t={t} />
   }
 
+  const projectIsCompleted = workspaceViewModel.projectStatus === 'Completed'
   const actionButtons = projectIsArchived
     ? [{ label: t('edit'), icon: Edit3, action: () => setIsEditOpen(true) }]
     : [
         { label: t('recordPayment'), icon: DollarSign, action: () => { setEditingPayment(null); setShowPaymentModal(true) }, primary: true, disabled: !canRecordPayment },
-        { label: t('scheduleJob'), icon: CalendarDays, action: onScheduleEvent },
+        !projectIsCompleted ? { label: t('scheduleJob'), icon: CalendarDays, action: onScheduleEvent } : null,
         { label: t('uploadPhotos'), icon: Camera, action: () => setShowPhotoModal(true) },
         { label: t('edit'), icon: Edit3, action: () => setIsEditOpen(true) },
-      ]
+      ].filter(Boolean)
   const moreMenuItems = [
     hasEstimate
       ? {
@@ -1147,6 +1148,14 @@ function ProjectDetailPageContent({ lead, companySettings, clients = [], invoice
           label: t('viewClient'),
           icon: <ExternalLink className="mr-2 h-4 w-4" />,
           onClick: () => navigate(`/clients/${currentLead.clientId}`),
+        }
+      : null,
+    !projectIsArchived && !projectIsCompleted
+      ? {
+          id: 'mark-project-complete',
+          label: t('markJobComplete'),
+          icon: <CheckCircle2 className="mr-2 h-4 w-4" />,
+          onClick: () => setConfirmAction({ mode: 'complete' }),
         }
       : null,
     projectIsArchived
@@ -1182,6 +1191,13 @@ function ProjectDetailPageContent({ lead, companySettings, clients = [], invoice
     ? formatProjectDetailDate(resolvedContract.signedDate, resolvedContract.signedDate)
     : ''
   const projectStatus = workspaceViewModel.projectStatus
+  const completionConfirmationMessage = [
+    t('markJobCompleteHelp'),
+    workspaceViewModel.upcomingEvents.length > 0 ? t('projectCompletionUpcomingEventsWarning') : '',
+    isAnalyticsMode && workspaceViewModel.outstandingInvoiceBalance > 0
+      ? t('projectCompletionOutstandingBalanceWarning', { amount: currency.format(workspaceViewModel.outstandingInvoiceBalance) })
+      : '',
+  ].filter(Boolean).join(' ')
   const rawProjectValue = baseProject?.value
     ?? baseProject?.estimatedValue
     ?? baseProject?.contractValue
@@ -1698,9 +1714,16 @@ function ProjectDetailPageContent({ lead, companySettings, clients = [], invoice
       </div>
       <section className="contents">
         <div className="min-w-0 rounded-3xl border border-slate-200 bg-white p-5 shadow-sm md:col-span-2 xl:col-span-3">
-          <div className="mb-4">
-            <h2 className="text-xl font-bold text-slate-950">{t('projectDocuments')}</h2>
-            <p className="text-sm text-slate-500">{t('documents')}</p>
+          <div className="mb-4 flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
+            <div>
+              <h2 className="text-xl font-bold text-slate-950">{t('projectDocuments')}</h2>
+              <p className="text-sm text-slate-500">{t('documents')}</p>
+            </div>
+            {!projectIsArchived ? (
+              <button type="button" onClick={onCreateInvoice} className="inline-flex min-h-11 w-full items-center justify-center gap-2 rounded-2xl border border-blue-200 bg-blue-50 px-4 py-2.5 text-sm font-bold text-blue-700 transition hover:bg-blue-100 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-blue-500 focus-visible:ring-offset-2 sm:w-auto">
+                <FileText className="h-4 w-4" aria-hidden="true" /> {t('createInvoice')}
+              </button>
+            ) : null}
           </div>
           <div className="space-y-2.5">
             {resolvedEstimate ? (
@@ -2111,12 +2134,18 @@ function ProjectDetailPageContent({ lead, companySettings, clients = [], invoice
       <ConfirmRecordModal
         isOpen={Boolean(confirmAction)}
         mode={confirmAction?.mode}
-        title={confirmAction?.mode === 'delete' ? t('confirmPermanentDelete') : t('confirmArchive')}
-        message={confirmAction?.mode === 'delete' ? t('permanentDeleteHelp') : t('archiveHelp')}
-        confirmLabel={confirmAction?.mode === 'delete' ? t('deletePermanently') : t('archive')}
+        title={confirmAction?.mode === 'complete' ? t('markJobCompleteTitle') : confirmAction?.mode === 'delete' ? t('confirmPermanentDelete') : t('confirmArchive')}
+        message={confirmAction?.mode === 'complete' ? completionConfirmationMessage : confirmAction?.mode === 'delete' ? t('permanentDeleteHelp') : t('archiveHelp')}
+        confirmLabel={confirmAction?.mode === 'complete' ? t('markComplete') : confirmAction?.mode === 'delete' ? t('deletePermanently') : t('archive')}
         onCancel={() => setConfirmAction(null)}
         onConfirm={async () => {
           try {
+            if (confirmAction?.mode === 'complete') {
+              const completedProject = await onMarkProjectComplete?.(currentLead)
+              if (!completedProject?.id) throw new Error(t('projectCompletionFailed'))
+              setProject((current) => ({ ...(current || currentLead), ...completedProject }))
+              showToast(t('projectMarkedComplete'), 'success')
+            }
             if (confirmAction?.mode === 'archive') {
               const response = await dataProvider?.projects?.archive?.(currentLead.id, { contractorId })
               if (response?.error) throw response.error
@@ -2136,7 +2165,7 @@ function ProjectDetailPageContent({ lead, companySettings, clients = [], invoice
               projectId: currentLead.id,
               contractorId,
             })
-            showToast(t(confirmAction?.mode === 'delete' ? 'projectDeleteFailed' : 'archiveFailed'), 'error')
+            showToast(t(confirmAction?.mode === 'complete' ? 'projectCompletionFailed' : confirmAction?.mode === 'delete' ? 'projectDeleteFailed' : 'archiveFailed'), 'error')
           }
           setConfirmAction(null)
         }}

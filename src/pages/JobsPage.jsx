@@ -22,7 +22,7 @@ import { buildHeroBackgroundStyle } from '../utils/heroBackground'
 import { useToast } from '../components/common/ToastProvider'
 import { deriveProjectStatus } from '../utils/projectLifecycle'
 
-export function JobsPage({ leads, clients = [], archivedIds = [], sampleWorkspace, onViewJob, onViewLead, onCreateJob, onArchiveJob, onRestoreJob, onDeleteJob, t }) {
+export function JobsPage({ leads, projectRecords = [], clients = [], archivedIds = [], sampleWorkspace, onViewJob, onViewLead, onCreateJob, onArchiveJob, onRestoreJob, onDeleteJob, t }) {
   const [selectedFilter, setSelectedFilter] = useState('All')
   const [confirmAction, setConfirmAction] = useState(null)
   const [projects, setProjects] = useState([])
@@ -89,7 +89,7 @@ export function JobsPage({ leads, clients = [], archivedIds = [], sampleWorkspac
   }, [contractorId, leads.length])
 
   const jobs = useMemo(() => {
-    const sourceRecords = USE_SUPABASE_PROJECTS ? projects : leads
+    const sourceRecords = USE_SUPABASE_PROJECTS ? projects : (projectRecords.length ? projectRecords : leads)
 
     return sourceRecords
       .filter((lead) => (
@@ -187,7 +187,7 @@ export function JobsPage({ leads, clients = [], archivedIds = [], sampleWorkspac
           nextStep: lead.nextStep || lead.notes || t('projectStatus'),
         }
       })
-  }, [archivedIds, clientNameById, leads, projectContracts, projectEvents, projectPayments, projects, t])
+  }, [archivedIds, clientNameById, leads, projectContracts, projectEvents, projectPayments, projectRecords, projects, t])
 
   const activeJobsList = jobs.filter((job) => !isArchivedJob(job))
   const filteredJobs = selectedFilter === 'All'

@@ -222,6 +222,24 @@ export function PublicEstimatePage() {
           </button>
         </div>
         {printError ? <p role="alert" className="mb-4 rounded-2xl border border-red-200 bg-red-50 px-4 py-3 text-sm font-semibold text-red-700">{printError}</p> : null}
+        {responseView.isApproved ? (
+          <section role="status" className="mb-5 rounded-3xl border border-emerald-200 bg-emerald-50 p-5 shadow-sm sm:p-7">
+            <h2 className="text-xl font-bold text-emerald-950">{t('publicEstimateApprovedTitle')}</h2>
+            <p className="mt-2 text-sm leading-6 text-emerald-800">{t('publicEstimateApprovedHelp')}</p>
+          </section>
+        ) : null}
+        {responseView.isRejected ? (
+          <section role="status" className="mb-5 rounded-3xl border border-slate-300 bg-white p-5 shadow-sm sm:p-7">
+            <h2 className="text-xl font-bold text-slate-950">{t('publicEstimateDeclinedTitle')}</h2>
+            <p className="mt-2 text-sm leading-6 text-slate-600">{t('publicEstimateDeclinedHelp')}</p>
+          </section>
+        ) : null}
+        {responseView.isConverted ? (
+          <section role="status" className="mb-5 rounded-3xl border border-blue-200 bg-blue-50 p-5 shadow-sm sm:p-7">
+            <h2 className="text-xl font-bold text-blue-950">{t('publicEstimateConvertedTitle')}</h2>
+            <p className="mt-2 text-sm leading-6 text-blue-800">{t('publicEstimateConvertedHelp')}</p>
+          </section>
+        ) : null}
         <section aria-label={t('previewEstimate')} className="min-w-0 overflow-hidden rounded-3xl bg-white p-2 shadow-sm sm:p-3">
           <PaginatedEstimatePreview uiT={t}>
             <EstimatePdfTemplate {...previewProps} />
@@ -239,24 +257,6 @@ export function PublicEstimatePage() {
                 {t('declineEstimate')}
               </button>
             </div>
-          </section>
-        ) : null}
-        {responseView.isApproved ? (
-          <section role="status" className="mt-5 rounded-3xl border border-emerald-200 bg-emerald-50 p-5 shadow-sm sm:p-7">
-            <h2 className="text-xl font-bold text-emerald-950">{t('publicEstimateApprovedTitle')}</h2>
-            <p className="mt-2 text-sm leading-6 text-emerald-800">{t('publicEstimateApprovedHelp')}</p>
-          </section>
-        ) : null}
-        {responseView.isRejected ? (
-          <section role="status" className="mt-5 rounded-3xl border border-slate-300 bg-white p-5 shadow-sm sm:p-7">
-            <h2 className="text-xl font-bold text-slate-950">{t('publicEstimateDeclinedTitle')}</h2>
-            <p className="mt-2 text-sm leading-6 text-slate-600">{t('publicEstimateDeclinedHelp')}</p>
-          </section>
-        ) : null}
-        {responseView.isConverted ? (
-          <section role="status" className="mt-5 rounded-3xl border border-blue-200 bg-blue-50 p-5 shadow-sm sm:p-7">
-            <h2 className="text-xl font-bold text-blue-950">{t('publicEstimateConvertedTitle')}</h2>
-            <p className="mt-2 text-sm leading-6 text-blue-800">{t('publicEstimateConvertedHelp')}</p>
           </section>
         ) : null}
       </div>
