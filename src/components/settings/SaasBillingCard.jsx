@@ -14,6 +14,7 @@ import {
   canStartSaasBillingCheckout,
   getSaasBillingPaymentPresentation,
   getSaasBillingStatusPresentation,
+  isSaasBillingCancellationScheduled,
 } from '../../utils/saasBilling'
 
 const manageableRoles = new Set(['owner', 'admin'])
@@ -67,7 +68,7 @@ export function SaasBillingCard({ language, t }) {
   const [isOpeningPortal, setIsOpeningPortal] = useState(false)
   const [loadError, setLoadError] = useState('')
   const [returnState] = useState(getReturnState)
-  const [isSyncPending, setIsSyncPending] = useState(returnState === 'success')
+  const [isSyncPending, setIsSyncPending] = useState(['success', 'portal'].includes(returnState))
   const [isSyncDelayed, setIsSyncDelayed] = useState(false)
   const hasHandledReturnRef = useRef(false)
 
@@ -81,6 +82,7 @@ export function SaasBillingCard({ language, t }) {
   const paymentPresentation = getSaasBillingPaymentPresentation(subscription?.last_payment_status)
   const needsPaymentAttention = Boolean(statusPresentation.needsAttention || paymentPresentation?.needsAttention)
   const canStartNewSubscription = canStartSaasBillingCheckout(subscription)
+  const isCancellationScheduled = isSaasBillingCancellationScheduled(subscription)
 
   const formattedRenewalDate = useMemo(() => formatDisplayDate(
     subscription?.current_period_end,
@@ -148,6 +150,12 @@ export function SaasBillingCard({ language, t }) {
       setHasAuthoritativeResult(true)
       setLoadError('')
       setIsLoading(false)
+
+      if (isPortalReturn && attempt < billingSyncMaxRetries) {
+        setIsSyncPending(true)
+        timer = window.setTimeout(() => loadAfterReturn(attempt + 1), billingSyncRetryDelayMs)
+        return
+      }
 
       if (result.data) {
         setIsSyncPending(false)
@@ -280,8 +288,17 @@ export function SaasBillingCard({ language, t }) {
               {subscription ? (
                 <div className="mt-5">
                   <div className="flex min-w-0 flex-col items-start gap-2 rounded-2xl border border-slate-200 bg-slate-50 p-4 sm:flex-row sm:items-center">
-                    <BillingStatusBadge label={t(statusPresentation.labelKey)} tone={statusPresentation.tone} />
-                    <p className="min-w-0 text-sm leading-6 text-slate-700">{t(statusPresentation.descriptionKey)}</p>
+                    <BillingStatusBadge
+                      label={isCancellationScheduled && formattedRenewalDate
+                        ? t('billingCancellationScheduledStatus', { date: formattedRenewalDate })
+                        : t(statusPresentation.labelKey)}
+                      tone={isCancellationScheduled ? 'warning' : statusPresentation.tone}
+                    />
+                    <p className="min-w-0 text-sm leading-6 text-slate-700">
+                      {isCancellationScheduled && formattedRenewalDate
+                        ? t('billingCancellationScheduledMessage', { date: formattedRenewalDate })
+                        : t(statusPresentation.descriptionKey)}
+                    </p>
                   </div>
 
                   {(formattedRenewalDate || paymentPresentation) ? (
@@ -306,7 +323,7 @@ export function SaasBillingCard({ language, t }) {
               {isSyncPending ? (
                 <div className="mt-4 flex items-start gap-2 rounded-2xl border border-blue-200 bg-blue-50 p-4 text-sm font-semibold leading-6 text-blue-900" role="status">
                   <LoaderCircle className="mt-0.5 h-4 w-4 shrink-0 animate-spin" aria-hidden="true" />
-                  <span>{t('billingSyncPending')}</span>
+                  <span>{t(returnState === 'portal' ? 'billingPortalSyncPending' : 'billingSyncPending')}</span>
                 </div>
               ) : null}
 
@@ -364,7 +381,9 @@ export function SaasBillingCard({ language, t }) {
                     className="inline-flex min-h-12 w-full items-center justify-center gap-2 rounded-2xl bg-blue-600 px-5 text-sm font-bold text-white transition hover:bg-blue-700 focus-visible:outline-none focus-visible:ring-4 focus-visible:ring-blue-100 disabled:cursor-not-allowed disabled:opacity-60"
                   >
                     {isStartingCheckout ? <LoaderCircle className="h-4 w-4 animate-spin" aria-hidden="true" /> : <CreditCard className="h-4 w-4" aria-hidden="true" />}
-                    {isStartingCheckout ? t('billingOpeningCheckout') : t('billingSubscribeWithStripe')}
+                    {isStartingCheckout
+                      ? t('billingOpeningCheckout')
+                      : t(subscription?.status === 'canceled' ? 'billingSubscribeAgain' : 'billingSubscribeWithStripe')}
                   </button>
                 ) : (
                   <p className="rounded-2xl border border-slate-200 bg-slate-50 p-4 text-sm leading-6 text-slate-600">{t('billingOwnerAdminOnly')}</p>

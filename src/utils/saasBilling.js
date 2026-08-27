@@ -64,6 +64,12 @@ export function getSaasBillingPaymentPresentation(lastPaymentStatus) {
   return null
 }
 
+export function isSaasBillingCancellationScheduled(subscription) {
+  const status = normalizeSaasBillingStatus(subscription?.status)
+  return Boolean(subscription?.cancel_at_period_end)
+    && (status === 'active' || status === 'trialing')
+}
+
 export function canStartSaasBillingCheckout(subscription) {
   if (!subscription) return true
   return terminalSubscriptionStatuses.has(normalizeSaasBillingStatus(subscription.status))
