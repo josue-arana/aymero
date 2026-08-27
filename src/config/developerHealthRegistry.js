@@ -1,3 +1,28 @@
+const saasBillingBacklog = [
+  ['stripeCustomerPortal', 'technicalDebtStripePortalTitle', 'technicalDebtStripePortalDescription'],
+  ['subscriptionPlanChanges', 'technicalDebtBillingPlanChangesTitle', 'technicalDebtBillingPlanChangesDescription'],
+  ['subscriptionCancellationUx', 'technicalDebtBillingCancellationTitle', 'technicalDebtBillingCancellationDescription'],
+  ['pastDueGraceEnforcement', 'technicalDebtBillingGraceTitle', 'technicalDebtBillingGraceDescription'],
+  ['billingNotifications', 'technicalDebtBillingNotificationsTitle', 'technicalDebtBillingNotificationsDescription'],
+  ['billingPlanCatalog', 'technicalDebtBillingCatalogTitle', 'technicalDebtBillingCatalogDescription'],
+  ['annualBilling', 'technicalDebtAnnualBillingTitle', 'technicalDebtAnnualBillingDescription'],
+  ['billingTrialsDiscounts', 'technicalDebtBillingPromotionsTitle', 'technicalDebtBillingPromotionsDescription'],
+  ['stripeTaxHandling', 'technicalDebtBillingTaxTitle', 'technicalDebtBillingTaxDescription'],
+].map(([id, titleKey, descriptionKey]) => ({
+  id,
+  titleKey,
+  descriptionKey,
+  severity: 'low',
+  affectedAreaKey: 'technicalDebtAreaSaasBilling',
+  nextActionKey: 'technicalDebtSaasBillingSprint2NextAction',
+  classification: 'backlog',
+  whyItMattersKey: 'technicalDebtSaasBillingWhy',
+  priority: 'medium',
+  dependencyKeys: ['technicalDebtDependencyStripeFoundation', 'technicalDebtDependencyBillingPolicy'],
+  futureSprintAreaKey: 'technicalDebtSprintSaasBillingManagement',
+  sourceHint: `developerHealthRegistry.todoItems.${id}`,
+}))
+
 export const technicalDebtRegistry = {
   releaseReadinessEvidence: {
     rlsPoliciesDrafted: {
@@ -76,6 +101,7 @@ export const technicalDebtRegistry = {
       futureSprintAreaKey: 'technicalDebtSprintClientCommunication',
       sourceHint: 'developerHealthRegistry.todoItems',
     },
+    ...saasBillingBacklog,
   ],
   comingSoonPages: [
     {

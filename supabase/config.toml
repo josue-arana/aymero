@@ -1,0 +1,5 @@
+[functions.stripe-billing-webhook]
+verify_jwt = false
+
+[functions.create-billing-checkout]
+verify_jwt = true

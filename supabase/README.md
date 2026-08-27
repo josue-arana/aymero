@@ -16,6 +16,13 @@ Those migrations:
 - enables contractor-scoped RLS on `public.project_photos`
 - adds contractor-scoped `storage.objects` policies for project photo files
 
+## Aymero SaaS Billing
+
+The contractor-to-Aymero Stripe subscription foundation is documented in
+`docs/SAAS_BILLING_FOUNDATION.md`. Apply
+`supabase/migrations/20260826_add_saas_billing_foundation.sql` before deploying
+the dedicated Checkout and webhook Edge Functions.
+
 If this migration has not been applied yet, the app will show:
 
 - `Project photo storage is not set up yet.`

@@ -29,7 +29,8 @@
     "verify:estimate-finalization": "node scripts/verify-estimate-finalization.mjs",
     "verify:estimate-polish": "node scripts/verify-estimate-polish.mjs",
     "verify:invoice-creation": "node scripts/verify-invoice-creation.mjs",
-    "verify:project-completion": "node scripts/verify-project-completion.mjs"
+    "verify:project-completion": "node scripts/verify-project-completion.mjs",
+    "verify:saas-billing": "node scripts/verify-saas-billing-foundation.mjs"
   },
   "dependencies": {
     "@vitejs/plugin-react": "latest",

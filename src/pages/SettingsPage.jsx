@@ -26,6 +26,7 @@ import {
   parseBrandColor,
 } from '../data/brandColors'
 import { normalizeSupportedLanguage } from '../utils/language'
+import { SaasBillingCard } from '../components/settings/SaasBillingCard'
 
 function getSettingsUiErrorMessage(error, t) {
   if (error?.code === 'ANALYTICS_MODE_COLUMN_MISSING') {
@@ -444,6 +445,8 @@ export function SettingsPage({ settings, onSaveSettings, onOpenCompanySetup, onC
         onConfirm={runSampleAction}
         t={t}
       />
+
+      <SaasBillingCard language={language} t={t} />
 
       <section className="grid items-start gap-5 lg:grid-cols-[minmax(0,1fr)_360px]">
         <div className="space-y-5">
