@@ -2075,6 +2075,7 @@ export const es = {
   ,"releaseCheckPortalIsolation": "Aislamiento de tokens del portal"
   ,"releaseCheckProductionEnvironment": "Entorno de producción"
   ,"releaseCheckDeveloperRoutes": "Exposición de rutas de desarrollo"
+  ,"releaseCheckBillingLiveCutover": "Transición de facturación de Stripe a producción"
   ,"releaseEvidenceSiteDomain": "https://aymero.co respondió con HTTPS 200 y sirvió el documento de Aymero."
   ,"releaseEvidenceAppDomain": "https://app.aymero.co respondió con HTTPS 200 y cargó la interfaz de autenticación de Aymero."
   ,"releaseEvidencePortalDomain": "El portal cargó directamente; un token inválido mostró el estado público seguro sin navegación del contratista."
@@ -2088,4 +2089,5 @@ export const es = {
   ,"releaseEvidencePortalIsolation": "PENDIENTE: no había dos tokens seguros de producción para comparar el aislamiento entre proyectos."
   ,"releaseEvidenceProductionEnvironment": "APROBADO: los recursos desplegados contienen todos los orígenes canónicos y la clave publicable del navegador, sin marcador de clave de servicio ni origen localhost configurado."
   ,"releaseEvidenceDeveloperRoutes": "APROBADO: la navegación directa a /dev/health en producción mostró la pantalla de autenticación y no expuso el centro de ingeniería."
+  ,"releaseEvidenceBillingLiveCutover": "PENDIENTE: aislar o eliminar las asignaciones de prueba de Stripe, configurar objetos y secretos independientes de producción, verificar funciones/RLS desplegados y completar una validación supervisada del webhook y Checkout en vivo."
 }

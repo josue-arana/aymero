@@ -64,7 +64,7 @@ STRIPE_PRICE_AYMERO_MANAGED_MONTHLY
 AYMERO_APP_URL
 ```
 
-`AYMERO_APP_URL` is the canonical app origin, for example `https://app.aymero.com` or local `http://localhost:5174`. Supabase provides `SUPABASE_URL` and `SUPABASE_SERVICE_ROLE_KEY` to deployed functions.
+`AYMERO_APP_URL` is the canonical app origin: `https://app.aymero.co` in production or a local origin such as `http://localhost:5174` for isolated development. Supabase provides `SUPABASE_URL` and `SUPABASE_SERVICE_ROLE_KEY` to deployed functions.
 
 Never place Stripe secret or webhook keys in `VITE_*`, React, browser configuration, or logs. Keep the Price mapping server-authoritative as well.
 
@@ -126,7 +126,7 @@ supabase db push
 supabase secrets set STRIPE_SECRET_KEY=sk_test_...
 supabase secrets set STRIPE_WEBHOOK_SECRET=whsec_...
 supabase secrets set STRIPE_PRICE_AYMERO_MANAGED_MONTHLY=price_...
-supabase secrets set AYMERO_APP_URL=https://app.example.com
+supabase secrets set AYMERO_APP_URL=https://app.aymero.co
 supabase functions deploy create-billing-checkout
 supabase functions deploy create-billing-portal
 supabase functions deploy stripe-billing-webhook --no-verify-jwt

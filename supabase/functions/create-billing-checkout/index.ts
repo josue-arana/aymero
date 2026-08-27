@@ -28,7 +28,7 @@ function readBearerToken(request: Request) {
 }
 
 function getSafeAppOrigin() {
-  const configuredUrl = String(Deno.env.get('AYMERO_APP_URL') || Deno.env.get('APP_URL') || '').trim()
+  const configuredUrl = String(Deno.env.get('AYMERO_APP_URL') || '').trim()
   try {
     const parsed = new URL(configuredUrl)
     const isLocal = ['localhost', '127.0.0.1'].includes(parsed.hostname)
