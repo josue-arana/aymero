@@ -1,5 +1,4 @@
 const saasBillingBacklog = [
-  ['stripeCustomerPortal', 'technicalDebtStripePortalTitle', 'technicalDebtStripePortalDescription'],
   ['subscriptionPlanChanges', 'technicalDebtBillingPlanChangesTitle', 'technicalDebtBillingPlanChangesDescription'],
   ['subscriptionCancellationUx', 'technicalDebtBillingCancellationTitle', 'technicalDebtBillingCancellationDescription'],
   ['pastDueGraceEnforcement', 'technicalDebtBillingGraceTitle', 'technicalDebtBillingGraceDescription'],

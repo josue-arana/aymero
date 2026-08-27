@@ -1,5 +1,5 @@
-import { supabaseClient } from '../lib/supabaseClient'
 import { getSupabaseEnvironmentConfig } from './system/environmentService'
+import { refreshSession } from './authService'
 
 export const AYMERO_MANAGED_PLAN_KEY = 'aymero_managed'
 
@@ -11,19 +11,73 @@ function normalizeError(error, fallbackMessage) {
   }
 }
 
-export async function getSaasBillingSubscription() {
+function createBillingServiceError(message, code, status = null) {
+  const error = new Error(message)
+  error.code = code
+  error.status = status
+  return error
+}
+
+async function parseResponse(response) {
+  const text = await response.text()
+  if (!text) return null
   try {
-    const rows = await supabaseClient.request('billing_subscriptions', {
+    return JSON.parse(text)
+  } catch {
+    return null
+  }
+}
+
+export async function getSaasBillingSubscription({ accessToken = '', contractorId = '' } = {}) {
+  const { supabaseUrl, supabaseAnonKey } = getSupabaseEnvironmentConfig()
+
+  try {
+    if (!supabaseUrl || !supabaseAnonKey) {
+      throw createBillingServiceError('Supabase billing configuration is missing.', 'BILLING_ENV_MISSING')
+    }
+    if (!accessToken || !contractorId) {
+      throw createBillingServiceError('Authenticated contractor billing context is required.', 'BILLING_CONTEXT_MISSING')
+    }
+
+    const query = new URLSearchParams({
+      select: 'id,contractor_id,plan_key,status,current_period_start,current_period_end,cancel_at_period_end,last_payment_status,created_at,updated_at',
+      contractor_id: `eq.${contractorId}`,
+      order: 'created_at.desc',
+      limit: '1',
+    })
+    const requestBillingRows = (token) => fetch(`${supabaseUrl.replace(/\/$/, '')}/rest/v1/billing_subscriptions?${query}`, {
       method: 'GET',
-      query: {
-        select: 'id,plan_key,status,current_period_start,current_period_end,cancel_at_period_end,last_payment_status,created_at,updated_at',
-        order: 'created_at.desc',
-        limit: '1',
+      headers: {
+        apikey: supabaseAnonKey,
+        Authorization: `Bearer ${token}`,
+        Accept: 'application/json',
+        'Cache-Control': 'no-store',
       },
+      cache: 'no-store',
     })
 
+    let response = await requestBillingRows(accessToken)
+    if (response.status === 401) {
+      const refreshResult = await refreshSession({ error: createBillingServiceError('Billing session expired.', 'BILLING_SESSION_EXPIRED', 401) })
+      if (refreshResult?.data?.access_token) {
+        response = await requestBillingRows(refreshResult.data.access_token)
+      }
+    }
+    const rows = await parseResponse(response)
+
+    if (!response.ok) {
+      throw createBillingServiceError(
+        rows?.message || 'Unable to load SaaS billing status.',
+        rows?.code || `BILLING_READ_${response.status}`,
+        response.status,
+      )
+    }
+    if (!Array.isArray(rows)) {
+      throw createBillingServiceError('Billing status returned an invalid response.', 'BILLING_RESPONSE_INVALID')
+    }
+
     return {
-      data: Array.isArray(rows) ? rows[0] || null : rows || null,
+      data: rows[0] || null,
       error: null,
     }
   } catch (error) {
@@ -78,7 +132,52 @@ export async function createSaasBillingCheckout({
   }
 }
 
+export async function createSaasBillingPortal({ accessToken = '' } = {}) {
+  const { supabaseUrl, supabaseAnonKey } = getSupabaseEnvironmentConfig()
+  if (!supabaseUrl || !supabaseAnonKey || !accessToken) {
+    return {
+      data: null,
+      error: {
+        message: 'Billing authentication is not available.',
+        code: 'BILLING_AUTH_UNAVAILABLE',
+        status: null,
+      },
+    }
+  }
+
+  try {
+    const response = await fetch(`${supabaseUrl.replace(/\/$/, '')}/functions/v1/create-billing-portal`, {
+      method: 'POST',
+      headers: {
+        apikey: supabaseAnonKey,
+        Authorization: `Bearer ${accessToken}`,
+        'Content-Type': 'application/json',
+      },
+      body: JSON.stringify({}),
+    })
+    const data = await response.json().catch(() => null)
+
+    if (!response.ok) {
+      const error = new Error(data?.error || 'Unable to open subscription management.')
+      error.code = data?.code || `BILLING_PORTAL_${response.status}`
+      error.status = response.status
+      throw error
+    }
+    if (!data?.url) {
+      throw createBillingServiceError('Subscription management URL is missing.', 'BILLING_PORTAL_URL_MISSING')
+    }
+
+    return { data: { url: data.url }, error: null }
+  } catch (error) {
+    return {
+      data: null,
+      error: normalizeError(error, 'Unable to open subscription management.'),
+    }
+  }
+}
+
 export default {
   getSaasBillingSubscription,
   createSaasBillingCheckout,
+  createSaasBillingPortal,
 }

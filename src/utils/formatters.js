@@ -11,7 +11,7 @@ export const currencyWithCents = new Intl.NumberFormat('en-US', {
   maximumFractionDigits: 2,
 })
 
-export function formatDisplayDate(value, fallback = '') {
+export function formatDisplayDate(value, fallback = '', locale) {
   if (!value) return fallback
 
   const parsedDate = value instanceof Date ? value : new Date(value)
@@ -20,7 +20,7 @@ export function formatDisplayDate(value, fallback = '') {
     return typeof value === 'string' ? value : fallback
   }
 
-  return parsedDate.toLocaleDateString(undefined, {
+  return parsedDate.toLocaleDateString(locale || undefined, {
     month: 'long',
     day: 'numeric',
     year: 'numeric',

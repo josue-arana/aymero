@@ -25,6 +25,7 @@ export function Topbar({
   userProfile,
   onSaveUserProfile,
   onOpenSettings,
+  onOpenSubscription,
   onCreateLead,
   onCreateJob,
 }) {
@@ -192,6 +193,7 @@ export function Topbar({
         userProfile={userProfile}
         onOpenScreen={openAccountScreen}
         onOpenSettings={onOpenSettings}
+        onOpenSubscription={onOpenSubscription}
         t={t}
       />
 

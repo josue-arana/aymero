@@ -16,6 +16,7 @@ const functionConfig = read('../supabase/config.toml')
 const billingService = read('../src/services/saasBillingService.js')
 const billingCard = read('../src/components/settings/SaasBillingCard.jsx')
 const settingsPage = read('../src/pages/SettingsPage.jsx')
+const subscriptionPage = read('../src/pages/SubscriptionPage.jsx')
 const environmentService = read('../src/services/system/environmentService.js')
 const backendConfig = read('../src/config/backendConfig.js')
 const healthRegistry = read('../src/config/developerHealthRegistry.js')
@@ -53,8 +54,8 @@ assert.ok(checkout.indexOf('existingSubscriptions?.length') < checkout.indexOf("
 
 // Stripe-hosted subscription Checkout returns safely and cannot activate browser state.
 assert.match(checkout, /mode: 'subscription'/)
-assert.match(checkout, /success_url: `\$\{appOrigin\}\/settings\?billing=success`/)
-assert.match(checkout, /cancel_url: `\$\{appOrigin\}\/settings\?billing=canceled`/)
+assert.match(checkout, /success_url: `\$\{appOrigin\}\/settings\/subscription\?billing=success`/)
+assert.match(checkout, /cancel_url: `\$\{appOrigin\}\/settings\/subscription\?billing=canceled`/)
 assert.match(billingCard, /billingSyncPending/)
 assert.doesNotMatch(billingService, /PATCH|POST.*billing_subscriptions|status:\s*['"]active/)
 
@@ -104,8 +105,9 @@ assert.doesNotMatch(migration, /billing_(?:customers|subscriptions)"[\s\S]{0,120
 
 // Frontend secrets are absent and the Settings card is bilingual/mobile-contained.
 assert.doesNotMatch(environmentService, /STRIPE_SECRET_KEY|STRIPE_WEBHOOK_SECRET/)
-assert.doesNotMatch(`${billingService}\n${billingCard}\n${settingsPage}`, /STRIPE_SECRET_KEY|STRIPE_WEBHOOK_SECRET/)
-assert.match(settingsPage, /<SaasBillingCard language=\{language\} t=\{t\}/)
+assert.doesNotMatch(`${billingService}\n${billingCard}\n${settingsPage}\n${subscriptionPage}`, /STRIPE_SECRET_KEY|STRIPE_WEBHOOK_SECRET/)
+assert.doesNotMatch(settingsPage, /SaasBillingCard/)
+assert.match(subscriptionPage, /<SaasBillingCard language=\{language\} t=\{t\}/)
 assert.match(billingCard, /min-w-0/)
 assert.match(billingCard, /w-full/)
 assert.match(billingCard, /billingPaymentAttention/)
@@ -132,7 +134,6 @@ for (const key of billingTranslationKeys) {
 }
 
 for (const backlogId of [
-  'stripeCustomerPortal',
   'subscriptionPlanChanges',
   'subscriptionCancellationUx',
   'pastDueGraceEnforcement',

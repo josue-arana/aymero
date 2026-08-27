@@ -1,15 +1,15 @@
-import { Building2, CircleHelp, Database, Info, Languages, LogOut, User, X } from 'lucide-react'
+import { Building2, CircleHelp, CreditCard, Database, Info, Languages, LogOut, User, X } from 'lucide-react'
 
 function AccountMenuItem({ icon: Icon, label, onClick, danger = false }) {
   return (
-    <button onClick={onClick} className={`flex w-full items-center gap-3 rounded-2xl px-4 py-3 text-left text-sm font-bold hover:bg-slate-50 ${danger ? 'text-rose-600' : 'text-slate-700'}`}>
-      <Icon className="h-4 w-4" />
-      {label}
+    <button type="button" onClick={onClick} className={`flex min-h-11 w-full items-center gap-3 rounded-2xl px-4 py-3 text-left text-sm font-bold hover:bg-slate-50 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-blue-500 focus-visible:ring-offset-1 ${danger ? 'text-rose-600' : 'text-slate-700'}`}>
+      <Icon className="h-4 w-4 shrink-0" aria-hidden="true" />
+      <span className="min-w-0 break-words">{label}</span>
     </button>
   )
 }
 
-export function AccountMenu({ isOpen, onClose, userProfile, onOpenScreen, onOpenSettings, t }) {
+export function AccountMenu({ isOpen, onClose, userProfile, onOpenScreen, onOpenSettings, onOpenSubscription, t }) {
   if (!isOpen) return null
 
   function chooseScreen(screen) {
@@ -20,6 +20,11 @@ export function AccountMenu({ isOpen, onClose, userProfile, onOpenScreen, onOpen
   function chooseSettings() {
     onClose()
     window.setTimeout(onOpenSettings, 0)
+  }
+
+  function chooseSubscription() {
+    onClose()
+    window.setTimeout(onOpenSubscription, 0)
   }
 
   return (
@@ -38,6 +43,7 @@ export function AccountMenu({ isOpen, onClose, userProfile, onOpenScreen, onOpen
         <div className="py-2">
           <AccountMenuItem icon={User} label={t('myProfile')} onClick={() => chooseScreen('profile')} />
           <AccountMenuItem icon={Building2} label={t('companySettingsMenu')} onClick={chooseSettings} />
+          <AccountMenuItem icon={CreditCard} label={t('aymeroSubscription')} onClick={chooseSubscription} />
           <AccountMenuItem icon={Languages} label={t('language')} onClick={() => chooseScreen('language')} />
           <AccountMenuItem icon={Database} label={t('storage')} onClick={() => chooseScreen('storage')} />
           <AccountMenuItem icon={CircleHelp} label={t('help')} onClick={() => chooseScreen('help')} />
