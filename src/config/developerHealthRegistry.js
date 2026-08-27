@@ -1,3 +1,27 @@
+const saasBillingBacklog = [
+  ['subscriptionPlanChanges', 'technicalDebtBillingPlanChangesTitle', 'technicalDebtBillingPlanChangesDescription'],
+  ['subscriptionCancellationUx', 'technicalDebtBillingCancellationTitle', 'technicalDebtBillingCancellationDescription'],
+  ['pastDueGraceEnforcement', 'technicalDebtBillingGraceTitle', 'technicalDebtBillingGraceDescription'],
+  ['billingNotifications', 'technicalDebtBillingNotificationsTitle', 'technicalDebtBillingNotificationsDescription'],
+  ['billingPlanCatalog', 'technicalDebtBillingCatalogTitle', 'technicalDebtBillingCatalogDescription'],
+  ['annualBilling', 'technicalDebtAnnualBillingTitle', 'technicalDebtAnnualBillingDescription'],
+  ['billingTrialsDiscounts', 'technicalDebtBillingPromotionsTitle', 'technicalDebtBillingPromotionsDescription'],
+  ['stripeTaxHandling', 'technicalDebtBillingTaxTitle', 'technicalDebtBillingTaxDescription'],
+].map(([id, titleKey, descriptionKey]) => ({
+  id,
+  titleKey,
+  descriptionKey,
+  severity: 'low',
+  affectedAreaKey: 'technicalDebtAreaSaasBilling',
+  nextActionKey: 'technicalDebtSaasBillingSprint2NextAction',
+  classification: 'backlog',
+  whyItMattersKey: 'technicalDebtSaasBillingWhy',
+  priority: 'medium',
+  dependencyKeys: ['technicalDebtDependencyStripeFoundation', 'technicalDebtDependencyBillingPolicy'],
+  futureSprintAreaKey: 'technicalDebtSprintSaasBillingManagement',
+  sourceHint: `developerHealthRegistry.todoItems.${id}`,
+}))
+
 export const technicalDebtRegistry = {
   releaseReadinessEvidence: {
     rlsPoliciesDrafted: {
@@ -25,6 +49,7 @@ export const technicalDebtRegistry = {
         { id: 'portalIsolation', labelKey: 'releaseCheckPortalIsolation', status: 'PENDING', evidenceKey: 'releaseEvidencePortalIsolation' },
         { id: 'productionEnvironment', labelKey: 'releaseCheckProductionEnvironment', status: 'PASS', evidenceKey: 'releaseEvidenceProductionEnvironment' },
         { id: 'developerRoutes', labelKey: 'releaseCheckDeveloperRoutes', status: 'PASS', evidenceKey: 'releaseEvidenceDeveloperRoutes' },
+        { id: 'billingLiveCutover', labelKey: 'releaseCheckBillingLiveCutover', status: 'PENDING', evidenceKey: 'releaseEvidenceBillingLiveCutover' },
       ],
     },
   },
@@ -76,6 +101,7 @@ export const technicalDebtRegistry = {
       futureSprintAreaKey: 'technicalDebtSprintClientCommunication',
       sourceHint: 'developerHealthRegistry.todoItems',
     },
+    ...saasBillingBacklog,
   ],
   comingSoonPages: [
     {

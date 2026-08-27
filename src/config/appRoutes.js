@@ -13,6 +13,7 @@ export const appRoutes = {
   invoices: '/invoices',
   invoiceDetail: '/invoices/:invoiceId',
   settings: '/settings',
+  subscription: '/settings/subscription',
   projects: '/projects/:id',
   projectEstimate: '/projects/:id/estimate',
   projectContract: '/projects/:id/contract',
