@@ -2091,5 +2091,5 @@ export const es = {
   ,"releaseEvidencePortalIsolation": "PENDIENTE: no había dos tokens seguros de producción para comparar el aislamiento entre proyectos."
   ,"releaseEvidenceProductionEnvironment": "APROBADO: los recursos desplegados contienen todos los orígenes canónicos y la clave publicable del navegador, sin marcador de clave de servicio ni origen localhost configurado."
   ,"releaseEvidenceDeveloperRoutes": "APROBADO: la navegación directa a /dev/health en producción mostró la pantalla de autenticación y no expuso el centro de ingeniería."
-  ,"releaseEvidenceBillingLiveCutover": "PENDIENTE: aislar o eliminar las asignaciones de prueba de Stripe, configurar objetos y secretos independientes de producción, verificar funciones/RLS desplegados y completar una validación supervisada del webhook y Checkout en vivo."
+  ,"releaseEvidenceBillingLiveCutover": "PENDIENTE: conciliar el historial de migraciones vinculado de Supabase, aislar o eliminar las asignaciones de prueba de Stripe, configurar objetos y secretos independientes de producción, verificar funciones/RLS desplegados y completar una validación supervisada del webhook y Checkout en vivo."
 }

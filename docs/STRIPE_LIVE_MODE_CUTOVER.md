@@ -13,12 +13,16 @@ browser planKey: aymero_managed
 
 The supplied sandbox Price ID `price_1U8vsjRZmaxS7NjoXHFMaOKH` is test-only. It must not be placed in source, React configuration, or production secrets. Stripe test Products, Prices, Customers, Subscriptions, API keys, and webhook signing secrets are distinct from live objects and cannot be reused for live payments.
 
-The additive `20260828_add_billing_subscription_cancel_at.sql` lifecycle hotfix must be applied before live deployment. No separate test/live discriminator migration is required for the first live subscription if the mandatory data cutover gate is completed. This repository points the production frontend at one documented Supabase project, and the current billing schema has no test/live discriminator. A test `billing_customers.stripe_customer_id` in that project would be selected by live Checkout and rejected by Stripe. An active test `billing_subscriptions` row could also block live Checkout before Stripe is called.
+The additive `20260828_add_billing_subscription_cancel_at.sql` lifecycle hotfix must be applied before live deployment. The production column was manually verified on August 28, 2026 as `cancel_at timestamp with time zone`, and migration version `20260828` appears in linked history. That does not clear the wider migration-history gate described below.
 
-Before setting live secrets, an operator must do one of the following:
+No separate test/live discriminator migration is required for the first live subscription if the mandatory data cutover gate is completed. This repository points the production frontend at one documented Supabase project, and the current billing schema has no test/live discriminator. A test `billing_customers.stripe_customer_id` in that project would be selected by live Checkout and rejected by Stripe. An active test `billing_subscriptions` row could also block live Checkout before Stripe is called.
 
-1. Preferred for a clean long-term environment boundary: deploy production against a separate, clean production Supabase project and keep sandbox billing in a separate Supabase project.
-2. Smallest first-customer cutover for the existing production project: verify that every existing billing row is test-only, export it, then remove the test billing rows in the controlled order below.
+The smallest safe strategy for Aymero's current stage is a controlled, one-way cleanup of the existing project's test billing mappings immediately before live activation. A separate clean production Supabase project is a stronger long-term environment boundary, but is not required for the first customer if the cleanup gate is completed and this project never returns to test Stripe keys.
+
+Before setting live secrets, an operator must therefore choose and complete one of these boundaries:
+
+1. Current-stage recommendation: verify that every existing billing row is test-only, export it, then remove the test billing rows in the controlled order below.
+2. Long-term alternative: deploy production against a separate, clean production Supabase project and keep sandbox billing in a separate Supabase project.
 
 Do not switch production to live Stripe while any unclassified billing row remains. Do not switch back to test keys after live IDs have been persisted in the same database.
 
@@ -40,11 +44,12 @@ The production application origin is established by `.env.example`, hostname rou
 In Stripe Dashboard with test data disabled:
 
 1. Open **Product catalog** and create the Product **Aymero Managed**.
-2. Create one recurring Price with currency **USD**, amount **100.00**, and interval **Monthly**.
-3. Do not enable trials, usage tiers, coupons, tax automation, annual billing, or additional plans.
-4. Copy the newly created live `price_...` identifier without putting it in React or source control.
-5. Store it in the production Supabase Function secret `STRIPE_PRICE_AYMERO_MANAGED_MONTHLY`.
-6. Verify in Stripe Dashboard that the Product and Price are in live mode and that the amount/interval are correct before accepting Checkout.
+2. Use the existing positioning for its description: **Aymero platform access with basic managed administration.**
+3. Create one licensed recurring Price with currency **USD**, amount **100.00**, and interval **Monthly**. Aymero Checkout fixes quantity at **1**.
+4. Do not enable trials, usage tiers, coupons, tax automation, annual billing, or additional plans.
+5. Copy the newly created live `price_...` identifier without putting it in React or source control.
+6. Store it in the production Supabase Function secret `STRIPE_PRICE_AYMERO_MANAGED_MONTHLY`.
+7. Verify in Stripe Dashboard that the Product and Price are in live mode and that the amount/interval are correct before accepting Checkout.
 
 Products and Prices remain Dashboard-managed. Aymero does not create catalog objects dynamically.
 
@@ -65,7 +70,7 @@ Subscribe only to:
 - `invoice.paid`
 - `invoice.payment_failed`
 
-Pin the destination to the compatible API version used by the billing integration, currently `2026-02-25.clover`, and deliver a signed test event before real Checkout. The gateway intentionally has `verify_jwt=false` because Stripe has no Aymero session. The function still requires `Stripe-Signature`, verifies the raw body with a five-minute tolerance, and claims the Event ID in the private ledger before mutation. Unknown event types are recorded/acknowledged but do not synchronize subscriptions. The live endpoint has its own signing secret; never reuse the sandbox endpoint secret.
+Pin the destination to the compatible API version used by the billing integration, currently `2026-02-25.clover`, and complete a signed test delivery from the live endpoint's Stripe Workbench configuration before real Checkout. The pinned version is already validated by the integration; do not upgrade it as part of cutover. The gateway intentionally has `verify_jwt=false` because Stripe has no Aymero session. The function still requires `Stripe-Signature`, verifies the raw body with a five-minute tolerance, and claims the Event ID in the private ledger before mutation. Unknown event types are recorded/acknowledged but do not synchronize subscriptions. The live endpoint has its own signing secret; never reuse the sandbox endpoint secret. Stripe produces different signing secrets for test and live deliveries even when the URL is the same.
 
 ## Live Billing Portal
 
@@ -93,12 +98,64 @@ Do not run this procedure without authenticated Supabase access, a maintenance w
 
 Deleting a test Subscription in Stripe does not remove its Supabase row, and deleting a Supabase mapping does not delete the Stripe object. Both sides must be handled deliberately. The webhook ledger can remain as archived test evidence only in a separate sandbox database; in a shared pre-live database it must be cleared with the other test-only billing rows because the schema has no mode marker.
 
-## Deployment sequence
+After the export and classification checks, the following is the exact deletion shape for the existing project. It is intentionally rollback-only. **MANUAL REVIEW REQUIRED:** review the affected row counts in the open transaction and replace `rollback` with `commit` only when every billing row has been proven test-only.
 
-All values below are placeholders except the established public application origin:
+```sql
+begin;
+
+select 'billing_subscriptions' as table_name, count(*) as rows_before
+from public.billing_subscriptions
+union all
+select 'billing_customers', count(*)
+from public.billing_customers
+union all
+select 'billing_webhook_events', count(*)
+from public.billing_webhook_events;
+
+delete from public.billing_subscriptions;
+delete from public.billing_customers;
+delete from public.billing_webhook_events;
+
+select 'billing_subscriptions' as table_name, count(*) as rows_after
+from public.billing_subscriptions
+union all
+select 'billing_customers', count(*)
+from public.billing_customers
+union all
+select 'billing_webhook_events', count(*)
+from public.billing_webhook_events;
+
+rollback; -- Replace with commit only after manual review of the export and counts.
+```
+
+## Migration-history reconciliation gate
+
+The linked production migration ledger is not currently trustworthy enough for a live cutover. The August 28, 2026 audit found:
+
+- linked history records only versions `20260622` and `20260828`;
+- many locally present migrations are absent from linked history, including the SaaS billing foundation version `20260826`;
+- several local files reuse the same date-only version (`20260622`, `20260628`, `20260707`, `20260719`, and `20260721`);
+- `supabase db push --linked --dry-run` stops with `LegacyDbPushMissingRemoteError`;
+- using `--include-all` would attempt account-specific and older migrations and is not approved for production.
+
+This may mean SQL was applied manually without a matching ledger entry; it does not prove the schema is absent. Before cutover, compare each missing migration with the actual production schema, reconcile the legacy duplicate filenames in a dedicated database-maintenance change, and use `supabase migration repair` only for SQL that has been independently proven present. Migration repair changes history only; it does not apply SQL. Do not mark all missing versions applied blindly.
+
+Required non-mutating preflight:
 
 ```bash
-supabase db push
+supabase migration list --linked
+supabase db push --linked --dry-run
+```
+
+The gate passes only when the history is understood, the dry run has no unexpected migration, and the production billing tables, constraints, indexes, RLS policies, grants, `cancel_at` column, and function revisions match the repository. If `supabase functions deploy` asks to push migrations, answer **No** until this gate passes; function deployment and database migration readiness are separate outcomes.
+
+## Deployment sequence
+
+Do not start this sequence until the migration-history reconciliation gate passes. All values below are placeholders except the established public application origin:
+
+```bash
+supabase migration list --linked
+supabase db push --linked --dry-run
 supabase secrets set \
   STRIPE_SECRET_KEY=replace-with-live-server-key \
   STRIPE_WEBHOOK_SECRET=replace-with-live-endpoint-signing-secret \
@@ -109,7 +166,7 @@ supabase functions deploy create-billing-portal
 supabase functions deploy stripe-billing-webhook --no-verify-jwt
 ```
 
-Then confirm the deployed function configuration, live webhook delivery, Portal configuration, and empty/clean billing-table cutover state. Do not expose or echo secret values in deployment logs or tickets.
+Proceed past the dry run only when it reports no unexpected migration. Then confirm the deployed function configuration, live webhook delivery, Portal configuration, and empty/clean billing-table cutover state. Do not expose or echo secret values in deployment logs or tickets.
 
 ## First real subscription runbook
 
@@ -138,6 +195,15 @@ If the first live Checkout fails before payment:
 5. If payment succeeded, do not delete or recreate billing rows as a rollback. Reconcile Stripe and Supabase through webhook replay/support procedures.
 6. Restore Checkout only after correcting the live Price/secret/webhook configuration and repeating non-charging preflight checks.
 
+Stage-specific recovery rules:
+
+- Checkout function failure: do not create local success state; inspect sanitized Function logs and retry only after the cause is known.
+- Payment failure in Stripe: remain unsubscribed and never mark the database Active manually.
+- Stripe Subscription created but webhook failed: Stripe remains authoritative; repair the webhook and replay a fresh failed delivery.
+- Webhook succeeded but Aymero is stale: refresh the authoritative Subscription page; do not create another Checkout.
+- Wrong live Price: disable Checkout immediately and do not ask the customer to retry until the configured live Price is verified.
+- Wrong Stripe environment: stop immediately; do not reuse, copy, or translate any test object into live mode.
+
 If no live Stripe/Supabase billing object was ever created and a full rollback is required, return development testing to a separate sandbox Supabase project. Do not make the production project alternate between test and live modes.
 
 ## Security and observability
@@ -158,6 +224,7 @@ An admin billing dashboard is not required for the first subscription.
 
 Current repository code is **conditionally ready**, but production is **NO-GO** until an operator verifies all of the following:
 
+- The linked Supabase migration history is reconciled, a dry run is clean, and production schema/RLS match the repository.
 - Existing test billing rows are moved to an isolated sandbox project or backed up and removed from the production project.
 - Live Product/Price, API key, webhook destination/signing secret, and Portal configuration are created independently from test mode.
 - `AYMERO_APP_URL=https://app.aymero.co` and the three current billing functions are deployed.

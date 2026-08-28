@@ -2091,5 +2091,5 @@ export const en = {
   ,"releaseEvidencePortalIsolation": "PENDING: two safe production portal tokens were not available for cross-token comparison."
   ,"releaseEvidenceProductionEnvironment": "PASS: deployed assets contain every canonical production origin and the publishable browser key, with no service-role marker or configured localhost origin."
   ,"releaseEvidenceDeveloperRoutes": "PASS: direct production navigation to /dev/health rendered the authentication shell and did not expose the engineering command center."
-  ,"releaseEvidenceBillingLiveCutover": "PENDING: isolate or remove test Stripe billing mappings, configure independent live Stripe objects and secrets, verify deployed billing functions/RLS, and complete a supervised live webhook and Checkout acceptance."
+  ,"releaseEvidenceBillingLiveCutover": "PENDING: reconcile the linked Supabase migration history, isolate or remove test Stripe billing mappings, configure independent live Stripe objects and secrets, verify deployed billing functions/RLS, and complete a supervised live webhook and Checkout acceptance."
 }
