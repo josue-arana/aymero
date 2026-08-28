@@ -14,7 +14,7 @@ import {
   canStartSaasBillingCheckout,
   getSaasBillingPaymentPresentation,
   getSaasBillingStatusPresentation,
-  isSaasBillingCancellationScheduled,
+  resolveSaasBillingCancellation,
 } from '../../utils/saasBilling'
 
 const manageableRoles = new Set(['owner', 'admin'])
@@ -82,13 +82,23 @@ export function SaasBillingCard({ language, t }) {
   const paymentPresentation = getSaasBillingPaymentPresentation(subscription?.last_payment_status)
   const needsPaymentAttention = Boolean(statusPresentation.needsAttention || paymentPresentation?.needsAttention)
   const canStartNewSubscription = canStartSaasBillingCheckout(subscription)
-  const isCancellationScheduled = isSaasBillingCancellationScheduled(subscription)
+  const cancellationState = useMemo(
+    () => resolveSaasBillingCancellation(subscription),
+    [subscription],
+  )
+  const isCancellationScheduled = cancellationState.isScheduled
 
   const formattedRenewalDate = useMemo(() => formatDisplayDate(
     subscription?.current_period_end,
     '',
     language === 'es' ? 'es-US' : 'en-US',
   ), [language, subscription?.current_period_end])
+  const formattedCancellationDate = useMemo(() => formatDisplayDate(
+    cancellationState.accessThrough,
+    '',
+    language === 'es' ? 'es-US' : 'en-US',
+  ), [cancellationState.accessThrough, language])
+  const displayedPeriodDate = isCancellationScheduled ? formattedCancellationDate : formattedRenewalDate
 
   const loadBillingStatus = useCallback(async ({ quiet = false } = {}) => {
     if (!billingContextReady) {
@@ -289,24 +299,28 @@ export function SaasBillingCard({ language, t }) {
                 <div className="mt-5">
                   <div className="flex min-w-0 flex-col items-start gap-2 rounded-2xl border border-slate-200 bg-slate-50 p-4 sm:flex-row sm:items-center">
                     <BillingStatusBadge
-                      label={isCancellationScheduled && formattedRenewalDate
-                        ? t('billingCancellationScheduledStatus', { date: formattedRenewalDate })
+                      label={isCancellationScheduled
+                        ? formattedCancellationDate
+                          ? t('billingCancellationScheduledStatus', { date: formattedCancellationDate })
+                          : t('billingCancellationScheduled')
                         : t(statusPresentation.labelKey)}
                       tone={isCancellationScheduled ? 'warning' : statusPresentation.tone}
                     />
                     <p className="min-w-0 text-sm leading-6 text-slate-700">
-                      {isCancellationScheduled && formattedRenewalDate
-                        ? t('billingCancellationScheduledMessage', { date: formattedRenewalDate })
+                      {isCancellationScheduled
+                        ? formattedCancellationDate
+                          ? t('billingCancellationScheduledMessage', { date: formattedCancellationDate })
+                          : t('billingCancellationScheduledMessageNoDate')
                         : t(statusPresentation.descriptionKey)}
                     </p>
                   </div>
 
-                  {(formattedRenewalDate || paymentPresentation) ? (
+                  {(displayedPeriodDate || paymentPresentation) ? (
                     <dl className="mt-3 grid min-w-0 gap-3 sm:grid-cols-2">
-                      {formattedRenewalDate ? (
+                      {displayedPeriodDate ? (
                         <div className="min-w-0 rounded-2xl border border-slate-200 bg-white p-4">
-                          <dt className="text-xs font-bold uppercase tracking-[0.15em] text-slate-500">{t(subscription.cancel_at_period_end ? 'billingAccessUntil' : 'billingNextBillingDate')}</dt>
-                          <dd className="mt-2 break-words text-sm font-bold text-slate-950">{formattedRenewalDate}</dd>
+                          <dt className="text-xs font-bold uppercase tracking-[0.15em] text-slate-500">{t(isCancellationScheduled ? 'billingAccessUntil' : 'billingNextBillingDate')}</dt>
+                          <dd className="mt-2 break-words text-sm font-bold text-slate-950">{displayedPeriodDate}</dd>
                         </div>
                       ) : null}
                       {paymentPresentation ? (

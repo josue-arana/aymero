@@ -1223,6 +1223,8 @@ export const es = {
   "billingStatusDescriptionCanceled": "Tu suscripción ha terminado.",
   "billingCancellationScheduledStatus": "Activa — Se cancela el {{date}}",
   "billingCancellationScheduledMessage": "Tu suscripción permanecerá activa hasta el {{date}}.",
+  "billingCancellationScheduled": "Activa — Cancelación programada",
+  "billingCancellationScheduledMessageNoDate": "Tu suscripción permanece activa mientras Stripe confirma la fecha de cancelación.",
   "billingStatusDescriptionUnknown": "Aymero está actualizando el estado más reciente de la suscripción.",
   "billingPaymentStatus": "Estado del pago",
   "billingPaymentPaid": "Pagado",

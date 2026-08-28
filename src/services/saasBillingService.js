@@ -40,7 +40,7 @@ export async function getSaasBillingSubscription({ accessToken = '', contractorI
     }
 
     const query = new URLSearchParams({
-      select: 'id,contractor_id,plan_key,status,current_period_start,current_period_end,cancel_at_period_end,last_payment_status,created_at,updated_at',
+      select: 'id,contractor_id,plan_key,status,current_period_start,current_period_end,cancel_at_period_end,cancel_at,last_payment_status,created_at,updated_at',
       contractor_id: `eq.${contractorId}`,
       order: 'created_at.desc',
       limit: '1',
