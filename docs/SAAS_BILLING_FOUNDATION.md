@@ -30,7 +30,7 @@ Aymero SaaS Billing is **contractor business → Aymero**. Contractor Payments i
 Apply `supabase/migrations/20260826_add_saas_billing_foundation.sql`.
 
 - `billing_customers`: one row per contractor and one unique Stripe Customer ID.
-- `billing_subscriptions`: one row per Stripe Subscription, contractor-scoped, with a stable plan key, Price ID, Stripe status, item-level current period, cancellation flag, and latest payment outcome.
+- `billing_subscriptions`: one row per Stripe Subscription, contractor-scoped, with a stable plan key, Price ID, Stripe status, item-level current period, cancellation flag/explicit `cancel_at`, and latest payment outcome.
 - `billing_webhook_events`: private unique Stripe Event ID ledger used for retry idempotency.
 - Active contractor members can select their own customer/subscription rows through the existing membership helper.
 - No authenticated insert/update/delete policy exists for Stripe-backed state. The webhook ledger has no browser access. Edge Functions use the service role only after authentication or signature verification.

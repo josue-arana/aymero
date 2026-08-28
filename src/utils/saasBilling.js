@@ -64,10 +64,34 @@ export function getSaasBillingPaymentPresentation(lastPaymentStatus) {
   return null
 }
 
-export function isSaasBillingCancellationScheduled(subscription) {
+function normalizeSaasBillingDate(value) {
+  if (!value) return ''
+  const timestamp = Date.parse(String(value))
+  return Number.isFinite(timestamp) ? new Date(timestamp).toISOString() : ''
+}
+
+export function resolveSaasBillingCancellation(subscription, { now = Date.now() } = {}) {
   const status = normalizeSaasBillingStatus(subscription?.status)
-  return Boolean(subscription?.cancel_at_period_end)
-    && (status === 'active' || status === 'trialing')
+  if (status === 'canceled') return { isScheduled: false, accessThrough: '' }
+
+  const cancelAt = normalizeSaasBillingDate(subscription?.cancel_at)
+  const cancelAtTimestamp = cancelAt ? Date.parse(cancelAt) : Number.NaN
+  if (Number.isFinite(cancelAtTimestamp) && cancelAtTimestamp > now) {
+    return { isScheduled: true, accessThrough: cancelAt }
+  }
+
+  if (subscription?.cancel_at_period_end === true) {
+    return {
+      isScheduled: true,
+      accessThrough: normalizeSaasBillingDate(subscription?.current_period_end),
+    }
+  }
+
+  return { isScheduled: false, accessThrough: '' }
+}
+
+export function isSaasBillingCancellationScheduled(subscription, options) {
+  return resolveSaasBillingCancellation(subscription, options).isScheduled
 }
 
 export function canStartSaasBillingCheckout(subscription) {

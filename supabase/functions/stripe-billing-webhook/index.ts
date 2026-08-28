@@ -160,6 +160,7 @@ Deno.serve(async (request) => {
       current_period_start: stripeTimestampToIso(period.start),
       current_period_end: stripeTimestampToIso(period.end),
       cancel_at_period_end: Boolean(subscription?.cancel_at_period_end),
+      cancel_at: stripeTimestampToIso(subscription?.cancel_at),
       last_payment_status: lastPaymentStatus || existingSubscription?.last_payment_status || null,
     }
 

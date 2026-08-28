@@ -13,7 +13,7 @@ browser planKey: aymero_managed
 
 The supplied sandbox Price ID `price_1U8vsjRZmaxS7NjoXHFMaOKH` is test-only. It must not be placed in source, React configuration, or production secrets. Stripe test Products, Prices, Customers, Subscriptions, API keys, and webhook signing secrets are distinct from live objects and cannot be reused for live payments.
 
-No migration is required for the first live subscription. There is, however, a mandatory data cutover gate: this repository points the production frontend at one documented Supabase project, and the current billing schema has no test/live discriminator. A test `billing_customers.stripe_customer_id` in that project would be selected by live Checkout and rejected by Stripe. An active test `billing_subscriptions` row could also block live Checkout before Stripe is called.
+The additive `20260828_add_billing_subscription_cancel_at.sql` lifecycle hotfix must be applied before live deployment. No separate test/live discriminator migration is required for the first live subscription if the mandatory data cutover gate is completed. This repository points the production frontend at one documented Supabase project, and the current billing schema has no test/live discriminator. A test `billing_customers.stripe_customer_id` in that project would be selected by live Checkout and rejected by Stripe. An active test `billing_subscriptions` row could also block live Checkout before Stripe is called.
 
 Before setting live secrets, an operator must do one of the following:
 
