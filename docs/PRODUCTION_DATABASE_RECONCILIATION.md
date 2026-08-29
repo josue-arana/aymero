@@ -2,155 +2,121 @@
 
 ## Decision
 
-Sprint 3.44F stops at **NO-GO**. No production migration history, schema, billing data, Stripe configuration, or Edge Function was changed.
+Sprint 3.44F.1 remains **NO-GO** for production migration repair and Stripe live-mode cutover. Production already contains much of the intended schema, but the ledger has only two rows and the local directory has five duplicate-version groups. Schema presence does not prove account inserts, backfills, policy bodies, grants, or historical execution.
 
-The linked production schema proves that most historical migration effects exist even though their versions are missing from `supabase_migrations.schema_migrations`. It also proves that at least one effect does not exist: `company_settings.simple_mode` from `20260628_add_simple_mode_to_company_settings.sql` is absent, while the later `analytics_mode` is present. Therefore bulk `migration repair`, `db push --include-all`, or a filename-only reconciliation would make history less truthful.
+No production migration history, schema, data, Stripe object, secret, configuration, or Edge Function was changed. The executable future sequence is documented in [PRODUCTION_MIGRATION_REPAIR_PLAN.md](./PRODUCTION_MIGRATION_REPAIR_PLAN.md).
 
-The next evidence step is to run the read-only [production reconciliation audit](./PRODUCTION_DATABASE_RECONCILIATION_AUDIT.sql) in Supabase SQL Editor and retain its output outside source control. Until the exact policies, grants, constraints, triggers, migration names, account-specific rows, and Stripe IDs are reviewed, historical filenames must remain unchanged.
+## Authoritative production evidence
 
-## Evidence captured on August 28, 2026
+The remote ledger records exactly:
 
-Read-only commands and probes:
+| Version | Name | Statement count |
+| --- | --- | ---: |
+| `20260622` | `create_miguel_contractor_profile` | 1 |
+| `20260828` | `add_billing_subscription_cancel_at` | 2 |
 
-- `supabase migration list --linked`: only remote versions `20260622` and `20260828` are recorded.
-- `supabase db push --linked --dry-run`: fails with `LegacyDbPushMissingRemoteError` and proposes every unrecorded migration before `20260828`.
-- `supabase gen types typescript --linked --schema public`: confirms production tables, columns, nullability represented by the generated Row/Insert shapes, functions, and foreign-key relationships.
-- `supabase inspect db index-stats --linked`: confirms billing uniqueness and lookup indexes plus the sample-workspace, token, and CRM indexes described below.
-- `supabase inspect db table-stats --linked`: estimates 1 billing Customer row, 1 Subscription row, and 10 webhook Event rows.
-- `supabase db lint --linked --schema public --level warning`: reports no schema errors.
-- Anonymous REST `SELECT` probes return HTTP 401 / PostgreSQL `42501 permission denied` for all three billing tables.
-- A schema-only `supabase db dump` could not run because Docker is unavailable. The browser fallback was also unavailable, so direct catalog queries were not fabricated or replaced with assumptions.
+The linked dry run fails with `LegacyDbPushMissingRemoteError`. There are 24 local SQL files, 15 distinct versions, and duplicate groups at `20260622`, `20260628`, `20260707`, `20260719`, and `20260721`.
 
-## Full local migration inventory
+Read-only production evidence also confirms:
 
-`Remote` refers only to the version ledger, not schema reality. `Production evidence` is deliberately conservative: a migration containing unverified policy, grant, constraint, trigger, or data work is not classified fully applied.
+- `billing_customers`, `billing_subscriptions`, and `billing_webhook_events` have every expected column, constraint, index, foreign key, RLS setting, policy, privilege boundary, and billing updated-at trigger. `billing_subscriptions.cancel_at` is a nullable timestamp with time zone.
+- Billing foreign keys point to `contractors`; no CRM table depends on a billing table.
+- `is_active_contractor_member`, `complete_beta_contractor_onboarding`, `can_access_project_photo_project`, `can_access_project_photo_storage_path`, and `can_assign_project_photo_uploader` exist as `SECURITY DEFINER` functions. Existence does not by itself prove an exact body, configuration, owner, or ACL.
+- The supplied Company Settings inventory includes `analytics_mode`, onboarding fields, `sample_workspace`, and `accepted_payment_methods`. `company_settings.simple_mode` is absent.
+- The supplied CRM inventory confirms the named language, sample-data, relationship, customer-note, public-token, Payment, Event, and Project Photo columns. It confirms the documented CRM indexes and broad foreign-key direction.
+- The database inventory is approximately 1 billing Customer row, 1 billing Subscription row, and 10 webhook Event rows. It does not store a `livemode` discriminator, so these rows are not yet proven test-mode objects.
 
-| Version | Migration | Purpose | Duplicate | Remote | Production evidence | Classification |
-| --- | --- | --- | --- | --- | --- | --- |
-| `20260622` | `20260622_create_miguel_contractor_profile.sql` | Account-specific contractor insert | 3 files | Present, exact name not yet queried | Contractors exist; target row not queried | Ambiguous |
-| `20260622` | `20260622_enable_self_service_beta_onboarding.sql` | Authenticated onboarding function and execute grant | 3 files | Ambiguous shared version | Function signature exists; body/security/grant unverified | Partially applied |
-| `20260622` | `20260622_link_miguel_contractor_membership.sql` | Account-specific auth membership insert | 3 files | Ambiguous shared version | Membership table exists; target row not queried | Ambiguous |
-| `20260624` | `20260624_enable_payments_supabase_beta.sql` | Payments columns, FKs, indexes, backfill, RLS | No | Missing | Table/columns and eight indexes exist; policies/backfill unverified | Partially applied |
-| `20260625` | `20260625_enable_events_supabase_beta.sql` | Event scheduling columns, backfill, indexes, RLS | No | Missing | Columns and six indexes exist; policies/backfill unverified | Partially applied |
-| `20260628` | `20260628_add_simple_mode_to_company_settings.sql` | Add `simple_mode` | 4 files | Missing | `simple_mode` is absent | Not applied; later model supersedes it |
-| `20260628` | `20260628_enable_project_photos_storage_beta.sql` | Private photo bucket and baseline RLS | 4 files | Missing | Photo table exists; bucket/policies not queried | Partially applied |
-| `20260628` | `20260628_fix_project_photos_identity_rls.sql` | Final uploader-aware photo helpers and policies | 4 files | Missing | `can_assign_project_photo_uploader` exists; policy predicates unverified | Partially applied |
-| `20260628` | `20260628_fix_project_photos_rls.sql` | Earlier photo ownership-policy fix | 4 files | Missing | Shared helpers exist; final policy version is ambiguous | Ambiguous/superseded |
-| `20260630` | `20260630_add_analytics_mode_to_company_settings.sql` | Add/backfill non-null `analytics_mode` | No | Missing | Non-null/default-capable column exists; historical backfill unverified | Partially applied |
-| `20260707` | `20260707_add_client_language_preferences.sql` | Lead/client language columns and checks | 2 files | Missing | Both columns exist; checks unverified | Partially applied |
-| `20260707` | `20260707_add_estimate_language.sql` | Estimate language column and check | 2 files | Missing | Column exists; check unverified | Partially applied |
-| `20260718` | `20260718_add_premium_onboarding_state.sql` | Premium onboarding fields, checks, and backfill | No | Missing | All fields exist; checks/backfill unverified | Partially applied |
-| `20260719` | `20260719_add_sample_workspace_manifest.sql` | Manifest/sample keys and unique partial indexes | 2 files | Missing | Manifest, keys, and all seven indexes exist | Applied with high confidence |
-| `20260719` | `20260719_connect_sample_workspace_journey.sql` | Estimate→lead relationship and invoice sample key | 2 files | Missing | Columns, FK relationship, and both indexes exist | Applied with high confidence |
-| `20260721` | `20260721_enable_contracts_delete_rls.sql` | Contractor-scoped Contract DELETE policy | 3 files | Missing | Table/function exist; actual policy unverified | Ambiguous |
-| `20260721` | `20260721_enable_estimates_delete_rls.sql` | Contractor-scoped Estimate DELETE policy | 3 files | Missing | Table/function exist; actual policy unverified | Ambiguous |
-| `20260721` | `20260721_enable_invoices_supabase_rls.sql` | Invoice SELECT/INSERT/UPDATE/DELETE policies | 3 files | Missing | Table/function exist; actual policies unverified | Ambiguous |
-| `20260725` | `20260725_add_company_accepted_payment_methods.sql` | JSON payment-method configuration and shape check | No | Missing | Non-null/default-capable JSON column exists; check unverified | Partially applied |
-| `20260726` | `20260726_add_invoice_customer_notes.sql` | Invoice customer-facing note | No | Missing | Nullable text column exists | Applied with high confidence |
-| `20260812` | `20260812_add_public_client_portal_tokens.sql` | Non-null Project portal token, unique index, anon revoke | No | Missing | Column/index exist; exact default/grant require catalog output | Partially applied |
-| `20260816` | `20260816_add_public_estimate_share_tokens.sql` | Non-null Estimate share token, unique index, anon revoke | No | Missing | Column/index exist; exact default/grant require catalog output | Partially applied |
-| `20260826` | `20260826_add_saas_billing_foundation.sql` | Billing tables, constraints, indexes, RLS, grants, triggers | No | Missing | Tables/columns/FKs/unique and lookup indexes exist; anonymous reads denied; checks, policies, authenticated grants, triggers unverified | Partially applied |
-| `20260828` | `20260828_add_billing_subscription_cancel_at.sql` | Add nullable `cancel_at` | No | Present | Nullable timestamp field exists and is used successfully | Applied with high confidence |
+The [read-only audit SQL](./PRODUCTION_DATABASE_RECONCILIATION_AUDIT.sql) remains the approved way to collect missing catalog and data evidence. It must not be replaced by inference.
 
-## Duplicate-version findings
+## Classification rules
 
-Every duplicate group contains separate SQL, not duplicate copies:
+- `FULLY PRESENT`: every substantive schema, security, and migration-time data effect is proven, or the exact migration is already recorded remotely.
+- `PARTIALLY PRESENT`: some schema effects are proven, but a non-data definition such as a check constraint or function ACL/body is not.
+- `SUPERSEDED`: production intentionally reflects a later design and the older migration must not be applied or falsely recorded as current.
+- `NOT PRESENT`: authoritative evidence proves the intended effect is absent and no later design supersedes it.
+- `CANNOT DETERMINE`: a migration contains account data, backfills, storage configuration, RLS/grants, or other effects that the supplied read-only evidence cannot prove completely.
 
-- `20260622`: contractor data insert, onboarding function, and membership data insert. Only one remote ledger row can use this version. The exact remote `name` and both account-specific rows must be queried before normalization.
-- `20260628`: obsolete `simple_mode`, storage setup, and two sequential photo-policy fixes. Filename sorting does not prove the intended final policy. The current helper function alone cannot distinguish which policy body is active.
-- `20260707`: separate client/lead and estimate language migrations.
-- `20260719`: manifest must precede the connected journey.
-- `20260721`: three independent table-policy migrations.
+An `UPDATE`/`INSERT` migration is not classified as safely applied merely because its columns or indexes exist.
 
-The likely normalization is to preserve the one legitimately recorded `20260622` file, assign unique full timestamps to separately audited migrations, and exclude or supersede obsolete SQL through a documented baseline/corrective migration. That is a recommendation, not an action taken. Renaming now would create new versions that the CLI would attempt to run, and marking them applied now would overstate the evidence.
+## Migration-by-migration reconciliation matrix
 
-## Remote ledger and drift
+| Local filename | Version | Purpose | Duplicate group | Intended schema/data effects | Production evidence found | Production evidence missing | Classification | Safe to mark applied? | Rationale | Recommended action |
+| --- | --- | --- | --- | --- | --- | --- | --- | --- | --- | --- |
+| `20260622_create_miguel_contractor_profile.sql` | `20260622` | Seed Miguel contractor profile | `20260622` (3 files) | Idempotent account-specific `contractors` INSERT for Skinner Division Contractor / Miguel Giron | Exact remote ledger row: `20260622`, matching name, 1 statement | Current target row state is not supplied, but that is not needed to prove the recorded migration executed | `FULLY PRESENT` | YES — already recorded; no new repair | The remote identity matches this file exactly. Later row changes would not erase that ledger fact. | Preserve filename/version and remote row; do not repair or rename. |
+| `20260622_enable_self_service_beta_onboarding.sql` | `20260622` | Self-service beta onboarding RPC | `20260622` (3 files) | Create/replace onboarding `SECURITY DEFINER` function; idempotent contractor/member/settings creation when called; revoke PUBLIC; grant authenticated EXECUTE; comment | Function name and `SECURITY DEFINER` state confirmed | Exact function body/signature result, owner, `search_path`, PUBLIC ACL, authenticated EXECUTE ACL, comment | `PARTIALLY PRESENT` | ONLY AFTER exact function definition and ACL evidence | Function existence is strong but not enough to prove its security and callable surface match the migration. | Query `pg_get_functiondef`, `proconfig`, owner, and ACL; reclassify only on exact match. |
+| `20260622_link_miguel_contractor_membership.sql` | `20260622` | Link Miguel auth user to contractor | `20260622` (3 files) | Idempotent account-specific `contractor_members` INSERT for a hard-coded auth UUID and contractor identity | Required tables/relationship exist | Exact contractor row, auth user, membership row, role/status/archive state, and whether this migration ever inserted it | `CANNOT DETERMINE` | ONLY AFTER exact read-only account-row proof and human confirmation | The sibling remote version does not cover this separate SQL. Schema cannot prove an account insert. | Hold. Query exact IDs privately; never replay blindly or infer from the Miguel profile ledger row. |
+| `20260624_enable_payments_supabase_beta.sql` | `20260624` | Enable Supabase-backed CRM Payments | — | Create/alter Payments fields/FKs/defaults; copy legacy `method` to `payment_method`; create 8 indexes; helper; RLS and CRUD policies | Payment columns (including old/new method fields), relationships, and expected indexes are confirmed; helper exists | Exact defaults/nullability, all policy roles/expressions, RLS catalog state, and backfill postcondition | `CANNOT DETERMINE` | ONLY AFTER policy/default catalog and data-backfill queries | Substantial schema exists, but the migration includes a data UPDATE and security behavior not proven by column inventory. | Run narrow read-only policy/default/backfill checks; use corrective SQL later if any effect differs. |
+| `20260625_enable_events_supabase_beta.sql` | `20260625` | Enable Supabase-backed CRM Events | — | Add Event link/scheduling fields; backfill date/time/type from legacy fields; create 6 indexes; helper; RLS and CRUD policies | Old/new Event representations, relationships, and expected indexes confirmed; helper exists | Exact RLS/policies and each backfill postcondition | `CANNOT DETERMINE` | ONLY AFTER policy and data-backfill queries | Additive columns prove only part of a migration containing four UPDATE statements and policy work. | Hold and verify policies plus null/source-value backfill predicates read-only. |
+| `20260628_add_simple_mode_to_company_settings.sql` | `20260628` | Add legacy Simple Mode flag | `20260628` (4 files) | Add non-null `simple_mode` Boolean with default false | `simple_mode` is absent; later `analytics_mode` exists | No evidence needed to establish absence; historical intent behind manual transition is not recorded | `SUPERSEDED` | NO | Applying or marking it now would claim an obsolete intermediate model that production does not contain. | Preserve in a legacy archive during approved normalization; never execute or repair it as present. |
+| `20260628_enable_project_photos_storage_beta.sql` | `20260628` | Create private Project Photo storage and baseline RLS | `20260628` (4 files) | Helper; enable Project Photo RLS; CRUD policies; update/insert private bucket with size/MIME limits; Storage object policies | Project Photo table/columns/indexes and membership helper confirmed | Bucket row/settings, exact Project Photo policies, exact Storage policies, RLS catalog details | `CANNOT DETERMINE` | ONLY AFTER bucket and policy catalog evidence | This migration mutates Storage configuration and installs security policy; Project Photo schema is not proof. | Hold; inspect `storage.buckets`, `pg_policies`, roles, `qual`, and `with_check`. |
+| `20260628_fix_project_photos_rls.sql` | `20260628` | First contractor/project ownership RLS fix | `20260628` (4 files) | Replace helpers and Project Photo/Storage policies; inline uploader/member validation; force bucket private | Shared access helpers exist | Exact historical policy body is not needed as current intent because a later uploader-aware fix replaces it | `SUPERSEDED` | NO | The later identity fix centralizes uploader validation in `can_assign_project_photo_uploader`, which exists in production. Recording both as current would obscure the final policy lineage. | Preserve in legacy archive; use the identity fix as the only canonical final-policy candidate after evidence. |
+| `20260628_fix_project_photos_identity_rls.sql` | `20260628` | Final uploader-aware Project Photo RLS fix | `20260628` (4 files) | Create/replace three photo helpers plus member helper; RLS CRUD policies; Storage object policies; private bucket update | All named `SECURITY DEFINER` helpers, Project Photo columns, and indexes confirmed | Exact helper bodies/config/ACLs, bucket state, RLS flag, and every current Project Photo/Storage policy expression | `CANNOT DETERMINE` | ONLY AFTER exact final helper, bucket, and policy evidence | Helper existence identifies the later design but does not prove the policies actually call it or that Storage matches. | Hold; collect final policy definitions and bucket settings before reclassification. |
+| `20260630_add_analytics_mode_to_company_settings.sql` | `20260630` | Replace legacy mode with Analytics Mode | — | Add nullable flag; conditional backfill from inverse `simple_mode` or true; set default; fill nulls; set NOT NULL; reload schema | `analytics_mode` exists and `simple_mode` is absent | Exact default/NOT NULL metadata and row-level backfill postcondition | `CANNOT DETERMINE` | ONLY AFTER metadata and zero-null data proof | The current column supports the later design, but its UPDATE statements cannot be inferred from existence. | Confirm `is_nullable`, default, and zero nulls; do not recreate `simple_mode`. |
+| `20260707_add_client_language_preferences.sql` | `20260707` | Add Lead and Client language preferences | `20260707` (2 files) | Add `leads.client_language`, `clients.preferred_language`; add two en/es/null checks | Both columns confirmed | Named check constraints and definitions | `PARTIALLY PRESENT` | ONLY AFTER both check constraints match | No data backfill exists, but the constraints are substantive and not in the supplied evidence. | Query both checks; repair candidate only if exact. |
+| `20260707_add_estimate_language.sql` | `20260707` | Add Estimate language | `20260707` (2 files) | Add `estimate_language`; add en/es/null check | Column confirmed | Named check constraint and definition | `PARTIALLY PRESENT` | ONLY AFTER the check constraint matches | Column presence alone does not prove allowed values are enforced. | Query the named check; repair candidate only if exact. |
+| `20260718_add_premium_onboarding_state.sql` | `20260718` | Add premium onboarding and defaults | — | Add 7 settings fields/defaults; mark existing rows complete at step 5; add four checks; comments | Every intended column is confirmed | Exact defaults/nullability/checks/comments and historical-row UPDATE postcondition | `CANNOT DETERMINE` | ONLY AFTER catalog and data-backfill proof | The migration intentionally changes existing rows; current columns do not prove that state transition. | Hold; query constraints/defaults and identify any pre-migration row still not in the intended completed state. |
+| `20260719_add_sample_workspace_manifest.sql` | `20260719` | Add sample-workspace manifest and entity keys | `20260719` (2 files) | Add settings JSON manifest; add sample keys on seven CRM tables; create seven partial unique contractor/key indexes; comment | Manifest column, all seven entity columns, and all seven partial unique indexes confirmed | Column comment is not material to runtime correctness | `FULLY PRESENT` | ONLY AFTER unique renumbering | All substantive effects are present and there is no migration-time data backfill, but the shared version cannot be repaired safely. | Rename to proposed canonical version in reviewed normalization, then repair that exact version individually. |
+| `20260719_connect_sample_workspace_journey.sql` | `20260719` | Connect Estimate→Lead and Invoice sample identity | `20260719` (2 files) | Add Estimate lead column/FK; clear orphan legacy references; validate FK; add Invoice sample key; create two indexes | Columns, FK direction, and both expected indexes confirmed | Direct retained evidence for the migration-time orphan cleanup/data postcondition | `CANNOT DETERMINE` | ONLY AFTER read-only orphan/backfill proof and unique renumbering | The validated relationship is strong current-state evidence, but the brief requires conservative treatment of UPDATE migrations. | Query the exact orphan predicate; then decide whether it can be promoted or needs a baseline decision. |
+| `20260721_enable_invoices_supabase_rls.sql` | `20260721` | Enable Invoice tenant RLS | `20260721` (3 files) | Helper; enable RLS; replace legacy policy; create Invoice SELECT/INSERT/UPDATE/DELETE policies | Invoice table and helper exist | Invoice `relrowsecurity`, roles, commands, `qual`, and `with_check` for all four policies | `CANNOT DETERMINE` | ONLY AFTER exact RLS/policy evidence | The supplied production security proof is billing-specific; it does not establish Invoice policies. | Query Invoice RLS and all policy expressions; keep chronological precedence before later delete-only fixes. |
+| `20260721_enable_contracts_delete_rls.sql` | `20260721` | Add Contract DELETE policy | `20260721` (3 files) | Helper; enable Contract RLS; authenticated tenant-scoped DELETE policy | Contract table and helper exist | Contract RLS flag and exact DELETE policy role/expression | `CANNOT DETERMINE` | ONLY AFTER exact RLS/policy evidence | Table/function existence does not prove DELETE authorization. | Query `pg_class`/`pg_policies`; do not test by deleting data. |
+| `20260721_enable_estimates_delete_rls.sql` | `20260721` | Add Estimate DELETE policy | `20260721` (3 files) | Helper; enable Estimate RLS; authenticated tenant-scoped DELETE policy | Estimate table and helper exist | Estimate RLS flag and exact DELETE policy role/expression | `CANNOT DETERMINE` | ONLY AFTER exact RLS/policy evidence | Table/function existence does not prove DELETE authorization. | Query `pg_class`/`pg_policies`; do not test by deleting data. |
+| `20260725_add_company_accepted_payment_methods.sql` | `20260725` | Add canonical invoice payment-method config | — | Add non-null/default JSON; rewrite malformed values; add shape check; comment; schema reload | Column confirmed | Default/NOT NULL/check/comment and proof every row has canonical object/array/string shape | `CANNOT DETERMINE` | ONLY AFTER catalog and row-shape queries | A column does not prove the normalization UPDATE or shape constraint. | Hold; query metadata, constraint definition, and malformed-row count. |
+| `20260726_add_invoice_customer_notes.sql` | `20260726` | Add customer-facing Invoice note | — | Add nullable text column; comment; schema reload | Nullable `customer_notes` column confirmed | Comment/reload side effect is not material to persistent runtime schema | `FULLY PRESENT` | YES — after normalization approval and fresh ledger snapshot | The sole substantive persistent effect is present and no data backfill/security change exists. | Candidate for later single-version repair; do not execute in this sprint. |
+| `20260812_add_public_client_portal_tokens.sql` | `20260812` | Add Project public portal bearer tokens | — | Add token; populate every row; set generated default and NOT NULL; unique index; comment; revoke anon table access | Column and unique index confirmed | Default/NOT NULL, all rows populated/nonblank/unique, exact anon privileges | `CANNOT DETERMINE` | ONLY AFTER token data, metadata, and privilege proof | The token population UPDATE and anonymous revoke are security-critical and cannot be inferred from an index. | Hold; query counts/metadata/privileges without exposing token values. |
+| `20260816_add_public_estimate_share_tokens.sql` | `20260816` | Add Estimate public share bearer tokens | — | Add token; populate every row; set generated default and NOT NULL; unique index; comment; revoke anon table access | Column and unique index confirmed | Default/NOT NULL, all rows populated/nonblank/unique, exact anon privileges | `CANNOT DETERMINE` | ONLY AFTER token data, metadata, and privilege proof | The token population UPDATE and anonymous revoke are security-critical and cannot be inferred from an index. | Hold; query counts/metadata/privileges without exposing token values. |
+| `20260826_add_saas_billing_foundation.sql` | `20260826` | Create Aymero SaaS billing foundation | — | Member helper; 3 tables; all constraints/FKs/indexes/triggers; RLS; authenticated SELECT-only policies; anon/auth revokes; service-role boundary; comments | Every intended billing column, constraint, index, FK, RLS setting, policy, browser privilege boundary, service-role access, and updated-at trigger is confirmed | Table/function comments are not material; helper's existence/security is corroborated by the same production evidence set | `FULLY PRESENT` | YES — after normalization approval and fresh catalog snapshot | Unlike the CRM policy migrations, the supplied evidence explicitly proves the complete billing security and schema surface. | Candidate for later single-version repair; do not execute in this sprint. |
+| `20260828_add_billing_subscription_cancel_at.sql` | `20260828` | Persist Stripe scheduled cancellation timestamp | — | Add nullable `cancel_at timestamptz`; comment | Exact remote ledger row with 2 statements; column exists as timestamp with time zone | None material | `FULLY PRESENT` | YES — already recorded; no new repair | Both ledger identity and schema effect match. | Preserve unchanged. |
 
-| Layer | Finding | Drift class |
-| --- | --- | --- |
-| Local history | 24 files but only 15 distinct versions; five duplicate groups | Duplicate-version issue / blocker |
-| Remote ledger | Only `20260622` and `20260828`; exact `20260622` name not available from CLI list | Missing history / ambiguous mapping |
-| Production schema | Most later columns, tables, relationships, and indexes exist | Strong evidence of manual application |
-| `simple_mode` | Intended locally, absent remotely, later `analytics_mode` present | Actual schema mismatch / superseded intent |
-| RLS/grants/checks/triggers | Source intent known; complete production catalog evidence not yet captured | Ambiguous / blocker |
-| Billing data | Rows exist but schema stores no `livemode` or payload | Mode classification blocker |
-| Dry run | Fails before producing an explainable plan | Production blocker |
+## Classification totals
 
-No remote entry is currently known to be unexpected: both versions have local files. However, version `20260622` cannot be mapped truthfully to one of its three files until its remote `name` is queried.
+| Classification | Count |
+| --- | ---: |
+| `FULLY PRESENT` | 5 |
+| `PARTIALLY PRESENT` | 3 |
+| `SUPERSEDED` | 2 |
+| `NOT PRESENT` | 0 |
+| `CANNOT DETERMINE` | 14 |
+| **Total** | **24** |
 
-## Billing production schema
+## Duplicate groups
 
-Actual generated production shapes confirm:
+| Version | Files | Remote correspondence | Resolution |
+| --- | --- | --- | --- |
+| `20260622` | Miguel profile; onboarding RPC; Miguel membership | Only `create_miguel_contractor_profile` corresponds to the remote row | Preserve that file/version. Give the other two unique timestamps only after their evidence disposition is approved. |
+| `20260628` | `simple_mode`; photo storage; first photo fix; identity photo fix | None recorded | Archive `simple_mode` and the first photo fix as superseded. Canonically order storage before final identity fix; do not repair without bucket/policy evidence. |
+| `20260707` | Client/Lead languages; Estimate language | None recorded | Renumber by repository creation time; prove each named check before repair. |
+| `20260719` | Sample manifest; connected journey | None recorded | Renumber manifest before journey. Manifest is eligible; journey remains held for its UPDATE evidence. |
+| `20260721` | Invoice RLS; Contract DELETE; Estimate DELETE | None recorded | Renumber Invoice first by actual creation time, then Contract and Estimate delete migrations. Prove policies separately. |
 
-- `billing_customers`: `id`, `contractor_id`, `stripe_customer_id`, `created_at`, `updated_at`; contractor and Stripe Customer uniqueness indexes exist.
-- `billing_subscriptions`: one-to-many contractor relationship; Stripe Subscription unique index; plan/status/Price/payment fields; period fields; `cancel_at_period_end`; nullable `cancel_at`; contractor and contractor/status indexes.
-- `billing_webhook_events`: Stripe Event ID primary key; event type; created/processed timestamps; processed-at index; no relationship to CRM tables.
-- Billing foreign keys point from billing rows to `contractors`. No production-generated relationship shows a CRM operational table pointing to a billing table. Deleting reviewed billing rows therefore has no outbound cascade into Leads, Clients, Estimates, Contracts, Projects, Invoices, CRM Payments, Events, auth users, or Client Portal data.
-- Anonymous reads of all three billing tables are denied with PostgreSQL `42501`.
+All five groups remain blockers in the current worktree. Renumbering is planned, not performed. The exact proposed identities are in the repair plan.
 
-The read-only audit must still confirm actual RLS enablement, policy predicates, authenticated write privileges, service-role privileges, billing check constraints, and updated-at triggers. Source code remains secure: Checkout and Portal resolve Owner/Admin membership server-side; webhook service-role access occurs only after Stripe signature validation; the browser supplies no contractor, Customer, Subscription, or Price identifier for mutation.
+## Billing and Stripe isolation
 
-## Edge Function compatibility
+Production's billing schema is compatible with the current Checkout, Customer Portal, and signature-verified webhook functions, including `cancel_at`. Anonymous callers have no billing-table privileges; authenticated users have SELECT only on Customers and Subscriptions; the webhook ledger has no browser policy; trusted service-role code has full access.
 
-The three billing functions reference production fields that exist:
+The approximately 1 Customer, 1 Subscription, and 10 Event rows are only believed to be sandbox artifacts. Database IDs do not prove Stripe mode, and no payload/`livemode` field is stored. The rollback-first [sandbox cleanup SQL](./STRIPE_SANDBOX_BILLING_CLEANUP.sql) remains blocked until each exact Stripe object is independently verified as `livemode=false`. No cleanup and no live configuration belongs in ledger reconciliation.
 
-- `create-billing-checkout`: billing Customer lookup/insert and Subscription status lookup are schema-compatible; unique contractor mapping and active-status indexes exist.
-- `create-billing-portal`: contractor-scoped Customer lookup is schema-compatible.
-- `stripe-billing-webhook`: Event ledger insert/update/delete and Subscription upsert, including `cancel_at`, are schema-compatible; Event and Subscription conflict keys exist.
+## Actions taken and forbidden
 
-No Edge Function change is justified by the schema evidence collected in this sprint.
+Completed in this sprint:
 
-## Sandbox billing classification
+- Inspected all 24 local migration files in chronological order.
+- Mapped every intended table/column/constraint/index/function/trigger/RLS/policy/grant/backfill/seed effect against the supplied production evidence.
+- Classified every file using one required classification.
+- Documented a canonical duplicate-version strategy and future single-version repair sequence.
+- Updated deterministic, read-only repository verification.
 
-Production table statistics currently estimate:
+Not performed:
 
-- 1 `billing_customers` row;
-- 1 `billing_subscriptions` row;
-- 10 `billing_webhook_events` rows.
+- No migration file was renamed, moved, deleted, or executed.
+- No `supabase migration repair` was run.
+- No actual `supabase db push` was run and `--include-all` was not used.
+- No production row, schema object, privilege, or ledger entry was mutated.
+- No Stripe row/object was cleaned up.
+- No live Stripe secret or configuration was changed.
 
-These are consistent with the documented sandbox exercise, but are not sufficient proof. Stripe IDs do not encode mode reliably, the database stores no `livemode`, and the webhook ledger stores no payload. Each exact Customer, Subscription, Price, and Event must be opened in Stripe and verified as `livemode=false`. If any object is missing or ambiguous, cleanup must stop.
+## Exact next manual action
 
-After classification, use the rollback-first [sandbox billing cleanup SQL](./STRIPE_SANDBOX_BILLING_CLEANUP.sql). Its temporary review tables require exact IDs and evidence; it fails closed when any production row is unclassified; every DELETE joins an exact reviewed ID; and its default outcome is `rollback`.
+Review and approve the normalization mapping in [PRODUCTION_MIGRATION_REPAIR_PLAN.md](./PRODUCTION_MIGRATION_REPAIR_PLAN.md), especially the two legacy-archive decisions. Then run the existing read-only production audit and retain the missing catalog/data result sets. Migration repair cannot safely proceed yet.
 
-## Reconciliation actions taken
-
-- Captured linked ledger and failed dry-run before-state.
-- Generated actual public schema types.
-- Captured actual production index and table statistics.
-- Ran production schema lint successfully.
-- Verified anonymous billing-table denial without attempting a write.
-- Added read-only catalog/data audit SQL and rollback-first cleanup SQL.
-- Did **not** rename migrations.
-- Did **not** run `migration repair`.
-- Did **not** run an actual `db push`.
-- Did **not** delete or update production data.
-
-Before and after migration status are therefore intentionally identical. A truthful repair plan requires the missing SQL Editor evidence first.
-
-## Required next evidence and repair sequence
-
-1. Run `PRODUCTION_DATABASE_RECONCILIATION_AUDIT.sql` in production SQL Editor and export every result set privately.
-2. Classify each partial/ambiguous inventory row using full constraint, policy, grant, trigger, function, and data evidence.
-3. Determine the exact remote name behind version `20260622`.
-4. Design the unique-version normalization in a dedicated reviewed commit. Preserve effective chronological order, especially the final project-photo policy.
-5. For partial migrations, create narrow idempotent corrective SQL; do not claim the historical migration was complete first.
-6. Handle absent/superseded `simple_mode` explicitly through a documented baseline or archive decision; never apply it accidentally and never falsely mark it present.
-7. Use `supabase migration repair <one-version> --status applied --linked` only after the full effect of that exact normalized migration is proven.
-8. Run `supabase migration list --linked` after each individually justified repair.
-9. Require `supabase db push --linked --dry-run` to finish successfully with no unexplained migration before any live Stripe secret change.
-
-## Stripe live cutover preflight
-
-The next sprint may proceed only after reconciliation and sandbox classification are complete:
-
-- clean, explainable linked migration dry run;
-- production billing schema/RLS/grants match repository intent;
-- every billing row is proven sandbox-only, exported, and approved for cleanup;
-- live Aymero Managed Product and licensed $100 USD monthly Price exist;
-- live server key, live webhook signing secret, and live Price secret are ready;
-- live Customer Portal is configured for payment methods/history and end-of-period cancellation only;
-- `AYMERO_APP_URL=https://app.aymero.co` is confirmed;
-- Checkout, Portal, and webhook Edge Functions plus the frontend are ready to deploy;
-- no real Checkout starts during this reconciliation sprint.
-
-Production Stripe billing remains **NO-GO** until every item above passes.
+Production Stripe billing remains **NO-GO** until ledger reconciliation, exact test-mode classification, and the existing live-cutover gates all pass.
