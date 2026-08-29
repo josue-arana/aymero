@@ -98,35 +98,7 @@ Do not run this procedure without authenticated Supabase access, a maintenance w
 
 Deleting a test Subscription in Stripe does not remove its Supabase row, and deleting a Supabase mapping does not delete the Stripe object. Both sides must be handled deliberately. The webhook ledger can remain as archived test evidence only in a separate sandbox database; in a shared pre-live database it must be cleared with the other test-only billing rows because the schema has no mode marker.
 
-After the export and classification checks, the following is the exact deletion shape for the existing project. It is intentionally rollback-only. **MANUAL REVIEW REQUIRED:** review the affected row counts in the open transaction and replace `rollback` with `commit` only when every billing row has been proven test-only.
-
-```sql
-begin;
-
-select 'billing_subscriptions' as table_name, count(*) as rows_before
-from public.billing_subscriptions
-union all
-select 'billing_customers', count(*)
-from public.billing_customers
-union all
-select 'billing_webhook_events', count(*)
-from public.billing_webhook_events;
-
-delete from public.billing_subscriptions;
-delete from public.billing_customers;
-delete from public.billing_webhook_events;
-
-select 'billing_subscriptions' as table_name, count(*) as rows_after
-from public.billing_subscriptions
-union all
-select 'billing_customers', count(*)
-from public.billing_customers
-union all
-select 'billing_webhook_events', count(*)
-from public.billing_webhook_events;
-
-rollback; -- Replace with commit only after manual review of the export and counts.
-```
+After the export and classification checks, use `STRIPE_SANDBOX_BILLING_CLEANUP.sql`. **MANUAL REVIEW REQUIRED:** it requires each exact Customer, Subscription, and Event ID to have independent `livemode=false` evidence, fails closed if any production row is unclassified, joins every DELETE to an exact reviewed ID, and defaults to `rollback`. Do not replace its final `rollback` with `commit` without an approved maintenance window, restricted backup, and peer review.
 
 ## Migration-history reconciliation gate
 
@@ -137,6 +109,8 @@ The linked production migration ledger is not currently trustworthy enough for a
 - several local files reuse the same date-only version (`20260622`, `20260628`, `20260707`, `20260719`, and `20260721`);
 - `supabase db push --linked --dry-run` stops with `LegacyDbPushMissingRemoteError`;
 - using `--include-all` would attempt account-specific and older migrations and is not approved for production.
+
+The complete migration inventory, production evidence, duplicate analysis, and outstanding catalog queries are maintained in `PRODUCTION_DATABASE_RECONCILIATION.md` and `PRODUCTION_DATABASE_RECONCILIATION_AUDIT.sql`.
 
 This may mean SQL was applied manually without a matching ledger entry; it does not prove the schema is absent. Before cutover, compare each missing migration with the actual production schema, reconcile the legacy duplicate filenames in a dedicated database-maintenance change, and use `supabase migration repair` only for SQL that has been independently proven present. Migration repair changes history only; it does not apply SQL. Do not mark all missing versions applied blindly.
 
