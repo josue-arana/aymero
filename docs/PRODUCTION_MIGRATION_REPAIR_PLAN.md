@@ -1,173 +1,256 @@
 # Production migration ledger repair plan
 
-## Status and decision
+## Status
 
-**NO-GO for repair and Stripe live-mode cutover.** This document is a plan only. Sprint 3.44F.1 does not rename migration files, run `supabase migration repair`, push schema changes, change production data, clean up Stripe rows, or change Stripe configuration.
+**DATABASE MIGRATION RECONCILIATION COMPLETE.** Query 17 matched, local normalization completed in commit `8d752a9`, all 20 ledger-only repairs succeeded, and Sprint 3.44F.6 applied the forward ACL migration normally. Final ACL, function integrity, ledger pairing, and zero-pending dry run are verified.
 
-Production has 24 local migration files represented by only 15 local versions. The production ledger records exactly two rows:
+Before repair, production recorded exactly:
 
 | Version | Name | Statements |
 | --- | --- | ---: |
 | `20260622` | `create_miguel_contractor_profile` | 1 |
 | `20260828` | `add_billing_subscription_cancel_at` | 2 |
 
-The complete evidence matrix is in [PRODUCTION_DATABASE_RECONCILIATION.md](./PRODUCTION_DATABASE_RECONCILIATION.md). Its current counts are:
+Final classifications across 25 repository files are 23 `FULLY PRESENT`, 0 `PARTIALLY PRESENT`, 2 `SUPERSEDED`, 0 `NOT PRESENT`, and 0 `CANNOT DETERMINE`. The completed repair set contains 20 ledger-only entries; the ACL correction was applied separately as real forward SQL.
 
-| Classification | Files |
-| --- | ---: |
-| `FULLY PRESENT` | 5 |
-| `PARTIALLY PRESENT` | 3 |
-| `SUPERSEDED` | 2 |
-| `NOT PRESENT` | 0 |
-| `CANNOT DETERMINE` | 14 |
+## Complete repository normalization mapping
 
-`company_settings.simple_mode` is absent and `company_settings.analytics_mode` is present. That is evidence of a later design state, not permission to claim that the `simple_mode` migration ran.
+This approved mapping has been applied locally. The two recorded identities remain unchanged, historical SQL bytes are preserved, and the two superseded files live outside the active migration directory.
 
-## Repair eligibility
+| Current filename | Current version | Proposed canonical filename/version | Final class | Future repository action | Future ledger action | Order/dependency |
+| --- | --- | --- | --- | --- | --- | --- |
+| `20260622_create_miguel_contractor_profile.sql` | `20260622` | unchanged | `FULLY PRESENT` | Keep | Keep existing | Recorded owner of `20260622` |
+| `20260622235647_enable_self_service_beta_onboarding.sql` | `20260622235647` | unchanged | `FULLY PRESENT` | Normalized active file | Applied ledger entry | Historical divergence resolved by the explicit verified forward migration |
+| `20260622235648_link_miguel_contractor_membership.sql` | `20260622235648` | unchanged | `FULLY PRESENT` | Normalized active file | Mark applied | Requires target contractor/auth user |
+| `20260624_enable_payments_supabase_beta.sql` | `20260624` | unchanged | `FULLY PRESENT` | Keep filename | Mark applied | Query 17 exactly matched the three remaining column definitions |
+| `20260625_enable_events_supabase_beta.sql` | `20260625` | unchanged | `FULLY PRESENT` | Keep filename | Mark applied | Before sample workspace keys |
+| `20260628211023_add_simple_mode_to_company_settings.sql` | `20260628211023` | unchanged | `SUPERSEDED` | Archived under `supabase/migrations_archive` | Do not mark | Historical predecessor to Analytics Mode; never execute |
+| `20260629002608_enable_project_photos_storage_beta.sql` | `20260629002608` | unchanged | `FULLY PRESENT` | Normalized active file | Mark applied | Bucket foundation before photo fixes |
+| `20260629002609_fix_project_photos_rls.sql` | `20260629002609` | unchanged | `SUPERSEDED` | Archived under `supabase/migrations_archive` | Do not mark | Intermediate inline-uploader policy before final fix |
+| `20260629002610_fix_project_photos_identity_rls.sql` | `20260629002610` | unchanged | `FULLY PRESENT` | Normalized active file | Mark applied | Final photo policy after bucket foundation |
+| `20260630_add_analytics_mode_to_company_settings.sql` | `20260630` | unchanged | `FULLY PRESENT` | Keep filename | Mark applied | Intentional successor to Simple Mode |
+| `20260707152523_add_client_language_preferences.sql` | `20260707152523` | unchanged | `FULLY PRESENT` | Normalized active file | Mark applied | Before Estimate language by repository time |
+| `20260707170751_add_estimate_language.sql` | `20260707170751` | unchanged | `FULLY PRESENT` | Normalized active file | Mark applied | After Client/Lead languages |
+| `20260718_add_premium_onboarding_state.sql` | `20260718` | unchanged | `FULLY PRESENT` | Keep filename | Mark applied | Before sample manifest |
+| `20260719020608_add_sample_workspace_manifest.sql` | `20260719020608` | unchanged | `FULLY PRESENT` | Normalized active file | Mark applied | Must precede connected journey |
+| `20260719020609_connect_sample_workspace_journey.sql` | `20260719020609` | unchanged | `FULLY PRESENT` | Normalized active file | Mark applied | Depends on manifest/key schema |
+| `20260721003929_enable_invoices_supabase_rls.sql` | `20260721003929` | unchanged | `FULLY PRESENT` | Normalized active file | Mark applied | First 20260721 file by repository time |
+| `20260721173314_enable_contracts_delete_rls.sql` | `20260721173314` | unchanged | `FULLY PRESENT` | Normalized active file | Mark applied | After Invoice RLS |
+| `20260721173315_enable_estimates_delete_rls.sql` | `20260721173315` | unchanged | `FULLY PRESENT` | Normalized active file | Mark applied | After Contract DELETE |
+| `20260725_add_company_accepted_payment_methods.sql` | `20260725` | unchanged | `FULLY PRESENT` | Keep filename | Mark applied | Before Invoice customer notes |
+| `20260726_add_invoice_customer_notes.sql` | `20260726` | unchanged | `FULLY PRESENT` | Keep filename | Mark applied | After Invoice RLS/settings |
+| `20260812_add_public_client_portal_tokens.sql` | `20260812` | unchanged | `FULLY PRESENT` | Keep filename | Mark applied | Independent of billing |
+| `20260816_add_public_estimate_share_tokens.sql` | `20260816` | unchanged | `FULLY PRESENT` | Keep filename | Mark applied | After Project portal tokens chronologically |
+| `20260826_add_saas_billing_foundation.sql` | `20260826` | unchanged | `FULLY PRESENT` | Keep filename | Mark applied | Must precede `cancel_at` |
+| `20260828_add_billing_subscription_cancel_at.sql` | `20260828` | unchanged | `FULLY PRESENT` | Keep | Keep existing | Recorded final identity |
+| `20260829191542_restrict_beta_onboarding_function_execute.sql` | `20260829191542` | unchanged | `FULLY PRESENT` | Keep active | Applied normally; never repaired | Paired local/remote and verified in Sprint 3.44F.6 |
 
-### Already recorded; do not repair
+The normalization operation is isolated from historical SQL changes. Archived SQL is preserved under `supabase/migrations_archive`; the active `supabase/migrations` directory now has 23 unique versions.
 
-- `20260622_create_miguel_contractor_profile.sql` matches the exact remote `20260622 | create_miguel_contractor_profile` row. Preserve its version and filename.
-- `20260828_add_billing_subscription_cancel_at.sql` matches the exact remote `20260828 | add_billing_subscription_cancel_at` row. Preserve its version and filename.
+## Evidence gates
 
-### Fully present candidates
+### Repair candidates and conditional gates
 
-These are the only unrecorded migrations whose complete substantive effects are proven by the supplied production evidence:
+- Retain the Query 01–16 outputs privately with project ref and UTC capture time.
+- Reconfirm the two exact remote ledger rows immediately before any repair.
+- Query 17 returned exactly the expected metadata for `amount`, `payment_date`, and `status`; `20260624` is promoted to `FULLY PRESENT`.
+- The forward ACL strategy is approved. Representing the canonical onboarding historical version remains a sequencing decision, not a claim that its current ACL already matches.
+- The normalized repository preserves the new `20260829191542` file and excludes only the two approved superseded files from the active historical chain.
+- Re-run the adjusted repository verifier after normalization and before any ledger repair.
+- Capture a fresh billing catalog snapshot before repairing `20260826`.
 
-| Current migration | Eligibility | Required gate |
-| --- | --- | --- |
-| `20260719_add_sample_workspace_manifest.sql` | Candidate after renumbering | Give it a unique canonical version and confirm the normalized filename is the one being recorded. |
-| `20260726_add_invoice_customer_notes.sql` | Candidate | First complete and approve the local-history normalization; then capture a fresh ledger snapshot. |
-| `20260826_add_saas_billing_foundation.sql` | Candidate | First complete and approve the local-history normalization; then capture a fresh billing catalog snapshot. |
+### Historical migrations excluded from repair
 
-This is not authorization to run repair. Even these candidates should be recorded one at a time only after the active local migration chain is canonical and reviewed.
+- Archived `simple_mode`: intentionally superseded.
+- Archived first Project Photo RLS fix: no unique current effect proves the intermediate migration separately from the final fix.
 
-### Not safe to repair
+The ACL correction was correctly excluded from ledger repair and later applied normally through `supabase db push --linked`.
 
-- `PARTIALLY PRESENT`: onboarding function ACL/body, language checks, or other required effects have not been fully evidenced.
-- `CANNOT DETERMINE`: these include account-specific inserts, backfills, storage configuration, RLS policies, grants, and token population whose data or catalog state is not proven.
-- `SUPERSEDED`: `simple_mode` and the earlier project-photo RLS fix must not be represented as current production migrations merely because a later design exists.
-- `NOT PRESENT`: none are currently classified here. Any future file in this class must remain unapplied until a separately reviewed migration is intentionally executed.
+## Executed applied-repair commands
 
-The exact migrations currently prohibited from repair are:
+**Approved only for Sprint 3.44F.5 ledger reconciliation.** Run one command at a time in this exact order, stop on any non-zero exit, and never execute historical SQL:
 
-| Migration | Classification | Gate or disposition |
-| --- | --- | --- |
-| `20260622_enable_self_service_beta_onboarding.sql` | `PARTIALLY PRESENT` | Exact function definition/configuration/ACL evidence |
-| `20260622_link_miguel_contractor_membership.sql` | `CANNOT DETERMINE` | Exact account-row proof and human confirmation |
-| `20260624_enable_payments_supabase_beta.sql` | `CANNOT DETERMINE` | Defaults, policies, and backfill postconditions |
-| `20260625_enable_events_supabase_beta.sql` | `CANNOT DETERMINE` | Policies and four backfill postconditions |
-| `20260628_add_simple_mode_to_company_settings.sql` | `SUPERSEDED` | Legacy archive; never apply as current state |
-| `20260628_enable_project_photos_storage_beta.sql` | `CANNOT DETERMINE` | Bucket and exact Project Photo/Storage policies |
-| `20260628_fix_project_photos_rls.sql` | `SUPERSEDED` | Legacy archive; replaced by final identity fix |
-| `20260628_fix_project_photos_identity_rls.sql` | `CANNOT DETERMINE` | Exact helper, bucket, and policy evidence |
-| `20260630_add_analytics_mode_to_company_settings.sql` | `CANNOT DETERMINE` | Default/NOT NULL and zero-null backfill proof |
-| `20260707_add_client_language_preferences.sql` | `PARTIALLY PRESENT` | Two named check constraints |
-| `20260707_add_estimate_language.sql` | `PARTIALLY PRESENT` | Named Estimate language check |
-| `20260718_add_premium_onboarding_state.sql` | `CANNOT DETERMINE` | Defaults/checks and legacy-row backfill proof |
-| `20260719_connect_sample_workspace_journey.sql` | `CANNOT DETERMINE` | Orphan-cleanup postcondition and unique renumbering |
-| `20260721_enable_invoices_supabase_rls.sql` | `CANNOT DETERMINE` | Exact Invoice RLS policies |
-| `20260721_enable_contracts_delete_rls.sql` | `CANNOT DETERMINE` | Exact Contract DELETE policy |
-| `20260721_enable_estimates_delete_rls.sql` | `CANNOT DETERMINE` | Exact Estimate DELETE policy |
-| `20260725_add_company_accepted_payment_methods.sql` | `CANNOT DETERMINE` | JSON metadata/check and row-shape proof |
-| `20260812_add_public_client_portal_tokens.sql` | `CANNOT DETERMINE` | Token backfill/default/NOT NULL and anon privilege proof |
-| `20260816_add_public_estimate_share_tokens.sql` | `CANNOT DETERMINE` | Token backfill/default/NOT NULL and anon privilege proof |
+```sh
+supabase migration repair 20260622235647 --status applied --linked
+supabase migration repair 20260622235648 --status applied --linked
+supabase migration repair 20260624 --status applied --linked
+supabase migration repair 20260625 --status applied --linked
+supabase migration repair 20260629002608 --status applied --linked
+supabase migration repair 20260629002610 --status applied --linked
+supabase migration repair 20260630 --status applied --linked
+supabase migration repair 20260707152523 --status applied --linked
+supabase migration repair 20260707170751 --status applied --linked
+supabase migration repair 20260718 --status applied --linked
+supabase migration repair 20260719020608 --status applied --linked
+supabase migration repair 20260719020609 --status applied --linked
+supabase migration repair 20260721003929 --status applied --linked
+supabase migration repair 20260721173314 --status applied --linked
+supabase migration repair 20260721173315 --status applied --linked
+supabase migration repair 20260725 --status applied --linked
+supabase migration repair 20260726 --status applied --linked
+supabase migration repair 20260812 --status applied --linked
+supabase migration repair 20260816 --status applied --linked
+supabase migration repair 20260826 --status applied --linked
+```
 
-## Duplicate-version resolution
+Do not repair the already-recorded `20260622` or `20260828` entries again. Never use a blanket loop or `--include-all`.
 
-The duplicate versions `20260622`, `20260628`, `20260707`, `20260719`, and `20260721` block a truthful linked history. The canonical strategy is:
+## Command results
 
-1. Preserve every recorded remote identity exactly.
-2. Use 14-digit timestamps for unrecorded files, based on repository creation time and semantic dependency order.
-3. Keep a one-to-one mapping in this document and in the normalization commit.
-4. Move superseded historical SQL out of the active `supabase/migrations` directory in that reviewed commit; preserve it in a clearly named legacy archive rather than deleting it.
-5. Do not move unresolved data migrations out of the active chain until a human decides whether read-only evidence can prove them or they require an explicit production baseline decision.
+Every command returned exit status `0` and `Migration history repaired`; none executed schema SQL.
 
-Proposed mapping (not performed in this sprint):
+| Order | Version | Status | Exit |
+| ---: | --- | --- | ---: |
+| 1 | `20260622235647` | applied | 0 |
+| 2 | `20260622235648` | applied | 0 |
+| 3 | `20260624` | applied | 0 |
+| 4 | `20260625` | applied | 0 |
+| 5 | `20260629002608` | applied | 0 |
+| 6 | `20260629002610` | applied | 0 |
+| 7 | `20260630` | applied | 0 |
+| 8 | `20260707152523` | applied | 0 |
+| 9 | `20260707170751` | applied | 0 |
+| 10 | `20260718` | applied | 0 |
+| 11 | `20260719020608` | applied | 0 |
+| 12 | `20260719020609` | applied | 0 |
+| 13 | `20260721003929` | applied | 0 |
+| 14 | `20260721173314` | applied | 0 |
+| 15 | `20260721173315` | applied | 0 |
+| 16 | `20260725` | applied | 0 |
+| 17 | `20260726` | applied | 0 |
+| 18 | `20260812` | applied | 0 |
+| 19 | `20260816` | applied | 0 |
+| 20 | `20260826` | applied | 0 |
 
-| Current filename | Proposed canonical identity | Disposition |
-| --- | --- | --- |
-| `20260622_create_miguel_contractor_profile.sql` | unchanged | Recorded remotely; never renumber casually. |
-| `20260622_enable_self_service_beta_onboarding.sql` | `20260622235647_enable_self_service_beta_onboarding.sql` | Active only after missing function-definition and ACL evidence is resolved. |
-| `20260622_link_miguel_contractor_membership.sql` | `20260622235648_link_miguel_contractor_membership.sql` | Hold; account-specific data evidence required. |
-| `20260628_add_simple_mode_to_company_settings.sql` | `20260628211023_add_simple_mode_to_company_settings.sql` | Legacy archive; superseded and absent in production. |
-| `20260628_enable_project_photos_storage_beta.sql` | `20260629002608_enable_project_photos_storage_beta.sql` | Hold for bucket/RLS evidence. |
-| `20260628_fix_project_photos_rls.sql` | `20260629002609_fix_project_photos_rls.sql` | Legacy archive; replaced by the uploader-aware fix. |
-| `20260628_fix_project_photos_identity_rls.sql` | `20260629002610_fix_project_photos_identity_rls.sql` | Hold for exact final policy and bucket evidence. |
-| `20260707_add_client_language_preferences.sql` | `20260707152523_add_client_language_preferences.sql` | Hold until both check constraints are confirmed. |
-| `20260707_add_estimate_language.sql` | `20260707170751_add_estimate_language.sql` | Hold until the check constraint is confirmed. |
-| `20260719_add_sample_workspace_manifest.sql` | `20260719020608_add_sample_workspace_manifest.sql` | Fully present repair candidate after rename. |
-| `20260719_connect_sample_workspace_journey.sql` | `20260719020609_connect_sample_workspace_journey.sql` | Hold for the data-update postcondition evidence. |
-| `20260721_enable_invoices_supabase_rls.sql` | `20260721003929_enable_invoices_supabase_rls.sql` | Hold for exact RLS/policy evidence. |
-| `20260721_enable_contracts_delete_rls.sql` | `20260721173314_enable_contracts_delete_rls.sql` | Hold for exact DELETE-policy evidence. |
-| `20260721_enable_estimates_delete_rls.sql` | `20260721173315_enable_estimates_delete_rls.sql` | Hold for exact DELETE-policy evidence. |
+## Exact inverse ledger rollback commands
 
-The `20260629` photo timestamps reflect the files' repository creation time and make the semantic order explicit: bucket foundation, first ownership fix, final uploader-aware fix. The two recorded remote files remain unchanged, so normalization does not reinterpret either production ledger row.
+These inverse commands remove only a mistaken ledger entry; they do not undo schema or data. If a future operator observes any unexpected ledger row, stop and run only the inverse for the last command that was just applied:
 
-## Evidence required before reclassification
+```sh
+supabase migration repair 20260622235647 --status reverted --linked
+supabase migration repair 20260622235648 --status reverted --linked
+supabase migration repair 20260624 --status reverted --linked
+supabase migration repair 20260625 --status reverted --linked
+supabase migration repair 20260629002608 --status reverted --linked
+supabase migration repair 20260629002610 --status reverted --linked
+supabase migration repair 20260630 --status reverted --linked
+supabase migration repair 20260707152523 --status reverted --linked
+supabase migration repair 20260707170751 --status reverted --linked
+supabase migration repair 20260718 --status reverted --linked
+supabase migration repair 20260719020608 --status reverted --linked
+supabase migration repair 20260719020609 --status reverted --linked
+supabase migration repair 20260721003929 --status reverted --linked
+supabase migration repair 20260721173314 --status reverted --linked
+supabase migration repair 20260721173315 --status reverted --linked
+supabase migration repair 20260725 --status reverted --linked
+supabase migration repair 20260726 --status reverted --linked
+supabase migration repair 20260812 --status reverted --linked
+supabase migration repair 20260816 --status reverted --linked
+supabase migration repair 20260826 --status reverted --linked
+```
 
-Use read-only production queries only. The existing [PRODUCTION_DATABASE_RECONCILIATION_AUDIT.sql](./PRODUCTION_DATABASE_RECONCILIATION_AUDIT.sql) is the starting point; extend it narrowly if a required result is absent.
+Rollback order in an incident is reverse chronological from the last successfully inserted entry. Do not touch the two original ledger rows.
 
-| Area | Required evidence |
+## Post-repair linked ledger
+
+The exact CLI output is also retained in [PRODUCTION_DATABASE_RECONCILIATION.md](./PRODUCTION_DATABASE_RECONCILIATION.md). Every active historical local/remote version pairs exactly; the only blank remote value is the forward ACL version:
+
+```json
+{"migrations":[{"local":"20260622","remote":"20260622","time":"20260622"},{"local":"20260622235647","remote":"20260622235647","time":"2026-06-22 23:56:47"},{"local":"20260622235648","remote":"20260622235648","time":"2026-06-22 23:56:48"},{"local":"20260624","remote":"20260624","time":"20260624"},{"local":"20260625","remote":"20260625","time":"20260625"},{"local":"20260629002608","remote":"20260629002608","time":"2026-06-29 00:26:08"},{"local":"20260629002610","remote":"20260629002610","time":"2026-06-29 00:26:10"},{"local":"20260630","remote":"20260630","time":"20260630"},{"local":"20260707152523","remote":"20260707152523","time":"2026-07-07 15:25:23"},{"local":"20260707170751","remote":"20260707170751","time":"2026-07-07 17:07:51"},{"local":"20260718","remote":"20260718","time":"20260718"},{"local":"20260719020608","remote":"20260719020608","time":"2026-07-19 02:06:08"},{"local":"20260719020609","remote":"20260719020609","time":"2026-07-19 02:06:09"},{"local":"20260721003929","remote":"20260721003929","time":"2026-07-21 00:39:29"},{"local":"20260721173314","remote":"20260721173314","time":"2026-07-21 17:33:14"},{"local":"20260721173315","remote":"20260721173315","time":"2026-07-21 17:33:15"},{"local":"20260725","remote":"20260725","time":"20260725"},{"local":"20260726","remote":"20260726","time":"20260726"},{"local":"20260812","remote":"20260812","time":"20260812"},{"local":"20260816","remote":"20260816","time":"20260816"},{"local":"20260826","remote":"20260826","time":"20260826"},{"local":"20260828","remote":"20260828","time":"20260828"},{"local":"20260829191542","remote":"","time":"2026-08-29 19:15:42"}],"message":"Migrations listed"}
+```
+
+## Linked dry-run result
+
+`supabase db push --linked --dry-run` exited `0` and showed exactly one pending forward migration:
+
+- `20260829191542_restrict_beta_onboarding_function_execute.sql`
+
+Exact result:
+
+```text
+Initialising login role...
+DRY RUN: migrations will *not* be pushed to the database.
+Connecting to remote database...
+Would push these migrations:
+ • 20260829191542_restrict_beta_onboarding_function_execute.sql
+{"upToDate":false,"dryRun":true,"migrations":["20260829191542_restrict_beta_onboarding_function_execute.sql"],"seeds":[],"roles":[],"message":"Finished supabase db push."}
+```
+
+`LegacyDbPushMissingRemoteError` was gone. There was no historical migration proposal and no `--include-all`. Sprint 3.44F.5 stopped with the ACL migration unapplied.
+
+## Sprint 3.44F.6 forward deployment and closure
+
+Preflight again proposed only `20260829191542_restrict_beta_onboarding_function_execute.sql`. The normal linked deployment command was:
+
+```sh
+supabase db push --linked
+```
+
+It exited `0`:
+
+```text
+Applying migration 20260829191542_restrict_beta_onboarding_function_execute.sql...
+{"upToDate":false,"dryRun":false,"migrations":["20260829191542_restrict_beta_onboarding_function_execute.sql"],"seeds":[],"roles":[],"message":"Finished supabase db push."}
+```
+
+Read-only catalog verification produced:
+
+| ACL/integrity check | Result |
 | --- | --- |
-| Self-service onboarding | Exact `pg_get_functiondef`, owner, `prosecdef`, `proconfig`, PUBLIC revoke, and authenticated EXECUTE grant. |
-| Miguel membership | Exact contractor/member/auth UUID relationship and archival state; do not infer it from the contractor row. |
-| Payments and Events | Defaults/nullability, all intended RLS policies, and queries proving the migration backfill postconditions. |
-| Project photos | Bucket existence/settings and exact `public.project_photos` plus `storage.objects` policy commands/expressions. |
-| Analytics and onboarding | Defaults, NOT NULL/check constraints, and row queries proving no legacy rows missed the backfills. |
-| Language fields | The three named check constraints and their definitions. |
-| Connected sample journey | Validated Estimate→Lead FK plus a query proving no unresolved legacy relationship; retain the conservative data review even if the FK is valid. |
-| Contract/Estimate/Invoice RLS | `relrowsecurity`, roles, commands, `qual`, and `with_check` for every named policy. |
-| Payment method JSON | Default, NOT NULL, named shape check, and a row query proving every value has the canonical shape. |
-| Public tokens | NOT NULL/default/index, anon privileges, and row queries proving every token is populated, nonblank, and unique. |
+| PUBLIC EXECUTE | false |
+| anon EXECUTE | false |
+| authenticated EXECUTE | true |
+| service_role EXECUTE | true |
+| SECURITY DEFINER | true |
+| Identity signature | unchanged, five text arguments |
+| Return table | unchanged, ten fields |
+| `search_path` | `public, auth` |
+| `auth.uid()` assignment/null rejection | retained |
 
-If all effects of a migration are proven, promote it to `FULLY PRESENT`. If any effect is missing, do not repair the historical version. Design a narrow, idempotent corrective migration after the current head under separate approval. If a data migration's historical state remains unknowable, keep it unresolved and make an explicit baseline/archive decision; do not manufacture ledger history.
+The final linked ledger pairs `20260829191542` local/remote. The final dry run exited `0`:
 
-## Recommended future repair sequence
+```text
+DRY RUN: migrations will *not* be pushed to the database.
+{"upToDate":true,"dryRun":true,"migrations":[],"seeds":[],"roles":[],"message":"Remote database is up to date."}
+```
 
-The sequence below is intentionally gated and must be executed in a later, approved production-change sprint.
+Zero migrations remain pending.
 
-1. Export the complete production ledger and the read-only catalog result sets. Record the project ref and UTC timestamp privately.
-2. Create and review one local-history normalization commit using the mapping above. Do not combine it with production repair.
-3. Re-run the verifier and compare every active filename/version with the approved matrix.
-4. Resolve all `PARTIALLY PRESENT` and `CANNOT DETERMINE` rows using the evidence table. Archive only migrations explicitly approved as legacy/superseded or historically unknowable; never silently drop them.
-5. Capture a fresh `supabase migration list --linked`. Abort if either known remote row changed or any unexpected row appeared.
-6. Repair only the approved `FULLY PRESENT` candidates, one version per command and in canonical chronological order. The expected candidate order is:
-   1. `20260719020608_add_sample_workspace_manifest.sql`
-   2. `20260726_add_invoice_customer_notes.sql`
-   3. `20260826_add_saas_billing_foundation.sql`
-7. After each single repair, re-list the linked ledger and verify the exact new row before continuing.
-8. Run `supabase db push --linked --dry-run` without `--include-all`. A clean, explainable no-op is required. Any proposed SQL or legacy-history error returns the decision to NO-GO.
-9. Only after the database ledger is clean may the separate Stripe sandbox classification/cleanup and live-mode cutover gates resume.
+## Manual review sequence
 
-Never use a blanket loop, `--include-all`, or “mark every missing version applied.” The future operator must substitute only a reviewed exact version into `supabase migration repair <exact-version> --status applied --linked`.
+1. Query 17 matched local SQL.
+2. The authenticated/service-role ACL target was approved.
+3. The 25-file normalization map was approved and applied.
+4. Isolated normalization commit `8d752a9` preserved SQL bytes.
+5. Pre-repair ledger contained only the two known remote rows.
+6. All 20 ordered repairs succeeded.
+7. Post-repair ledger pairs all active historical versions.
+8. The dry run shows only the ACL migration.
+9. Stop. Review/apply that forward migration only in Sprint 3.44F.6.
 
-## Recovery considerations
+## Recovery boundaries
 
-- A repair changes the ledger only; it does not create or remove schema objects. Therefore a ledger rollback cannot repair schema drift.
-- Before each repair, save the exact ledger rows. If a newly inserted ledger entry is wrong, stop immediately and use a separately reviewed single-version `--status reverted` repair for that exact version. Re-list the ledger afterward.
-- Local filename normalization is recoverable through a dedicated Git revert because it must be isolated in its own commit.
-- Never roll back either recorded remote identity (`20260622_create_miguel_contractor_profile` or `20260828_add_billing_subscription_cancel_at`) as part of this plan.
-- A corrective SQL migration needs its own database backup/rollback design. It is not covered by ledger-only recovery.
-- Stripe objects and billing rows are outside this repair. The lack of a stored `livemode` discriminator keeps sandbox cleanup blocked until every exact Stripe ID is verified independently.
+- Migration repair changes ledger state only. It does not roll schema or data backward.
+- A normalization commit is recovered with an isolated Git revert.
+- The forward ACL correction is idempotent role-state SQL; rollback would require a separately reviewed forward ACL decision, not historical file editing.
+- Billing sandbox cleanup and Stripe live objects are outside this plan.
 
-## Final pre-repair checklist
+## Final checklist
 
-- [ ] Human approval exists for the local normalization mapping and legacy archive decisions.
-- [ ] The worktree contains no unrelated changes.
-- [ ] All 24 original files remain traceable in the matrix and Git history.
-- [ ] No duplicate version remains in the active migration directory.
-- [ ] The two recorded remote identities are unchanged.
-- [ ] Every repair candidate is `FULLY PRESENT` with retained read-only evidence.
-- [ ] Every account-specific/backfill migration is proven or explicitly held out; none is inferred from columns alone.
-- [ ] `simple_mode` remains absent and is not scheduled for accidental execution.
-- [ ] Exact photo, CRM, and billing RLS policies/grants match the approved target.
-- [ ] The production ledger was freshly exported immediately before repair.
-- [ ] A single-version recovery command and operator are identified.
-- [ ] Sandbox Stripe objects remain untouched.
-- [ ] No live Stripe secret or configuration has changed.
-- [ ] Post-repair linked list and dry-run commands are ready.
+- [x] Query 01–16 outputs retained privately.
+- [x] Query 17 exact Payment metadata matches.
+- [x] Onboarding ACL disposition approved.
+- [x] New ACL migration was applied normally only in Sprint 3.44F.6.
+- [x] Full normalization map approved and applied.
+- [x] No duplicate remains in the active migration directory.
+- [x] Recorded `20260622` and `20260828` identities unchanged.
+- [x] Superseded SQL preserved outside the active directory.
+- [x] Each repair candidate matches resolved production evidence.
+- [x] Ledger captured before repair and commands checked individually.
+- [x] Exact inverse commands remain documented.
+- [x] Default linked dry run shows only approved post-head SQL.
+- [x] No Stripe configuration/data change was combined with ledger repair.
 
 ## Exact next manual action
 
-Review and approve the proposed local normalization mapping—especially the legacy archive treatment for `simple_mode` and the earlier photo RLS fix—then run the existing read-only production audit and retain the missing result sets listed above. Do **not** run migration repair yet.
+Sprint 3.44G may begin Stripe live-mode production cutover. Do not combine that separate work with database reconciliation.
