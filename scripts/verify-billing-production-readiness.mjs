@@ -54,7 +54,7 @@ assert.match(gitignore, /^\.env$/m)
 assert.match(gitignore, /^\.env\.local$/m)
 assert.doesNotMatch(envExample, /STRIPE_SECRET_KEY|STRIPE_WEBHOOK_SECRET|STRIPE_PRICE_/)
 
-// Legacy migration history is an explicit production gate, not a reason to push blindly.
+// Migration history must remain normalized and the completed reconciliation must stay documented.
 const migrationVersions = trackedFiles
   .filter((path) => path.startsWith('supabase/migrations/'))
   .map((path) => path.split('/').at(-1)?.match(/^(\d+)_/)?.[1] || '')
@@ -67,14 +67,12 @@ const duplicateMigrationVersions = [...migrationVersionCounts]
   .filter(([, count]) => count > 1)
   .map(([version]) => version)
 
-if (duplicateMigrationVersions.length) {
-  assert.match(docs, /linked production migration ledger is not currently trustworthy/)
-  assert.match(docs, /Do not mark all missing versions applied blindly/)
-  for (const version of duplicateMigrationVersions) assert.match(docs, new RegExp(version))
-}
+assert.deepEqual(duplicateMigrationVersions, [])
 assert.match(docs, /supabase migration list --linked/)
 assert.match(docs, /supabase db push --linked --dry-run/)
 assert.doesNotMatch(docs, /^supabase db push\s*$/m)
+assert.match(docs, /23 paired local\/remote versions/)
+assert.match(docs, /upToDate=true/)
 assert.match(cancellationMigration, /add column if not exists cancel_at timestamptz/)
 
 // Return destinations are derived only from the validated server-controlled canonical origin.
@@ -160,8 +158,12 @@ assert.match(cleanupSql, /using reviewed_sandbox_webhook_events as reviewed/)
 assert.match(cleanupSql, /rollback;/)
 assert.doesNotMatch(cleanupSql, /delete from public\.billing_(?:subscriptions|customers|webhook_events);/)
 assert.match(docs, /never restore test secrets into this production project after live objects exist/)
-assert.match(docs, /production is \*\*NO-GO\*\*/)
-assert.match(health, /id: 'billingLiveCutover'[\s\S]*status: 'PENDING'/)
+assert.match(docs, /STRIPE LIVE CUTOVER: READY FOR FIRST SUBSCRIPTION/)
+assert.match(docs, /Production is \*\*GO for a supervised first real subscription\*\*/)
+assert.match(docs, /evt_1U9zBJQ0KpR7e0oAKEQSj5v4/)
+assert.match(docs, /0 `billing_customers`, 0 `billing_subscriptions`, and 1 processed non-billing preflight Event/)
+assert.doesNotMatch(docs, /production is \*\*NO-GO\*\*/i)
+assert.match(health, /id: 'billingLiveCutover'[\s\S]*status: 'PASS'/)
 
 // Safe errors and operator diagnostics expose no server secrets to React.
 assert.doesNotMatch(`${service}\n${card}`, /STRIPE_SECRET_KEY|STRIPE_WEBHOOK_SECRET|SUPABASE_SERVICE_ROLE_KEY/)
@@ -185,4 +187,4 @@ for (const key of ['releaseCheckBillingLiveCutover', 'releaseEvidenceBillingLive
 }
 assert.doesNotMatch(card, /Customer Portal|Stripe Portal|Billing Customer Portal/)
 
-console.log('Stripe live-mode production readiness validation passed; operational GO gate remains documented as NO-GO.')
+console.log('Stripe live-mode production readiness validation passed; cutover is documented as ready for the first supervised subscription.')
