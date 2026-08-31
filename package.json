@@ -34,7 +34,9 @@
     "verify:billing-settings": "node scripts/verify-billing-settings-sync.mjs",
     "verify:subscription-hub": "node scripts/verify-subscription-hub.mjs",
     "verify:billing-cancellation": "node scripts/verify-billing-cancellation-lifecycle.mjs",
-    "verify:billing-production": "node scripts/verify-billing-production-readiness.mjs"
+    "verify:billing-webhook-uuid": "node scripts/verify-billing-webhook-uuid.mjs",
+    "verify:billing-production": "node scripts/verify-billing-production-readiness.mjs",
+    "verify:database-reconciliation": "node scripts/verify-database-reconciliation.mjs"
   },
   "dependencies": {
     "@vitejs/plugin-react": "latest",

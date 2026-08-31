@@ -1,11 +1,10 @@
 export const STRIPE_API_VERSION = '2026-02-25.clover'
 export const AYMERO_MANAGED_PLAN_KEY = 'aymero_managed'
 
-const uuidPattern = /^[0-9a-f]{8}-[0-9a-f]{4}-[1-5][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i
-
-export function isUuid(value: unknown) {
-  return uuidPattern.test(String(value || '').trim())
-}
+export {
+  hasMatchingBillingTenant,
+  isPostgresUuid as isUuid,
+} from './saasBillingIdentity.js'
 
 export function readStripeId(value: unknown) {
   if (typeof value === 'string') return value.trim()

@@ -17,12 +17,14 @@ const webhook = read('../supabase/functions/stripe-billing-webhook/index.ts')
 const shared = read('../supabase/functions/_shared/saasBilling.ts')
 const config = read('../supabase/config.toml')
 const migration = read('../supabase/migrations/20260826_add_saas_billing_foundation.sql')
+const cancellationMigration = read('../supabase/migrations/20260828_add_billing_subscription_cancel_at.sql')
 const service = read('../src/services/saasBillingService.js')
 const card = read('../src/components/settings/SaasBillingCard.jsx')
 const app = read('../src/App.jsx')
 const envExample = read('../.env.example')
 const gitignore = read('../.gitignore')
 const docs = read('../docs/STRIPE_LIVE_MODE_CUTOVER.md')
+const cleanupSql = read('../docs/STRIPE_SANDBOX_BILLING_CLEANUP.sql')
 const health = read('../src/config/developerHealthRegistry.js')
 
 // Browser submits only the stable plan key; the configured Price remains server-side.
@@ -31,6 +33,8 @@ assert.match(shared, /AYMERO_MANAGED_PLAN_KEY = 'aymero_managed'/)
 assert.match(shared, /Deno\.env\.get\('STRIPE_PRICE_AYMERO_MANAGED_MONTHLY'\)/)
 assert.doesNotMatch(`${service}\n${card}`, /stripePrice|priceId|STRIPE_PRICE_AYMERO_MANAGED_MONTHLY/)
 assert.doesNotMatch(`${checkout}\n${shared}`, /price_[A-Za-z0-9]{12,}/)
+assert.match(checkout, /'line_items\[0\]\[quantity\]': 1/)
+assert.match(docs, /licensed recurring Price[\s\S]*amount \*\*100\.00\*\*[\s\S]*interval \*\*Monthly\*\*/)
 
 // Scan tracked text files without exposing values; committed server-secret-shaped values fail.
 const trackedFiles = execFileSync('git', ['ls-files'], { encoding: 'utf8' }).trim().split('\n').filter(Boolean)
@@ -49,6 +53,27 @@ assert.doesNotMatch(trackedText, /VITE_[A-Z0-9_]*STRIPE|STRIPE_[A-Z0-9_]*VITE_/)
 assert.match(gitignore, /^\.env$/m)
 assert.match(gitignore, /^\.env\.local$/m)
 assert.doesNotMatch(envExample, /STRIPE_SECRET_KEY|STRIPE_WEBHOOK_SECRET|STRIPE_PRICE_/)
+
+// Migration history must remain normalized and the completed reconciliation must stay documented.
+const migrationVersions = trackedFiles
+  .filter((path) => path.startsWith('supabase/migrations/'))
+  .map((path) => path.split('/').at(-1)?.match(/^(\d+)_/)?.[1] || '')
+  .filter(Boolean)
+const migrationVersionCounts = migrationVersions.reduce((counts, version) => {
+  counts.set(version, (counts.get(version) || 0) + 1)
+  return counts
+}, new Map())
+const duplicateMigrationVersions = [...migrationVersionCounts]
+  .filter(([, count]) => count > 1)
+  .map(([version]) => version)
+
+assert.deepEqual(duplicateMigrationVersions, [])
+assert.match(docs, /supabase migration list --linked/)
+assert.match(docs, /supabase db push --linked --dry-run/)
+assert.doesNotMatch(docs, /^supabase db push\s*$/m)
+assert.match(docs, /23 paired local\/remote versions/)
+assert.match(docs, /upToDate=true/)
+assert.match(cancellationMigration, /add column if not exists cancel_at timestamptz/)
 
 // Return destinations are derived only from the validated server-controlled canonical origin.
 for (const edgeFunction of [checkout, portal]) {
@@ -84,14 +109,21 @@ for (const eventType of [
 assert.match(webhook, /ledgerInsertError\?\.code === '23505'/)
 assert.match(webhook, /processed_at: new Date\(\)\.toISOString\(\)/)
 assert.ok(webhook.indexOf('await verifyStripeSignature') < webhook.indexOf('const admin = createClient'))
+const apiVersion = shared.match(/STRIPE_API_VERSION = '([^']+)'/)?.[1] || ''
+assert.ok(apiVersion)
+assert.match(docs, new RegExp(apiVersion.replaceAll('.', '\\.')))
+assert.match(docs, /do not upgrade it as part of cutover/i)
 
 // Tenant ownership/customer reuse/RLS are contractor-scoped with no identity fallback.
 assert.match(checkout, /admin\.auth\.getUser\(accessToken\)/)
 assert.match(checkout, /\.from\('contractor_members'\)/)
 assert.match(checkout, /storedBillingCustomer\?\.stripe_customer_id/)
 assert.match(checkout, /\.eq\('contractor_id', contractorId\)/)
+assert.match(checkout, /billingRoles = new Set\(\['owner', 'admin'\]\)/)
+assert.match(portal, /billingRoles = new Set\(\['owner', 'admin'\]\)/)
+assert.doesNotMatch(`${checkout}\n${portal}`, /body\?\.(?:contractor|customer|stripe|price)/i)
 assert.match(webhook, /\.eq\('stripe_customer_id', stripeCustomerId\)/)
-assert.match(webhook, /metadataContractorId !== billingCustomer\.contractor_id/)
+assert.match(webhook, /hasMatchingBillingTenant\(metadataContractorId, billingCustomer\.contractor_id\)/)
 assert.doesNotMatch(webhook, /company_name|\.email|customer_email/)
 assert.match(migration, /is_active_contractor_member\(contractor_id\)/)
 assert.match(migration, /revoke all on table public\.billing_webhook_events from anon, authenticated/)
@@ -103,6 +135,9 @@ for (const status of ['active', 'trialing', 'past_due', 'unpaid', 'paused', 'inc
   assert.match(activeStatuses, new RegExp(status))
 }
 assert.equal(canStartSaasBillingCheckout({ status: 'active', cancel_at_period_end: true }), false)
+assert.equal(canStartSaasBillingCheckout({ status: 'active', cancel_at: '2099-01-01T00:00:00.000Z' }), false)
+assert.equal(canStartSaasBillingCheckout({ status: 'past_due' }), false)
+assert.equal(canStartSaasBillingCheckout({ status: 'unpaid' }), false)
 assert.equal(canStartSaasBillingCheckout({ status: 'canceled' }), true)
 assert.match(card, /billingPaymentAttention/)
 assert.doesNotMatch(app, /billing.*(?:lock|logout|signOut)/i)
@@ -113,9 +148,22 @@ assert.match(docs, /mandatory data cutover gate/)
 assert.match(docs, /test `billing_customers\.stripe_customer_id`/)
 assert.match(docs, /active test `billing_subscriptions` row could also block live Checkout/)
 assert.match(docs, /delete test `billing_subscriptions` rows first, then test `billing_customers`/)
+const deleteSubscriptions = cleanupSql.indexOf('delete from public.billing_subscriptions as subscription')
+const deleteCustomers = cleanupSql.indexOf('delete from public.billing_customers as customer')
+const deleteEvents = cleanupSql.indexOf('delete from public.billing_webhook_events as webhook_event')
+assert.ok(deleteSubscriptions >= 0 && deleteSubscriptions < deleteCustomers && deleteCustomers < deleteEvents)
+assert.match(cleanupSql, /using reviewed_sandbox_subscriptions as reviewed/)
+assert.match(cleanupSql, /using reviewed_sandbox_customers as reviewed/)
+assert.match(cleanupSql, /using reviewed_sandbox_webhook_events as reviewed/)
+assert.match(cleanupSql, /rollback;/)
+assert.doesNotMatch(cleanupSql, /delete from public\.billing_(?:subscriptions|customers|webhook_events);/)
 assert.match(docs, /never restore test secrets into this production project after live objects exist/)
-assert.match(docs, /production is \*\*NO-GO\*\*/)
-assert.match(health, /id: 'billingLiveCutover'[\s\S]*status: 'PENDING'/)
+assert.match(docs, /STRIPE LIVE CUTOVER: READY FOR FIRST SUBSCRIPTION/)
+assert.match(docs, /Production is \*\*GO for a supervised first real subscription\*\*/)
+assert.match(docs, /evt_1U9zBJQ0KpR7e0oAKEQSj5v4/)
+assert.match(docs, /0 `billing_customers`, 0 `billing_subscriptions`, and 1 processed non-billing preflight Event/)
+assert.doesNotMatch(docs, /production is \*\*NO-GO\*\*/i)
+assert.match(health, /id: 'billingLiveCutover'[\s\S]*status: 'PASS'/)
 
 // Safe errors and operator diagnostics expose no server secrets to React.
 assert.doesNotMatch(`${service}\n${card}`, /STRIPE_SECRET_KEY|STRIPE_WEBHOOK_SECRET|SUPABASE_SERVICE_ROLE_KEY/)
@@ -139,4 +187,4 @@ for (const key of ['releaseCheckBillingLiveCutover', 'releaseEvidenceBillingLive
 }
 assert.doesNotMatch(card, /Customer Portal|Stripe Portal|Billing Customer Portal/)
 
-console.log('Stripe live-mode production readiness validation passed.')
+console.log('Stripe live-mode production readiness validation passed; cutover is documented as ready for the first supervised subscription.')

@@ -49,7 +49,7 @@ export const technicalDebtRegistry = {
         { id: 'portalIsolation', labelKey: 'releaseCheckPortalIsolation', status: 'PENDING', evidenceKey: 'releaseEvidencePortalIsolation' },
         { id: 'productionEnvironment', labelKey: 'releaseCheckProductionEnvironment', status: 'PASS', evidenceKey: 'releaseEvidenceProductionEnvironment' },
         { id: 'developerRoutes', labelKey: 'releaseCheckDeveloperRoutes', status: 'PASS', evidenceKey: 'releaseEvidenceDeveloperRoutes' },
-        { id: 'billingLiveCutover', labelKey: 'releaseCheckBillingLiveCutover', status: 'PENDING', evidenceKey: 'releaseEvidenceBillingLiveCutover' },
+        { id: 'billingLiveCutover', labelKey: 'releaseCheckBillingLiveCutover', status: 'PASS', evidenceKey: 'releaseEvidenceBillingLiveCutover' },
       ],
     },
   },

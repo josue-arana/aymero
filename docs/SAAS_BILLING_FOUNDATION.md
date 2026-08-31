@@ -121,6 +121,15 @@ No additional secret is required. Portal creation reuses `STRIPE_SECRET_KEY` and
 
 ## Deployment
 
+The linked production migration ledger is currently under reconciliation. Before any production deployment, follow `PRODUCTION_DATABASE_RECONCILIATION.md` and require these read-only commands to be clean and explainable:
+
+```bash
+supabase migration list --linked
+supabase db push --linked --dry-run
+```
+
+Do not use `--include-all`, do not repair unverified history, and answer **No** if a Function deployment offers to push migrations while the reconciliation gate is open. The `db push` below is only for a clean, understood local/sandbox migration chain or for production after that gate passes.
+
 ```bash
 supabase db push
 supabase secrets set STRIPE_SECRET_KEY=sk_test_...
