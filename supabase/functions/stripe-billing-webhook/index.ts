@@ -1,7 +1,7 @@
 import { createClient } from 'npm:@supabase/supabase-js@2'
 import {
   getPlanKeyForPrice,
-  isUuid,
+  hasMatchingBillingTenant,
   readStripeId,
   readSubscriptionPeriod,
   stripeRequest,
@@ -120,7 +120,7 @@ Deno.serve(async (request) => {
       .maybeSingle()
 
     if (error || !billingCustomer?.contractor_id) throw new Error('Billing customer mapping was not found.')
-    if (metadataContractorId && (!isUuid(metadataContractorId) || metadataContractorId !== billingCustomer.contractor_id)) {
+    if (!hasMatchingBillingTenant(metadataContractorId, billingCustomer.contractor_id)) {
       throw new Error('Billing tenant metadata does not match the persisted customer mapping.')
     }
     return String(billingCustomer.contractor_id)
@@ -220,7 +220,8 @@ Deno.serve(async (request) => {
     console.error('[saas-billing] webhook processing failed', {
       eventType,
       stripeEventId: eventId,
-      code: error instanceof Error ? error.name : 'UNKNOWN',
+      errorName: error instanceof Error ? error.name : 'UNKNOWN',
+      errorMessage: error instanceof Error ? error.message : 'Unknown webhook processing error.',
     })
 
     await admin.from('billing_webhook_events').delete().eq('stripe_event_id', eventId)

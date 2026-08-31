@@ -69,7 +69,7 @@ assert.match(functionConfig, /\[functions\.stripe-billing-webhook\][\s\S]*verify
 // Webhook tenant resolution is deterministic and event handling is idempotent.
 assert.match(webhook, /\.from\('billing_customers'\)/)
 assert.match(webhook, /\.eq\('stripe_customer_id', stripeCustomerId\)/)
-assert.match(webhook, /metadataContractorId !== billingCustomer\.contractor_id/)
+assert.match(webhook, /hasMatchingBillingTenant\(metadataContractorId, billingCustomer\.contractor_id\)/)
 assert.doesNotMatch(webhook, /company_name|\.email|customer_email/)
 assert.match(migration, /stripe_event_id text primary key/)
 assert.match(webhook, /ledgerInsertError\?\.code === '23505'/)
