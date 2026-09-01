@@ -22,6 +22,7 @@ function readArgument(name) {
 
 const projectRef = readArgument('--project-ref')
 const expectedProjectName = readArgument('--expected-project-name')
+const allowSyntheticRuntimeData = process.argv.includes('--allow-synthetic-runtime-data')
 if (!projectRef || !expectedProjectName || projectRef === productionRef) {
   throw new Error('A verified non-production project ref and name are required.')
 }
@@ -65,10 +66,13 @@ declare\n
   ];\n
   expected_rls_tables text[] := array[\n
     'billing_customers', 'billing_subscriptions', 'billing_webhook_events',\n
-    'contracts', 'estimates', 'events', 'invoices', 'payments', 'project_photos'\n
+    'clients', 'company_settings', 'contractor_members', 'contractors',\n
+    'contracts', 'estimates', 'events', 'invoices', 'leads', 'payments',\n
+    'project_photos', 'projects'\n
   ];\n
   table_name_to_check text;\n
   populated_table text;\n
+  allow_synthetic_runtime_data boolean := ${allowSyntheticRuntimeData ? 'true' : 'false'};\n
 begin\n
   foreach table_name_to_check in array expected_tables loop\n
     if to_regclass(format('public.%I', table_name_to_check)) is null then\n
@@ -85,6 +89,22 @@ begin\n
       raise exception 'RLS is not enabled for expected table: %', table_name_to_check;\n
     end if;\n
   end loop;\n
+\n
+  if not exists (\n
+    select 1 from pg_policies\n
+    where schemaname = 'public'\n
+      and tablename = 'estimates'\n
+      and policyname = 'beta_active_members_can_insert_estimates'\n
+      and 'authenticated' = any(roles)\n
+  ) or not exists (\n
+    select 1 from pg_policies\n
+    where schemaname = 'public'\n
+      and tablename = 'contracts'\n
+      and policyname = 'beta_active_members_can_insert_contracts'\n
+      and 'authenticated' = any(roles)\n
+  ) then\n
+    raise exception 'Core CRM authenticated insert policies are missing.';\n
+  end if;\n
 \n
   if not exists (\n
     select 1\n
@@ -112,22 +132,38 @@ begin\n
     raise exception 'Missing Scope Assistant JSON-object constraint.';\n
   end if;\n
 \n
-  for populated_table in\n
-    select table_name\n
-    from (\n
-      select 'contractors' as table_name where exists (select 1 from public.contractors)\n
-      union all select 'contractor_members' where exists (select 1 from public.contractor_members)\n
-      union all select 'clients' where exists (select 1 from public.clients)\n
-      union all select 'leads' where exists (select 1 from public.leads)\n
-      union all select 'projects' where exists (select 1 from public.projects)\n
-      union all select 'estimates' where exists (select 1 from public.estimates)\n
-      union all select 'billing_customers' where exists (select 1 from public.billing_customers)\n
-      union all select 'billing_subscriptions' where exists (select 1 from public.billing_subscriptions)\n
-      union all select 'billing_webhook_events' where exists (select 1 from public.billing_webhook_events)\n
-    ) as populated\n
-  loop\n
-    raise exception 'Unexpected row data in staging table: %', populated_table;\n
-  end loop;\n
+  if allow_synthetic_runtime_data then\n
+    if (select count(*) from auth.users where email in ('staging.owner@aymero.co', 'staging.isolation@aymero.co')) <> 2\n
+       or (select count(*) from public.contractors) <> 2\n
+       or (select count(*) from public.contractor_members) <> 2\n
+       or (select count(*) from public.company_settings) <> 2\n
+       or (select count(*) from public.clients) <> 3\n
+       or (select count(*) from public.leads) <> 2\n
+       or (select count(*) from public.estimates) <> 4\n
+       or (select count(*) from public.contracts) <> 1 then\n
+      raise exception 'Synthetic staging runtime fixture counts do not match the approved minimal dataset.';\n
+    end if;\n
+  else\n
+    for populated_table in\n
+      select table_name\n
+      from (\n
+        select 'contractors' as table_name where exists (select 1 from public.contractors)\n
+        union all select 'contractor_members' where exists (select 1 from public.contractor_members)\n
+        union all select 'clients' where exists (select 1 from public.clients)\n
+        union all select 'leads' where exists (select 1 from public.leads)\n
+        union all select 'projects' where exists (select 1 from public.projects)\n
+        union all select 'estimates' where exists (select 1 from public.estimates)\n
+      ) as populated\n
+    loop\n
+      raise exception 'Unexpected row data in staging table: %', populated_table;\n
+    end loop;\n
+  end if;\n
+\n
+  if exists (select 1 from public.billing_customers)\n
+     or exists (select 1 from public.billing_subscriptions)\n
+     or exists (select 1 from public.billing_webhook_events) then\n
+    raise exception 'Staging billing data must remain empty.';\n
+  end if;\n
 \n
   if not exists (\n
     select 1\n

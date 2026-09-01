@@ -41,6 +41,7 @@ The current `supabase/schema.sql` is not itself the historical baseline: it incl
 | `20260828_add_billing_subscription_cancel_at.sql` | Schema evolution | Replay |
 | `20260829191542_restrict_beta_onboarding_function_execute.sql` | Forward ACL correction | Replay |
 | `20260831_add_estimate_scope_assistant_state.sql` | Genuinely pending forward migration | Exclude from baseline; apply normally afterward |
+| `20260901143000_enable_core_crm_rls.sql` | Forward RLS reconciliation | Apply normally after the baseline; materializes the existing standalone core CRM policies in active history |
 
 The archived `20260628211023_add_simple_mode_to_company_settings.sql` and `20260629002609_fix_project_photos_rls.sql` files remain superseded/history-only and are neither replayed nor recorded in a new active ledger.
 
@@ -55,7 +56,7 @@ Two active versions are production-only historical data setup and are never exec
 - `20260622_create_miguel_contractor_profile.sql`
 - `20260622235648_link_miguel_contractor_membership.sql`
 
-After the schema effects are installed, the script removes its temporary ledger marker and records those two versions as intentionally satisfied without executing their data SQL. The two archived superseded migrations remain outside active history and are not recorded. `20260831_add_estimate_scope_assistant_state.sql` remains pending so it can be validated as a genuine forward migration.
+After the schema effects are installed, the script removes its temporary ledger marker and records those two versions as intentionally satisfied without executing their data SQL. The two archived superseded migrations remain outside active history and are not recorded. Forward migrations remain pending so they can be validated normally after the historical baseline. During staging runtime preparation, authenticated estimate creation proved that the standalone Settings/Clients/Leads/Projects/Estimates/Contracts beta policy files had never been represented in active migration history. `20260901143000_enable_core_crm_rls.sql` closes that greenfield gap without changing historical migrations or weakening tenant checks.
 
 ## Safe bootstrap sequence
 

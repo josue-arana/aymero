@@ -11,7 +11,9 @@ const migrationDirectory = fileURLToPath(new URL('../supabase/migrations/', impo
 const migrationArchiveDirectory = fileURLToPath(new URL('../supabase/migrations_archive/', import.meta.url))
 const activeMigrationFiles = readdirSync(migrationDirectory).filter((name) => name.endsWith('.sql')).sort()
 const scopeAssistantMigrationName = '20260831_add_estimate_scope_assistant_state.sql'
-const migrationFiles = activeMigrationFiles.filter((name) => name !== scopeAssistantMigrationName)
+const coreCrmRlsMigrationName = '20260901143000_enable_core_crm_rls.sql'
+const pendingForwardMigrationNames = [scopeAssistantMigrationName, coreCrmRlsMigrationName]
+const migrationFiles = activeMigrationFiles.filter((name) => !pendingForwardMigrationNames.includes(name))
 const archivedMigrationFiles = readdirSync(migrationArchiveDirectory).filter((name) => name.endsWith('.sql')).sort()
 const repositoryMigrationFiles = [...migrationFiles, ...archivedMigrationFiles].sort()
 const reconciliation = read('../docs/PRODUCTION_DATABASE_RECONCILIATION.md')
@@ -25,6 +27,7 @@ const onboardingMigration = read('../supabase/migrations/20260622235647_enable_s
 const onboardingAclMigrationName = '20260829191542_restrict_beta_onboarding_function_execute.sql'
 const onboardingAclMigration = read(`../supabase/migrations/${onboardingAclMigrationName}`)
 const scopeAssistantMigration = read(`../supabase/migrations/${scopeAssistantMigrationName}`)
+const coreCrmRlsMigration = read(`../supabase/migrations/${coreCrmRlsMigrationName}`)
 const greenfieldManifest = JSON.parse(read('../supabase/bootstrap/greenfield-manifest.json'))
 const greenfieldBootstrap = read('../scripts/bootstrap-aymero-greenfield.mjs')
 const greenfieldDocumentation = read('../docs/STAGING_DATABASE_BOOTSTRAP.md')
@@ -37,7 +40,7 @@ const checkout = read('../supabase/functions/create-billing-checkout/index.ts')
 const portal = read('../supabase/functions/create-billing-portal/index.ts')
 const webhook = read('../supabase/functions/stripe-billing-webhook/index.ts')
 
-assert.equal(activeMigrationFiles.length, 24)
+assert.equal(activeMigrationFiles.length, 25)
 assert.equal(migrationFiles.length, 23)
 assert.equal(archivedMigrationFiles.length, 2)
 assert.deepEqual(archivedMigrationFiles, [
@@ -59,7 +62,7 @@ assert.deepEqual(
     '20260622_create_miguel_contractor_profile.sql',
   ],
 )
-assert.deepEqual(greenfieldManifest.pendingForward, [scopeAssistantMigrationName])
+assert.deepEqual(greenfieldManifest.pendingForward, pendingForwardMigrationNames)
 assert.deepEqual(greenfieldManifest.supersededHistoryOnly.sort(), archivedMigrationFiles)
 
 const classifiedActiveMigrations = [
@@ -106,7 +109,7 @@ const versionCounts = versions.reduce(
   (result, version) => result.set(version, (result.get(version) || 0) + 1),
   new Map(),
 )
-assert.equal(versionCounts.size, 24)
+assert.equal(versionCounts.size, 25)
 const duplicateVersions = [...versionCounts].filter(([, count]) => count > 1).map(([version]) => version)
 assert.deepEqual(duplicateVersions, [])
 
@@ -340,7 +343,13 @@ assert.ok(migrationFiles.includes('20260622_create_miguel_contractor_profile.sql
 assert.ok(migrationFiles.includes('20260828_add_billing_subscription_cancel_at.sql'))
 assert.ok(migrationFiles.includes(onboardingAclMigrationName))
 assert.ok(activeMigrationFiles.includes(scopeAssistantMigrationName))
+assert.ok(activeMigrationFiles.includes(coreCrmRlsMigrationName))
 assert.match(scopeAssistantMigration, /add column if not exists scope_assistant_state jsonb not null default '\{\}'::jsonb/)
 assert.match(scopeAssistantMigration, /jsonb_typeof\(scope_assistant_state\) = 'object'/)
+assert.match(coreCrmRlsMigration, /alter table public\.clients enable row level security/)
+assert.match(coreCrmRlsMigration, /alter table public\.estimates enable row level security/)
+assert.match(coreCrmRlsMigration, /beta_active_members_can_insert_estimates/)
+assert.match(coreCrmRlsMigration, /beta_active_members_can_insert_contracts/)
+assert.match(coreCrmRlsMigration, /to authenticated/)
 
-console.log('Database reconciliation validated: the 23-migration production baseline and 2 archives remain intact; 1 new Scope Assistant migration is intentionally pending.')
+console.log('Database reconciliation validated: the 23-migration production baseline and 2 archives remain intact; the Scope Assistant and core CRM RLS migrations are forward-only.')

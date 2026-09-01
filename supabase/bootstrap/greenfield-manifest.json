@@ -46,6 +46,7 @@
     "20260629002609_fix_project_photos_rls.sql"
   ],
   "pendingForward": [
-    "20260831_add_estimate_scope_assistant_state.sql"
+    "20260831_add_estimate_scope_assistant_state.sql",
+    "20260901143000_enable_core_crm_rls.sql"
   ]
 }
