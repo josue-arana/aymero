@@ -83,11 +83,15 @@ Source-level verification confirms:
 
 Live viewport inspection at 320/375/390/430 px and desktop, plus an end-to-end keyboard traversal, was not completed because no controllable browser surface was available. These remain limited-pilot conditions rather than inferred runtime passes.
 
-## Production RLS read-only finding
+## Production RLS runtime/catalog verification
 
-Classification: **B — production appears to be missing equivalent core CRM RLS**.
+Classification: **PASS — existing historical production RLS and tenant policies are present.**
 
-The read-only production migration ledger ends at the reconciled 23-migration baseline and does not contain either the Scope Assistant migration (`20260831`) or the core CRM RLS migration (`20260901143000`). Staging has both and its authenticated cross-tenant read/write checks pass. No production policy or table was changed. A dedicated production security review must inspect live `pg_class.relrowsecurity` and `pg_policies` before any separately approved RLS rollout.
+Direct manual production catalog inspection confirmed that all 15 public application tables have `relrowsecurity = true`. Core CRM tables have tenant-scoped policies, including `clients` SELECT/INSERT/UPDATE/DELETE policies, authenticated membership policies for estimates and contracts, contractor/project-specific project-photo policies, and membership-scoped billing customer/subscription reads.
+
+The central helper, `public.is_active_contractor_member(target_contractor_id uuid)`, verifies `cm.contractor_id = target_contractor_id`, `cm.user_id = auth.uid()`, `cm.status = 'active'`, and `cm.archived_at IS NULL`. It is `SECURITY DEFINER` with a fixed `search_path = public`. The project-photo helpers were also manually inspected and enforce contractor/project consistency.
+
+`20260901143000_enable_core_crm_rls.sql` is a greenfield/staging reconciliation migration, not evidence that production lacks RLS. It remains staging-only; no RLS migration was applied to production. Exact byte-for-byte equivalence between the staging reconciliation migration and the historical production policy definitions is not required for this Scope Assistant pilot.
 
 ## Decision
 
@@ -97,10 +101,9 @@ Luna passed every critical semantic fixture, so Terra was not invoked and no run
 
 1. Spot-check hosted staging function logs for secret/source leakage.
 2. Complete live mobile viewport and keyboard testing.
-3. Resolve the production core CRM RLS finding in a dedicated, separately approved security rollout.
-4. Re-run the guarded staging verification immediately before promotion.
-5. Promote the reviewed migrations and `ai-scope-assistant` function under a production change window.
-6. Configure production server secrets directly, including `AI_SCOPE_MODEL=gpt-5.6-luna`, while leaving the production client flag off.
-7. Run one synthetic/authorized production smoke test, inspect logs and usage, then enable the production client flag for a limited pilot only.
+3. Re-run the guarded staging verification immediately before promotion.
+4. Promote only the separately reviewed Scope Assistant migration and `ai-scope-assistant` function under a production change window; do not apply the staging-only core CRM RLS reconciliation migration.
+5. Configure production server secrets directly, including `AI_SCOPE_MODEL=gpt-5.6-luna`, while leaving the production client flag off.
+6. Run one synthetic/authorized production smoke test, inspect logs and usage, then enable the production client flag for a limited pilot only.
 
 These are future steps only; none were executed by this validation.
