@@ -10,6 +10,18 @@ export const SCOPE_ASSISTANT_STATUS = Object.freeze({
   STALE: 'stale',
 })
 
+export const SCOPE_ASSISTANT_SEND_REASON = Object.freeze({
+  MANUAL: 'manual',
+  READY: 'ready',
+  APPROVAL_REQUIRED: 'approval_required',
+  APPROVAL_STALE: 'approval_stale',
+  TRANSLATION_REQUIRED: 'translation_required',
+  TRANSLATION_STALE: 'translation_stale',
+  CONTRACTOR_VERSION_NOT_ACCEPTED: 'contractor_version_not_accepted',
+  CLIENT_VERSION_NOT_ACCEPTED: 'client_version_not_accepted',
+  CANONICAL_SCOPE_MISMATCH: 'canonical_scope_mismatch',
+})
+
 const supportedLanguages = new Set(['en', 'es'])
 const validApprovalStatuses = new Set([
   SCOPE_ASSISTANT_STATUS.DRAFT,
@@ -70,6 +82,15 @@ function normalizeGenerationMetadata(value) {
   }
 }
 
+function normalizeCanonicalAcceptance(value) {
+  if (!value || typeof value !== 'object' || Array.isArray(value)) return null
+  const source = value.source === 'contractor' || value.source === 'client' ? value.source : ''
+  const acceptedAt = readTimestamp(value.acceptedAt)
+  const scopeFingerprint = readText(value.scopeFingerprint).trim()
+  if (!source || !acceptedAt || !/^[0-9a-f]{64}$/i.test(scopeFingerprint)) return null
+  return { source, acceptedAt, scopeFingerprint }
+}
+
 function normalizeWarnings(value) {
   if (!Array.isArray(value)) return []
   return value
@@ -100,6 +121,14 @@ function cloneState(state) {
     reviewWarnings: [...state.reviewWarnings],
     professionalization: state.professionalization ? { ...state.professionalization } : null,
     translation: state.translation ? { ...state.translation } : null,
+    canonicalAcceptance: state.canonicalAcceptance ? { ...state.canonicalAcceptance } : null,
+  }
+}
+
+function clearCanonicalAcceptance(state) {
+  return {
+    ...state,
+    canonicalAcceptance: null,
   }
 }
 
@@ -143,9 +172,11 @@ export function createScopeAssistantState({
     approvedByMemberId: null,
     approvalSourceFingerprint: null,
     clientScope: '',
+    clientScopeManuallyEdited: false,
     clientLanguage: readLanguage(clientLanguage),
     translationStatus: SCOPE_ASSISTANT_STATUS.NONE,
     translation: null,
+    canonicalAcceptance: null,
   }
 }
 
@@ -196,11 +227,13 @@ export function normalizeScopeAssistantState(value) {
     approvedByMemberId: readNullableText(value.approvedByMemberId)?.slice(0, 100) || null,
     approvalSourceFingerprint,
     clientScope,
+    clientScopeManuallyEdited: Boolean(value.clientScopeManuallyEdited),
     clientLanguage: readLanguage(value.clientLanguage),
     translationStatus: translation && clientScope
       ? requestedTranslationStatus
       : SCOPE_ASSISTANT_STATUS.NONE,
     translation,
+    canonicalAcceptance: normalizeCanonicalAcceptance(value.canonicalAcceptance),
   }
 }
 
@@ -209,13 +242,13 @@ export function editRawContractorInput(state, rawContractorInput) {
   const nextInput = requireSupportedLength(rawContractorInput, 'Raw contractor input')
   if (nextInput === current.rawContractorInput) return cloneState(current)
 
-  return {
+  return clearCanonicalAcceptance({
     ...cloneState(current),
     rawContractorInput: nextInput,
     professionalizationStatus: current.professionalization
       ? SCOPE_ASSISTANT_STATUS.STALE
       : SCOPE_ASSISTANT_STATUS.NONE,
-  }
+  })
 }
 
 export async function applyProfessionalizedCandidate(state, {
@@ -229,7 +262,7 @@ export async function applyProfessionalizedCandidate(state, {
   const candidate = requireNonEmptyText(scope, 'Professionalized scope')
   const hasApprovedSnapshot = Boolean(current.approvedContractorScope)
 
-  return {
+  return clearCanonicalAcceptance({
     ...cloneState(current),
     contractorDraft: candidate,
     professionalizationStatus: SCOPE_ASSISTANT_STATUS.CURRENT,
@@ -244,7 +277,7 @@ export async function applyProfessionalizedCandidate(state, {
     translationStatus: current.translation || current.clientScope
       ? SCOPE_ASSISTANT_STATUS.STALE
       : SCOPE_ASSISTANT_STATUS.NONE,
-  }
+  })
 }
 
 export function editContractorDraft(state, contractorDraft) {
@@ -252,7 +285,7 @@ export function editContractorDraft(state, contractorDraft) {
   const nextDraft = requireSupportedLength(contractorDraft, 'Contractor draft')
   if (nextDraft === current.contractorDraft) return cloneState(current)
 
-  return {
+  return clearCanonicalAcceptance({
     ...cloneState(current),
     contractorDraft: nextDraft,
     approvalStatus: current.approvedContractorScope
@@ -261,7 +294,7 @@ export function editContractorDraft(state, contractorDraft) {
     translationStatus: current.translation || current.clientScope
       ? SCOPE_ASSISTANT_STATUS.STALE
       : SCOPE_ASSISTANT_STATUS.NONE,
-  }
+  })
 }
 
 export async function approveContractorDraft(state, {
@@ -271,7 +304,7 @@ export async function approveContractorDraft(state, {
   const current = requireInitializedState(state)
   const approvedScope = requireNonEmptyText(current.contractorDraft, 'Contractor draft')
 
-  return {
+  return clearCanonicalAcceptance({
     ...cloneState(current),
     approvedContractorScope: approvedScope,
     approvalStatus: SCOPE_ASSISTANT_STATUS.APPROVED,
@@ -281,7 +314,7 @@ export async function approveContractorDraft(state, {
     translationStatus: current.translation || current.clientScope
       ? SCOPE_ASSISTANT_STATUS.STALE
       : SCOPE_ASSISTANT_STATUS.NONE,
-  }
+  })
 }
 
 export function changeScopeAssistantClientLanguage(state, clientLanguage) {
@@ -290,13 +323,13 @@ export function changeScopeAssistantClientLanguage(state, clientLanguage) {
   if (!nextLanguage) throw new Error('A supported client language is required.')
   if (nextLanguage === current.clientLanguage) return cloneState(current)
 
-  return {
+  return clearCanonicalAcceptance({
     ...cloneState(current),
     clientLanguage: nextLanguage,
     translationStatus: current.translation || current.clientScope
       ? SCOPE_ASSISTANT_STATUS.STALE
       : SCOPE_ASSISTANT_STATUS.NONE,
-  }
+  })
 }
 
 export function scopeAssistantNeedsTranslation(state) {
@@ -325,9 +358,10 @@ export async function applyClientScope(state, {
     throw new Error('Same-language client scope must match the approved contractor scope.')
   }
 
-  return {
+  return clearCanonicalAcceptance({
     ...cloneState(current),
     clientScope,
+    clientScopeManuallyEdited: false,
     translationStatus: SCOPE_ASSISTANT_STATUS.CURRENT,
     translation: {
       model: readNullableText(model),
@@ -335,7 +369,28 @@ export async function applyClientScope(state, {
       generatedAt: readTimestamp(generatedAt) || new Date().toISOString(),
       sourceFingerprint: await createScopeAssistantFingerprint(current.approvedContractorScope),
     },
+  })
+}
+
+export function editScopeAssistantClientScope(state, clientScope) {
+  const current = requireInitializedState(state)
+  if (
+    current.contractorLanguage === current.clientLanguage
+    || current.approvalStatus !== SCOPE_ASSISTANT_STATUS.APPROVED
+    || current.translationStatus !== SCOPE_ASSISTANT_STATUS.CURRENT
+    || !current.translation
+  ) {
+    throw new Error('A current translated client scope is required.')
   }
+
+  const nextClientScope = requireSupportedLength(clientScope, 'Client scope')
+  if (nextClientScope === current.clientScope) return cloneState(current)
+
+  return clearCanonicalAcceptance({
+    ...cloneState(current),
+    clientScope: nextClientScope,
+    clientScopeManuallyEdited: true,
+  })
 }
 
 export async function isScopeAssistantApprovalCurrent(state) {
@@ -364,6 +419,89 @@ export async function isScopeAssistantTranslationCurrent(state) {
   if (!current.translation || !current.approvedContractorScope || !current.clientScope) return false
   if (!await isScopeAssistantApprovalCurrent(current)) return false
   return current.translation.sourceFingerprint === await createScopeAssistantFingerprint(current.approvedContractorScope)
+}
+
+export async function acceptScopeAssistantCanonicalScope(state, {
+  canonicalScope,
+  acceptedAt = new Date().toISOString(),
+} = {}) {
+  const current = requireInitializedState(state)
+  if (!await isScopeAssistantApprovalCurrent(current)) {
+    throw new Error('A current approved contractor scope is required.')
+  }
+
+  const translationRequired = current.contractorLanguage !== current.clientLanguage
+  if (translationRequired && !await isScopeAssistantTranslationCurrent(current)) {
+    throw new Error('A current client translation is required.')
+  }
+
+  const source = translationRequired ? 'client' : 'contractor'
+  const expectedScope = translationRequired ? current.clientScope : current.approvedContractorScope
+  const acceptedScope = requireNonEmptyText(canonicalScope, 'Canonical scope')
+  if (acceptedScope !== expectedScope) {
+    throw new Error('Canonical scope must exactly match the accepted assistant version.')
+  }
+
+  return {
+    ...cloneState(current),
+    canonicalAcceptance: {
+      source,
+      acceptedAt: readTimestamp(acceptedAt) || new Date().toISOString(),
+      scopeFingerprint: await createScopeAssistantFingerprint(expectedScope),
+    },
+  }
+}
+
+export async function getScopeAssistantSendReadiness(state, canonicalScope = '') {
+  const current = normalizeScopeAssistantState(state)
+  if (isEmptyScopeAssistantState(current)) {
+    return { ready: true, manual: true, reason: SCOPE_ASSISTANT_SEND_REASON.MANUAL }
+  }
+
+  if (!await isScopeAssistantApprovalCurrent(current)) {
+    return {
+      ready: false,
+      manual: false,
+      reason: current.approvalStatus === SCOPE_ASSISTANT_STATUS.STALE
+        ? SCOPE_ASSISTANT_SEND_REASON.APPROVAL_STALE
+        : SCOPE_ASSISTANT_SEND_REASON.APPROVAL_REQUIRED,
+    }
+  }
+
+  const translationRequired = current.contractorLanguage !== current.clientLanguage
+  if (translationRequired && !await isScopeAssistantTranslationCurrent(current)) {
+    return {
+      ready: false,
+      manual: false,
+      reason: current.translationStatus === SCOPE_ASSISTANT_STATUS.STALE
+        ? SCOPE_ASSISTANT_SEND_REASON.TRANSLATION_STALE
+        : SCOPE_ASSISTANT_SEND_REASON.TRANSLATION_REQUIRED,
+    }
+  }
+
+  const acceptanceSource = translationRequired ? 'client' : 'contractor'
+  const expectedScope = translationRequired ? current.clientScope : current.approvedContractorScope
+  const acceptance = current.canonicalAcceptance
+  const expectedFingerprint = await createScopeAssistantFingerprint(expectedScope)
+  if (
+    !acceptance
+    || acceptance.source !== acceptanceSource
+    || acceptance.scopeFingerprint !== expectedFingerprint
+  ) {
+    return {
+      ready: false,
+      manual: false,
+      reason: translationRequired
+        ? SCOPE_ASSISTANT_SEND_REASON.CLIENT_VERSION_NOT_ACCEPTED
+        : SCOPE_ASSISTANT_SEND_REASON.CONTRACTOR_VERSION_NOT_ACCEPTED,
+    }
+  }
+
+  if (readText(canonicalScope) !== expectedScope) {
+    return { ready: false, manual: false, reason: SCOPE_ASSISTANT_SEND_REASON.CANONICAL_SCOPE_MISMATCH }
+  }
+
+  return { ready: true, manual: false, reason: SCOPE_ASSISTANT_SEND_REASON.READY }
 }
 
 export function normalizeScopeAssistantStateForStorage(value) {

@@ -37,7 +37,8 @@
     "verify:billing-webhook-uuid": "node scripts/verify-billing-webhook-uuid.mjs",
     "verify:billing-production": "node scripts/verify-billing-production-readiness.mjs",
     "verify:database-reconciliation": "node scripts/verify-database-reconciliation.mjs",
-    "verify:ai-scope-assistant": "node scripts/verify-ai-scope-assistant-foundation.mjs"
+    "verify:ai-scope-assistant": "node scripts/verify-ai-scope-assistant-foundation.mjs",
+    "verify:ai-scope-builder": "node scripts/verify-ai-scope-assistant-builder.mjs"
   },
   "dependencies": {
     "@vitejs/plugin-react": "latest",

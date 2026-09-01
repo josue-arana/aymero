@@ -6,6 +6,8 @@ Sprint 3.45A adds an optional, versioned state boundary for estimate scope assis
 
 Version 1 stores the raw contractor input, editable contractor draft, contractor language, explicit approved snapshot and approver metadata, client-language result, and small generation metadata. Generated text is only a candidate. Approval snapshots the current draft. Later draft edits preserve that snapshot while making approval and derived translation stale. A client-language change also makes an existing translation stale.
 
+Sprint 3.45B extends the same version backward-compatibly with `clientScopeManuallyEdited` and a small `canonicalAcceptance` object containing only the accepted source (`contractor` or `client`), acceptance timestamp, and scope fingerprint. These fields distinguish an edited client version and prove which exact assistant output was explicitly accepted into canonical `scope_of_work`; no history subsystem is introduced.
+
 The authenticated `ai-scope-assistant` Edge Function accepts only `action` and `estimateId`. It resolves one active, non-archived membership, enforces estimate tenant ownership and editability, and reads all source text and languages from the persisted estimate. Translation requires the persisted approval status and uses only `approvedContractorScope`. A matching contractor/client language returns that approved text without contacting OpenAI.
 
 The function never updates an estimate. The caller must explicitly apply a successful candidate through the state helpers and a normal estimate save. Timeouts, provider errors, rate limits, refusals, malformed structured output, and validation failures therefore leave both `scope_of_work` and assistant state unchanged.

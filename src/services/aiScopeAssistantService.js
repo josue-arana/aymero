@@ -1,5 +1,6 @@
 import { refreshSession } from './authService'
 import { getSupabaseEnvironmentConfig } from './system/environmentService'
+import { ENABLE_AI_SCOPE_ASSISTANT } from '../config/backendConfig'
 
 const endpointName = 'ai-scope-assistant'
 const supportedActions = new Set(['professionalize', 'translate'])
@@ -84,7 +85,12 @@ export function translateApprovedEstimateScope({ estimateId, accessToken = '' } 
   return invokeScopeAssistant({ action: 'translate', estimateId, accessToken })
 }
 
+export function isAiScopeAssistantEnabled() {
+  return ENABLE_AI_SCOPE_ASSISTANT
+}
+
 export default {
   professionalizeEstimateScope,
   translateApprovedEstimateScope,
+  isAiScopeAssistantEnabled,
 }

@@ -2858,7 +2858,7 @@ function buildWorkspaceJobRecord(job, clientRecord = null) {
     }
   }
 
-  async function saveEstimate(leadId, estimate) {
+  async function saveEstimate(leadId, estimate, { silent = false } = {}) {
     const sourceLead = findLeadByProjectLookup(leads, leadId)
 
     if (!sourceLead) {
@@ -2922,7 +2922,7 @@ function buildWorkspaceJobRecord(job, clientRecord = null) {
               }
             : project
         )))
-        showToast(t('estimateSaved'))
+        if (!silent) showToast(t('estimateSaved'))
         return persistedEstimate
       } catch (error) {
         showToast(t('estimateSaveFailed'), 'error')
@@ -3101,7 +3101,7 @@ function buildWorkspaceJobRecord(job, clientRecord = null) {
         }
       }))
 
-      showToast(t('estimateSaved'))
+      if (!silent) showToast(t('estimateSaved'))
       return persistedEstimate
     } catch (error) {
       showToast(error?.message || t('estimateSaveFailed'), 'error')

@@ -7,6 +7,7 @@ import { InfoCard } from '../components/ui/InfoCard'
 import { EstimatePdfTemplate } from '../components/estimates/EstimatePdfTemplate'
 import { EstimateFormattedText } from '../components/estimates/EstimateFormattedText'
 import { LightweightFormattedTextarea } from '../components/estimates/LightweightFormattedTextarea'
+import { ScopeAssistantPanel } from '../components/estimates/ScopeAssistantPanel'
 import { PaginatedEstimatePreview } from '../components/estimates/PaginatedEstimatePreview'
 import { currency, formatDisplayDate } from '../utils/formatters'
 import { getPortalData, resolvePublicEstimateShare, resolvePublicEstimateShareUrl } from '../utils/portal'
@@ -20,6 +21,11 @@ import { useToast } from '../components/common/ToastProvider'
 import dataProvider from '../services/dataProvider'
 import { useAuth } from '../contexts/AuthContext'
 import { USE_SUPABASE, USE_SUPABASE_ESTIMATES, USE_SUPABASE_PROJECTS } from '../config/backendConfig'
+import {
+  isAiScopeAssistantEnabled,
+  professionalizeEstimateScope,
+  translateApprovedEstimateScope,
+} from '../services/aiScopeAssistantService'
 import { getProjectsContractorId } from '../services/system/projectsRuntimeService'
 import { readLinkedEstimateDraft, writeLinkedEstimateDrafts } from '../utils/estimateLinks'
 import { formatEstimateDisplayNumber, generateEstimateNumber } from '../utils/estimateNumber'
@@ -39,7 +45,7 @@ import {
   resolveEstimatePricingMode,
   resolveEstimateValidUntil,
 } from '../utils/estimateDocument'
-import { normalizeDocumentLanguageOverride, resolveClientFacingLanguage } from '../utils/language'
+import { normalizeDocumentLanguageOverride, normalizeSupportedLanguage, resolveClientFacingLanguage } from '../utils/language'
 import { getPaymentTermLabel, getPaymentTermOptions, isKnownPaymentTermValue } from '../utils/paymentTerms'
 import {
   buildEstimateResendTransition,
@@ -55,10 +61,56 @@ import {
   ESTIMATE_DOCUMENT_SOURCE_WIDTH,
   ESTIMATE_PAPER_MARGIN,
 } from '../utils/estimatePagination'
+import {
+  SCOPE_ASSISTANT_SEND_REASON,
+  SCOPE_ASSISTANT_TEXT_LIMIT,
+  acceptScopeAssistantCanonicalScope,
+  applyClientScope,
+  applyProfessionalizedCandidate,
+  approveContractorDraft,
+  changeScopeAssistantClientLanguage,
+  createScopeAssistantState,
+  editContractorDraft,
+  editRawContractorInput,
+  editScopeAssistantClientScope,
+  getScopeAssistantSendReadiness,
+  isEmptyScopeAssistantState,
+  normalizeScopeAssistantState,
+} from '../utils/scopeAssistantState'
+import { runPersistedScopeAssistantRequest } from '../utils/scopeAssistantWorkflow'
 
 const simplePricingMode = ESTIMATE_PRICING_SIMPLE
 const detailedPricingMode = ESTIMATE_PRICING_DETAILED
 const estimatePreviewPageWidth = ESTIMATE_DOCUMENT_SOURCE_WIDTH
+
+const scopeAssistantReadinessTranslationKeys = {
+  [SCOPE_ASSISTANT_SEND_REASON.APPROVAL_REQUIRED]: 'scopeAssistantApprovalRequiredNotice',
+  [SCOPE_ASSISTANT_SEND_REASON.APPROVAL_STALE]: 'scopeAssistantApprovalStaleNotice',
+  [SCOPE_ASSISTANT_SEND_REASON.TRANSLATION_REQUIRED]: 'scopeAssistantTranslationRequiredNotice',
+  [SCOPE_ASSISTANT_SEND_REASON.TRANSLATION_STALE]: 'scopeAssistantTranslationStaleNotice',
+  [SCOPE_ASSISTANT_SEND_REASON.CONTRACTOR_VERSION_NOT_ACCEPTED]: 'scopeAssistantContractorAcceptanceRequiredNotice',
+  [SCOPE_ASSISTANT_SEND_REASON.CLIENT_VERSION_NOT_ACCEPTED]: 'scopeAssistantClientAcceptanceRequiredNotice',
+  [SCOPE_ASSISTANT_SEND_REASON.CANONICAL_SCOPE_MISMATCH]: 'scopeAssistantCanonicalMismatchNotice',
+}
+
+const scopeAssistantErrorTranslationKeys = {
+  AI_SCOPE_UNAVAILABLE: 'scopeAssistantUnavailable',
+  AI_SCOPE_CONFIGURATION_MISSING: 'scopeAssistantUnavailable',
+  AI_SCOPE_ENV_MISSING: 'scopeAssistantUnavailable',
+  AI_SCOPE_SOURCE_INVALID: 'scopeAssistantInputInvalid',
+  AI_SCOPE_SOURCE_TOO_LONG: 'scopeAssistantInputTooLong',
+  AI_SCOPE_LANGUAGE_INVALID: 'scopeAssistantLanguageUnsupported',
+  AI_SCOPE_TARGET_LANGUAGE_INVALID: 'scopeAssistantLanguageUnsupported',
+  AI_SCOPE_APPROVAL_REQUIRED: 'scopeAssistantApprovalRequiredNotice',
+  AI_SCOPE_APPROVAL_STALE: 'scopeAssistantApprovalStaleNotice',
+  ESTIMATE_NOT_EDITABLE: 'scopeAssistantEstimateNotEditable',
+  AUTH_REQUIRED: 'scopeAssistantAuthRequired',
+  AUTH_INVALID: 'scopeAssistantAuthRequired',
+}
+
+function getScopeAssistantErrorMessage(t, error, fallbackKey = 'scopeAssistantRequestFailed') {
+  return t(scopeAssistantErrorTranslationKeys[error?.code] || fallbackKey)
+}
 
 function readEstimateScopeText(estimate = {}) {
   return estimate?.summary || estimate?.scopeOfWork || estimate?.scope_of_work || ''
@@ -180,6 +232,7 @@ function buildEstimateDraftState({ savedEstimate = {}, lead, companySettings, t 
 
   return {
     scope: readEstimateScopeText(savedEstimate),
+    scopeAssistantState: normalizeScopeAssistantState(savedEstimate.scopeAssistantState || savedEstimate.scope_assistant_state),
     total: Number(savedEstimate.total ?? lead?.value ?? 0),
     totalInput: formatAmountInputValue(savedEstimate.total ?? lead?.value ?? 0),
     materialsIncluded: defaultMaterialsIncluded,
@@ -191,7 +244,7 @@ function buildEstimateDraftState({ savedEstimate = {}, lead, companySettings, t 
   }
 }
 
-export function EstimateBuilderPage({ lead, clientRecord = null, t, appLanguage = 'en', companySettings, isArchived = false, archiveSource = null, projectAvailable = true, publicEstimateLink = '', isOrphanedProject = false, openSendOnLoad = false, onOpenSendConsumed, onBack, backLabel, onSaveEstimate, onConvert, onSyncContract, onOpenContract, onArchiveEstimate, onRestoreEstimate, onDeleteEstimate }) {
+export function EstimateBuilderPage({ lead, clientRecord = null, t, appLanguage = 'en', companySettings, scopeAssistantAccessToken = '', scopeAssistantMemberId = null, scopeAssistantWorkingLanguage = 'en', isArchived = false, archiveSource = null, projectAvailable = true, publicEstimateLink = '', isOrphanedProject = false, openSendOnLoad = false, onOpenSendConsumed, onBack, backLabel, onSaveEstimate, onConvert, onSyncContract, onOpenContract, onArchiveEstimate, onRestoreEstimate, onDeleteEstimate }) {
   const { showToast } = useToast()
   const pdfTemplateRef = useRef(null)
   const draftDirtyRef = useRef(false)
@@ -214,6 +267,15 @@ export function EstimateBuilderPage({ lead, clientRecord = null, t, appLanguage 
     [companySettings, draftEstimateT, lead, savedEstimate]
   )
   const [scope, setScope] = useState(initialDraftState.scope)
+  const [scopeAssistantState, setScopeAssistantState] = useState(initialDraftState.scopeAssistantState)
+  const [scopeAssistantReadiness, setScopeAssistantReadiness] = useState({ ready: true, manual: true, reason: SCOPE_ASSISTANT_SEND_REASON.MANUAL })
+  const [scopeAssistantError, setScopeAssistantError] = useState('')
+  const [isImprovingScope, setIsImprovingScope] = useState(false)
+  const [isRegeneratingScope, setIsRegeneratingScope] = useState(false)
+  const [isApprovingScope, setIsApprovingScope] = useState(false)
+  const [isTranslatingScope, setIsTranslatingScope] = useState(false)
+  const [isAcceptingClientScope, setIsAcceptingClientScope] = useState(false)
+  const scopeAssistantActionGuardRef = useRef(false)
   const [total, setTotal] = useState(initialDraftState.total)
   const [totalInput, setTotalInput] = useState(initialDraftState.totalInput)
   const [materialsIncluded, setMaterialsIncluded] = useState(initialDraftState.materialsIncluded)
@@ -248,6 +310,7 @@ export function EstimateBuilderPage({ lead, clientRecord = null, t, appLanguage 
     estimateStatus: savedEstimate?.status || '',
     estimateTotal: savedEstimate?.total ?? null,
     estimateSummary: readEstimateScopeText(savedEstimate),
+    scopeAssistantState: savedEstimate?.scopeAssistantState || savedEstimate?.scope_assistant_state || {},
     estimateLanguage: savedEstimate?.estimateLanguage || '',
     pricingMode: savedEstimate?.pricingMode || savedEstimate?.pricing_mode || '',
     paymentTerms: savedEstimate?.paymentTerms || '',
@@ -291,6 +354,8 @@ export function EstimateBuilderPage({ lead, clientRecord = null, t, appLanguage 
 
     const nextDraftState = buildEstimateDraftState({ savedEstimate, lead, companySettings, t: draftEstimateT })
     setScope(nextDraftState.scope)
+    setScopeAssistantState(nextDraftState.scopeAssistantState)
+    setScopeAssistantError('')
     setTotal(nextDraftState.total)
     setTotalInput(nextDraftState.totalInput)
     setMaterialsIncluded(nextDraftState.materialsIncluded)
@@ -327,13 +392,43 @@ export function EstimateBuilderPage({ lead, clientRecord = null, t, appLanguage 
   const lineTotal = lineItems.reduce((sum, item) => sum + Number(item.amount || 0), 0)
   const isDetailedPricing = pricingMode === detailedPricingMode
   const estimateTotal = Number(isDetailedPricing ? lineTotal : total || 0)
-  const isEstimateActionPending = isSavingEstimate || isConvertingEstimate
+  const scopeAssistantFeatureEnabled = isAiScopeAssistantEnabled()
+  const isScopeAssistantActionPending = isImprovingScope
+    || isRegeneratingScope
+    || isApprovingScope
+    || isTranslatingScope
+    || isAcceptingClientScope
+  const isEstimateActionPending = isSavingEstimate || isConvertingEstimate || isScopeAssistantActionPending
   const estimateOutputLanguage = resolveClientFacingLanguage({
     documentLanguage: estimateLanguage,
     client: clientRecord,
     lead,
     appLanguage,
   })
+  const scopeAssistantReadinessMessage = scopeAssistantReadinessTranslationKeys[scopeAssistantReadiness.reason]
+    ? t(scopeAssistantReadinessTranslationKeys[scopeAssistantReadiness.reason])
+    : ''
+
+  useEffect(() => {
+    let cancelled = false
+    void getScopeAssistantSendReadiness(scopeAssistantState, scope).then((readiness) => {
+      if (!cancelled) setScopeAssistantReadiness(readiness)
+    })
+    return () => {
+      cancelled = true
+    }
+  }, [scope, scopeAssistantState])
+
+  useEffect(() => {
+    if (isEmptyScopeAssistantState(scopeAssistantState) || !estimateOutputLanguage) return
+    if (scopeAssistantState.clientLanguage === estimateOutputLanguage) return
+    try {
+      setScopeAssistantState((current) => changeScopeAssistantClientLanguage(current, estimateOutputLanguage))
+      draftDirtyRef.current = true
+    } catch {
+      // Existing malformed assistant state remains visible and Send readiness stays fail-closed.
+    }
+  }, [estimateOutputLanguage, scopeAssistantState])
   const linkedContract = lead?.portal?.contract || portal.contract || {}
   const linkedContractIsArchived = Boolean(linkedContract?.archivedAt || linkedContract?.archived_at || linkedContract?.isArchived || linkedContract?.archived)
   const estimateT = useMemo(() => createTranslator(estimateOutputLanguage), [estimateOutputLanguage])
@@ -442,13 +537,14 @@ export function EstimateBuilderPage({ lead, clientRecord = null, t, appLanguage 
       materialsIncluded,
       paymentTerms,
       estimateLanguage: estimateLanguage || '',
+      scopeAssistantState,
       pricingMode,
       updatedAt: new Date().toISOString(),
       status: 'Draft',
     }
   }
 
-  async function persistEstimate(overrides = {}, { closeSendModal = false, stopEditing = false } = {}) {
+  async function persistEstimate(overrides = {}, { closeSendModal = false, stopEditing = false, silent = false } = {}) {
     if (estimateSaveGuardRef.current) {
       return null
     }
@@ -460,7 +556,7 @@ export function EstimateBuilderPage({ lead, clientRecord = null, t, appLanguage 
       const result = await onSaveEstimate?.({
         ...getEstimatePayload(),
         ...overrides,
-      })
+      }, { silent })
 
       if (result) {
         if (stopEditing) {
@@ -489,6 +585,14 @@ export function EstimateBuilderPage({ lead, clientRecord = null, t, appLanguage 
   async function handleOpenSendModal() {
     if (isEstimateActionPending || estimateSaveGuardRef.current) return
 
+    const readiness = await getScopeAssistantSendReadiness(scopeAssistantState, scope)
+    setScopeAssistantReadiness(readiness)
+    if (!readiness.ready) {
+      const messageKey = scopeAssistantReadinessTranslationKeys[readiness.reason]
+      showToast(t(messageKey || 'scopeAssistantSendBlocked'), 'error')
+      return
+    }
+
     const result = await persistEstimate(
       isPostSendRevision ? buildEstimateRevisionReset() : { status: savedEstimate.status || 'Draft' },
       { stopEditing: isPostSendRevision },
@@ -501,6 +605,280 @@ export function EstimateBuilderPage({ lead, clientRecord = null, t, appLanguage 
     })
     setSendDocumentLink(nextShareLink)
     setShowSendModal(true)
+  }
+
+  function handleEstimateLanguageChange(nextLanguage) {
+    markDraftDirty()
+    setEstimateLanguage(nextLanguage)
+    if (isEmptyScopeAssistantState(scopeAssistantState)) return
+
+    const nextClientLanguage = resolveClientFacingLanguage({
+      documentLanguage: nextLanguage,
+      client: clientRecord,
+      lead,
+      appLanguage,
+    })
+    try {
+      setScopeAssistantState((current) => changeScopeAssistantClientLanguage(current, nextClientLanguage))
+    } catch {
+      setScopeAssistantError(t('scopeAssistantLanguageUnsupported'))
+    }
+  }
+
+  function setScopeAssistantFailure(error, fallbackKey) {
+    const message = getScopeAssistantErrorMessage(t, error, fallbackKey)
+    setScopeAssistantError(message)
+    showToast(message, 'error')
+  }
+
+  async function runScopeAssistantAction(setPending, action) {
+    if (scopeAssistantActionGuardRef.current || estimateSaveGuardRef.current) return null
+    scopeAssistantActionGuardRef.current = true
+    setPending(true)
+    setScopeAssistantError('')
+    try {
+      return await action()
+    } catch (error) {
+      setScopeAssistantFailure(error)
+      return null
+    } finally {
+      scopeAssistantActionGuardRef.current = false
+      setPending(false)
+    }
+  }
+
+  async function persistScopeAssistantTransition(nextState, estimateId = savedEstimate.id || '') {
+    return persistEstimate({
+      ...(isPostSendRevision ? buildEstimateRevisionReset() : {}),
+      ...(estimateId ? { id: estimateId } : {}),
+      scopeAssistantState: nextState,
+    }, { silent: true })
+  }
+
+  function handleManualScopeChange(nextValue) {
+    markDraftDirty()
+    setScope(nextValue)
+  }
+
+  function handleScopeAssistantRawSourceChange(nextValue) {
+    markDraftDirty()
+    setScope(nextValue)
+    try {
+      setScopeAssistantState((current) => editRawContractorInput(current, nextValue))
+      setScopeAssistantError('')
+    } catch (error) {
+      setScopeAssistantFailure(error, 'scopeAssistantInputTooLong')
+    }
+  }
+
+  function handleScopeAssistantCandidateChange(nextValue) {
+    markDraftDirty()
+    try {
+      setScopeAssistantState((current) => editContractorDraft(current, nextValue))
+      setScopeAssistantError('')
+    } catch (error) {
+      setScopeAssistantFailure(error, 'scopeAssistantInputTooLong')
+    }
+  }
+
+  function handleScopeAssistantClientChange(nextValue) {
+    markDraftDirty()
+    try {
+      setScopeAssistantState((current) => editScopeAssistantClientScope(current, nextValue))
+      setScopeAssistantError('')
+    } catch (error) {
+      setScopeAssistantFailure(error, 'scopeAssistantInputTooLong')
+    }
+  }
+
+  async function handleImproveScope() {
+    return runScopeAssistantAction(setIsImprovingScope, async () => {
+      const rawScope = isEmptyScopeAssistantState(scopeAssistantState)
+        ? normalizeEstimateFormattedTextForStorage(scope)
+        : scopeAssistantState.rawContractorInput
+      if (!hasMeaningfulEstimateFormattedText(rawScope)) {
+        setScopeAssistantFailure(null, 'scopeAssistantInputRequired')
+        return null
+      }
+      if (rawScope.length > SCOPE_ASSISTANT_TEXT_LIMIT) {
+        setScopeAssistantFailure(null, 'scopeAssistantInputTooLong')
+        return null
+      }
+
+      const initializedState = isEmptyScopeAssistantState(scopeAssistantState)
+        ? createScopeAssistantState({
+            rawContractorInput: rawScope,
+            contractorLanguage: normalizeSupportedLanguage(scopeAssistantWorkingLanguage, appLanguage),
+            clientLanguage: estimateOutputLanguage,
+          })
+        : scopeAssistantState
+
+      const initialization = await runPersistedScopeAssistantRequest({
+        persist: () => persistScopeAssistantTransition(initializedState),
+        afterPersist: () => setScopeAssistantState(initializedState),
+        request: (estimateId) => professionalizeEstimateScope({
+          estimateId,
+          accessToken: scopeAssistantAccessToken,
+        }),
+      })
+      if (!initialization.requestInvoked) {
+        setScopeAssistantFailure(null, 'scopeAssistantInitializationFailed')
+        return null
+      }
+      const initializedEstimate = initialization.persistedEstimate
+      const response = initialization.response
+      if (response?.error) {
+        setScopeAssistantFailure(response.error)
+        return null
+      }
+
+      const candidateState = await applyProfessionalizedCandidate(initializedState, {
+        scope: response.data.scope,
+        reviewWarnings: response.data.reviewWarnings || [],
+        model: response.data.metadata?.model,
+        promptVersion: response.data.metadata?.promptVersion,
+        generatedAt: response.data.metadata?.generatedAt,
+      })
+      const persistedCandidate = await persistScopeAssistantTransition(candidateState, initializedEstimate.id)
+      if (!persistedCandidate) {
+        setScopeAssistantFailure(null, 'scopeAssistantCandidateSaveFailed')
+        return null
+      }
+
+      setScopeAssistantState(candidateState)
+      showToast(t('scopeAssistantCandidateReady'))
+      return persistedCandidate
+    })
+  }
+
+  async function handleRegenerateScope() {
+    return runScopeAssistantAction(setIsRegeneratingScope, async () => {
+      const currentState = scopeAssistantState
+      const regeneration = await runPersistedScopeAssistantRequest({
+        persist: () => persistScopeAssistantTransition(currentState),
+        request: (estimateId) => professionalizeEstimateScope({
+          estimateId,
+          accessToken: scopeAssistantAccessToken,
+        }),
+      })
+      if (!regeneration.requestInvoked) {
+        setScopeAssistantFailure(null, 'scopeAssistantCandidateSaveFailed')
+        return null
+      }
+      const persistedCurrent = regeneration.persistedEstimate
+      const response = regeneration.response
+      if (response?.error) {
+        setScopeAssistantFailure(response.error)
+        return null
+      }
+
+      const regeneratedState = await applyProfessionalizedCandidate(currentState, {
+        scope: response.data.scope,
+        reviewWarnings: response.data.reviewWarnings || [],
+        model: response.data.metadata?.model,
+        promptVersion: response.data.metadata?.promptVersion,
+        generatedAt: response.data.metadata?.generatedAt,
+      })
+      const persistedRegeneration = await persistScopeAssistantTransition(regeneratedState, persistedCurrent.id)
+      if (!persistedRegeneration) {
+        setScopeAssistantFailure(null, 'scopeAssistantCandidateSaveFailed')
+        return null
+      }
+
+      setScopeAssistantState(regeneratedState)
+      showToast(t('scopeAssistantCandidateReady'))
+      return persistedRegeneration
+    })
+  }
+
+  async function handleApproveScope() {
+    return runScopeAssistantAction(setIsApprovingScope, async () => {
+      const approvedState = await approveContractorDraft(scopeAssistantState, {
+        memberId: scopeAssistantMemberId,
+      })
+      const sameLanguage = approvedState.contractorLanguage === approvedState.clientLanguage
+      const nextCanonicalScope = sameLanguage ? approvedState.approvedContractorScope : scope
+      const nextState = sameLanguage
+        ? await acceptScopeAssistantCanonicalScope(approvedState, { canonicalScope: nextCanonicalScope })
+        : approvedState
+      const persistedApproval = await persistEstimate({
+        ...(isPostSendRevision ? buildEstimateRevisionReset() : {}),
+        ...(savedEstimate.id ? { id: savedEstimate.id } : {}),
+        summary: nextCanonicalScope,
+        scopeAssistantState: nextState,
+      }, { silent: true })
+      if (!persistedApproval) {
+        setScopeAssistantFailure(null, 'scopeAssistantApprovalSaveFailed')
+        return null
+      }
+
+      setScopeAssistantState(nextState)
+      if (sameLanguage) setScope(nextCanonicalScope)
+      showToast(t('scopeAssistantApprovedToast'))
+      return persistedApproval
+    })
+  }
+
+  async function handleTranslateScope() {
+    return runScopeAssistantAction(setIsTranslatingScope, async () => {
+      const currentState = scopeAssistantState
+      const translation = await runPersistedScopeAssistantRequest({
+        persist: () => persistScopeAssistantTransition(currentState),
+        request: (estimateId) => translateApprovedEstimateScope({
+          estimateId,
+          accessToken: scopeAssistantAccessToken,
+        }),
+      })
+      if (!translation.requestInvoked) {
+        setScopeAssistantFailure(null, 'scopeAssistantApprovalSaveFailed')
+        return null
+      }
+      const persistedApproval = translation.persistedEstimate
+      const response = translation.response
+      if (response?.error) {
+        setScopeAssistantFailure(response.error)
+        return null
+      }
+
+      const translatedState = await applyClientScope(currentState, {
+        scope: response.data.scope,
+        model: response.data.metadata?.model,
+        promptVersion: response.data.metadata?.promptVersion,
+        generatedAt: response.data.metadata?.generatedAt,
+      })
+      const persistedTranslation = await persistScopeAssistantTransition(translatedState, persistedApproval.id)
+      if (!persistedTranslation) {
+        setScopeAssistantFailure(null, 'scopeAssistantTranslationSaveFailed')
+        return null
+      }
+
+      setScopeAssistantState(translatedState)
+      showToast(t('scopeAssistantTranslationReady'))
+      return persistedTranslation
+    })
+  }
+
+  async function handleUseClientVersion() {
+    return runScopeAssistantAction(setIsAcceptingClientScope, async () => {
+      const acceptedState = await acceptScopeAssistantCanonicalScope(scopeAssistantState, {
+        canonicalScope: scopeAssistantState.clientScope,
+      })
+      const persistedAcceptance = await persistEstimate({
+        ...(isPostSendRevision ? buildEstimateRevisionReset() : {}),
+        ...(savedEstimate.id ? { id: savedEstimate.id } : {}),
+        summary: scopeAssistantState.clientScope,
+        scopeAssistantState: acceptedState,
+      }, { silent: true })
+      if (!persistedAcceptance) {
+        setScopeAssistantFailure(null, 'scopeAssistantClientVersionSaveFailed')
+        return null
+      }
+
+      setScopeAssistantState(acceptedState)
+      setScope(scopeAssistantState.clientScope)
+      showToast(t('scopeAssistantClientVersionUsed'))
+      return persistedAcceptance
+    })
   }
 
   function handleRequestEdit() {
@@ -764,7 +1142,7 @@ export function EstimateBuilderPage({ lead, clientRecord = null, t, appLanguage 
                 <div className="min-w-0 space-y-3">
                   <label className="block text-sm font-bold text-slate-800">{t('estimateLanguage')}</label>
                   <p className="text-sm leading-6 text-slate-500">{t('estimateLanguageHelp')}</p>
-                  <SelectField value={estimateLanguage} onChange={(event) => { markDraftDirty(); setEstimateLanguage(event.target.value) }} className="bg-slate-50">
+                  <SelectField value={estimateLanguage} onChange={(event) => handleEstimateLanguageChange(event.target.value)} className="bg-slate-50">
                     <option value="">{t('matchAppLanguage')}</option>
                     <option value="en">{t('english')}</option>
                     <option value="es">{t('spanish')}</option>
@@ -802,20 +1180,30 @@ export function EstimateBuilderPage({ lead, clientRecord = null, t, appLanguage 
             ) : null}
           </article>
           <InfoCard title={t('scopeOfWork')}>
-            {isEditing ? (
-              <LightweightFormattedTextarea
-                value={scope}
-                onChange={(nextValue) => { markDraftDirty(); setScope(nextValue) }}
-                rows={8}
-                minHeight={192}
-                maxHeight={560}
-                ariaLabel={t('scopeOfWork')}
-                t={t}
-                className="p-4 text-sm leading-6"
-              />
-            ) : hasMeaningfulEstimateFormattedText(scope) ? (
-              <EstimateFormattedText value={scope} className="rounded-2xl bg-slate-50 p-4 text-sm leading-6 text-slate-700" />
-            ) : null}
+            <ScopeAssistantPanel
+              t={t}
+              isEditing={isEditing}
+              isEnabled={scopeAssistantFeatureEnabled}
+              state={scopeAssistantState}
+              canonicalScope={scope}
+              readiness={scopeAssistantReadiness}
+              readinessMessage={scopeAssistantReadinessMessage}
+              errorMessage={scopeAssistantError}
+              isImproving={isImprovingScope}
+              isRegenerating={isRegeneratingScope}
+              isApproving={isApprovingScope}
+              isTranslating={isTranslatingScope}
+              isAccepting={isAcceptingClientScope}
+              onManualScopeChange={handleManualScopeChange}
+              onRawSourceChange={handleScopeAssistantRawSourceChange}
+              onImprove={handleImproveScope}
+              onCandidateChange={handleScopeAssistantCandidateChange}
+              onRegenerate={handleRegenerateScope}
+              onApprove={handleApproveScope}
+              onTranslate={handleTranslateScope}
+              onClientScopeChange={handleScopeAssistantClientChange}
+              onUseClientVersion={handleUseClientVersion}
+            />
           </InfoCard>
 
           <InfoCard
@@ -953,6 +1341,11 @@ export function EstimateBuilderPage({ lead, clientRecord = null, t, appLanguage 
         </section>
 
         <aside className="min-w-0 space-y-4 lg:sticky lg:top-24 lg:self-start">
+          {!scopeAssistantReadiness.ready && scopeAssistantReadinessMessage ? (
+            <div role="status" className="rounded-2xl border border-amber-200 bg-amber-50 px-4 py-3 text-sm font-semibold leading-6 text-amber-900">
+              {t('scopeAssistantPreviewWarning')} {scopeAssistantReadinessMessage}
+            </div>
+          ) : null}
           <EstimatePreviewCard {...estimatePreviewProps} uiT={t} />
           {!isArchived && !isEditing && estimateCanBeEdited && (
             <button disabled={isEstimateActionPending} onClick={handleRequestEdit} className="w-full rounded-2xl border border-slate-200 bg-white px-4 py-4 text-sm font-bold text-slate-800 hover:bg-slate-50 disabled:cursor-not-allowed disabled:opacity-60">{t('editEstimate')}</button>
@@ -1046,7 +1439,7 @@ export function EstimateBuilderRoute({ companySettings, leads, clients = [], pro
   const { id, leadId, estimateId } = useParams()
   const location = useLocation()
   const navigate = useNavigate()
-  const { contractor, company, session } = useAuth()
+  const { contractor, company, contractorAccess, session } = useAuth()
   const contractorId = getProjectsContractorId({ contractor, company, session })
   const projectId = id || leadId
   const isDirectEstimateRoute = Boolean(estimateId)
@@ -1362,6 +1755,12 @@ export function EstimateBuilderRoute({ companySettings, leads, clients = [], pro
       t={t}
       appLanguage={appLanguage}
       companySettings={companySettings}
+      scopeAssistantAccessToken={session?.access_token || ''}
+      scopeAssistantMemberId={contractorAccess?.membership?.id || null}
+      scopeAssistantWorkingLanguage={normalizeSupportedLanguage(
+        contractorAccess?.membership?.preferred_language || companySettings?.appLanguage || appLanguage,
+        appLanguage,
+      )}
       onBack={handleBack}
       backLabel={backLabel}
       isArchived={estimateArchiveState.isArchived}
@@ -1371,8 +1770,8 @@ export function EstimateBuilderRoute({ companySettings, leads, clients = [], pro
       isOrphanedProject={isDirectEstimateRoute ? isOrphanedProject : false}
       openSendOnLoad={openSendOnLoad}
       onOpenSendConsumed={handleOpenSendConsumed}
-      onSaveEstimate={async (estimate) => {
-        const result = await onSaveEstimate?.(lead.id, estimate)
+      onSaveEstimate={async (estimate, options = {}) => {
+        const result = await onSaveEstimate?.(lead.id, estimate, options)
         if (result) {
           setLoadedEstimate(result)
         }
