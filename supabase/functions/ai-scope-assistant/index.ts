@@ -6,8 +6,10 @@ import {
   AI_SCOPE_PROMPT_VERSIONS,
   AiScopeContractError,
   buildAiScopeResponsesRequest,
+  classifyAiScopeProviderStatus,
   createAiScopeFingerprint,
   normalizeAiScopeLanguage,
+  normalizeAiScopeProviderUsage,
   parseAiScopeProviderResponse,
 } from '../_shared/aiScopeAssistant.js'
 
@@ -73,7 +75,7 @@ async function requestOpenAi({
     const data = await response.json().catch(() => null)
     if (!response.ok) {
       const error = new Error(`OpenAI Responses request failed with status ${response.status}.`)
-      ;(error as Error & { code?: string }).code = 'AI_SCOPE_PROVIDER_REQUEST_FAILED'
+      ;(error as Error & { code?: string }).code = classifyAiScopeProviderStatus(response.status)
       ;(error as Error & { providerStatus?: number }).providerStatus = response.status
       throw error
     }
@@ -213,24 +215,31 @@ Deno.serve(async (request) => {
     })
     const providerResponse = await requestOpenAi({ apiKey: openAiApiKey, requestBody })
     const result = parseAiScopeProviderResponse(action, providerResponse)
+    const usage = normalizeAiScopeProviderUsage(providerResponse?.usage)
 
     return jsonResponse({
       action,
       estimateId,
       ...result,
       ...(action === AI_SCOPE_ACTIONS.TRANSLATE ? { translationRequired: true } : {}),
-      metadata: { model, promptVersion, generatedAt, sourceFingerprint },
+      metadata: { model, promptVersion, generatedAt, sourceFingerprint, usage },
     })
   } catch (error) {
+    if (error instanceof DOMException && error.name === 'AbortError') {
+      ;(error as Error & { code?: string }).code = 'AI_SCOPE_PROVIDER_TIMEOUT'
+    } else if (!(error instanceof AiScopeContractError) && !(error as { providerStatus?: unknown })?.providerStatus) {
+      ;(error as Error & { code?: string }).code = 'AI_SCOPE_PROVIDER_UNREACHABLE'
+    }
+    const safeDetails = safeErrorDetails(error)
     console.error('AI Scope Assistant request failed.', {
       action,
       estimateId,
       promptVersion,
       model,
       elapsedMs: Date.now() - startedAt,
-      ...safeErrorDetails(error),
+      ...safeDetails,
     })
     const status = error instanceof AiScopeContractError ? 422 : 502
-    return jsonResponse({ error: 'Scope Assistant could not complete the request.', code: 'AI_SCOPE_REQUEST_FAILED' }, status)
+    return jsonResponse({ error: 'Scope Assistant could not complete the request.', code: safeDetails.code }, status)
   }
 })

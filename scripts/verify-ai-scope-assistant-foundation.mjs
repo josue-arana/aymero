@@ -21,7 +21,9 @@ import {
 import {
   AI_SCOPE_LIMITS,
   buildAiScopeResponsesRequest,
+  classifyAiScopeProviderStatus,
   createAiScopeFingerprint,
+  normalizeAiScopeProviderUsage,
   parseAiScopeProviderResponse,
   validateAiScopeStructuredOutput,
 } from '../supabase/functions/_shared/aiScopeAssistant.js'
@@ -152,6 +154,27 @@ assert.equal(professionalizeRequest.text.format.schema.additionalProperties, fal
 assert.equal('tools' in professionalizeRequest, false)
 assert.equal('conversation' in professionalizeRequest, false)
 assert.equal(JSON.parse(professionalizeRequest.input).source, initialized.rawContractorInput)
+
+assert.equal(classifyAiScopeProviderStatus(400), 'AI_SCOPE_PROVIDER_REQUEST_INVALID')
+assert.equal(classifyAiScopeProviderStatus(401), 'AI_SCOPE_PROVIDER_AUTH_FAILED')
+assert.equal(classifyAiScopeProviderStatus(403), 'AI_SCOPE_PROVIDER_ACCESS_DENIED')
+assert.equal(classifyAiScopeProviderStatus(404), 'AI_SCOPE_PROVIDER_MODEL_UNAVAILABLE')
+assert.equal(classifyAiScopeProviderStatus(429), 'AI_SCOPE_PROVIDER_RATE_LIMITED')
+assert.equal(classifyAiScopeProviderStatus(500), 'AI_SCOPE_PROVIDER_UNAVAILABLE')
+assert.deepEqual(normalizeAiScopeProviderUsage({
+  input_tokens: 120,
+  input_tokens_details: { cached_tokens: 20 },
+  output_tokens: 45,
+  output_tokens_details: { reasoning_tokens: 12 },
+  total_tokens: 165,
+}), {
+  inputTokens: 120,
+  cachedInputTokens: 20,
+  outputTokens: 45,
+  reasoningTokens: 12,
+  totalTokens: 165,
+})
+assert.equal(normalizeAiScopeProviderUsage(null), null)
 
 assert.deepEqual(
   parseAiScopeProviderResponse('professionalize', {

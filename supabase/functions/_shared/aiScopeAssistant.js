@@ -16,6 +16,17 @@ export const AI_SCOPE_LIMITS = Object.freeze({
   maxOutputTokens: 4000,
 })
 
+export const AI_SCOPE_PROVIDER_ERROR_CODES = Object.freeze({
+  REQUEST_INVALID: 'AI_SCOPE_PROVIDER_REQUEST_INVALID',
+  AUTH_FAILED: 'AI_SCOPE_PROVIDER_AUTH_FAILED',
+  ACCESS_DENIED: 'AI_SCOPE_PROVIDER_ACCESS_DENIED',
+  MODEL_UNAVAILABLE: 'AI_SCOPE_PROVIDER_MODEL_UNAVAILABLE',
+  RATE_LIMITED: 'AI_SCOPE_PROVIDER_RATE_LIMITED',
+  UNAVAILABLE: 'AI_SCOPE_PROVIDER_UNAVAILABLE',
+  TIMEOUT: 'AI_SCOPE_PROVIDER_TIMEOUT',
+  UNREACHABLE: 'AI_SCOPE_PROVIDER_UNREACHABLE',
+})
+
 const supportedLanguages = new Set(['en', 'es'])
 
 export class AiScopeContractError extends Error {
@@ -29,6 +40,29 @@ export class AiScopeContractError extends Error {
 export function normalizeAiScopeLanguage(value) {
   const normalized = String(value || '').trim().toLowerCase()
   return supportedLanguages.has(normalized) ? normalized : ''
+}
+
+export function classifyAiScopeProviderStatus(status) {
+  const normalized = Number(status)
+  if (normalized === 400) return AI_SCOPE_PROVIDER_ERROR_CODES.REQUEST_INVALID
+  if (normalized === 401) return AI_SCOPE_PROVIDER_ERROR_CODES.AUTH_FAILED
+  if (normalized === 403) return AI_SCOPE_PROVIDER_ERROR_CODES.ACCESS_DENIED
+  if (normalized === 404) return AI_SCOPE_PROVIDER_ERROR_CODES.MODEL_UNAVAILABLE
+  if (normalized === 429) return AI_SCOPE_PROVIDER_ERROR_CODES.RATE_LIMITED
+  return AI_SCOPE_PROVIDER_ERROR_CODES.UNAVAILABLE
+}
+
+export function normalizeAiScopeProviderUsage(value) {
+  if (!value || typeof value !== 'object' || Array.isArray(value)) return null
+  const readCount = (candidate) => Number.isSafeInteger(Number(candidate)) && Number(candidate) >= 0
+    ? Number(candidate)
+    : 0
+  const inputTokens = readCount(value.input_tokens)
+  const outputTokens = readCount(value.output_tokens)
+  const totalTokens = readCount(value.total_tokens) || inputTokens + outputTokens
+  const cachedInputTokens = readCount(value.input_tokens_details?.cached_tokens)
+  const reasoningTokens = readCount(value.output_tokens_details?.reasoning_tokens)
+  return { inputTokens, cachedInputTokens, outputTokens, reasoningTokens, totalTokens }
 }
 
 // Fingerprints normalize only transport-level differences: CRLF/CR become LF and
