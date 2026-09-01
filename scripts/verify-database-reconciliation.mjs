@@ -25,6 +25,10 @@ const onboardingMigration = read('../supabase/migrations/20260622235647_enable_s
 const onboardingAclMigrationName = '20260829191542_restrict_beta_onboarding_function_execute.sql'
 const onboardingAclMigration = read(`../supabase/migrations/${onboardingAclMigrationName}`)
 const scopeAssistantMigration = read(`../supabase/migrations/${scopeAssistantMigrationName}`)
+const greenfieldManifest = JSON.parse(read('../supabase/bootstrap/greenfield-manifest.json'))
+const greenfieldBootstrap = read('../scripts/bootstrap-aymero-greenfield.mjs')
+const greenfieldDocumentation = read('../docs/STAGING_DATABASE_BOOTSTRAP.md')
+const stagingSchemaVerification = read('../scripts/verify-aymero-staging-schema.mjs')
 const app = read('../src/App.jsx')
 const authContext = read('../src/contexts/AuthContext.jsx')
 const onboardingService = read('../src/services/supabase/contractorOnboardingSupabaseService.js')
@@ -40,6 +44,53 @@ assert.deepEqual(archivedMigrationFiles, [
   '20260628211023_add_simple_mode_to_company_settings.sql',
   '20260629002609_fix_project_photos_rls.sql',
 ])
+
+// Empty non-production environments use a schema-only historical baseline,
+// while production keeps its already-reconciled forward-history guarantees.
+assert.equal(greenfieldManifest.productionProjectRef, 'qespkkmxaxzsfqrlghev')
+assert.equal(greenfieldManifest.baseline.sourceCommit, 'b8ee1e7c58b6c5a86d25173256c6883984f0db4c')
+assert.equal(greenfieldManifest.baseline.sourcePath, 'supabase/schema.sql')
+assert.match(greenfieldManifest.baseline.sha256, /^[0-9a-f]{64}$/)
+assert.equal(greenfieldManifest.baseline.temporaryLedgerVersion, '00000000000000')
+assert.deepEqual(
+  greenfieldManifest.productionOnlyHistorical.map(({ filename }) => filename).sort(),
+  [
+    '20260622235648_link_miguel_contractor_membership.sql',
+    '20260622_create_miguel_contractor_profile.sql',
+  ],
+)
+assert.deepEqual(greenfieldManifest.pendingForward, [scopeAssistantMigrationName])
+assert.deepEqual(greenfieldManifest.supersededHistoryOnly.sort(), archivedMigrationFiles)
+
+const classifiedActiveMigrations = [
+  ...greenfieldManifest.productionOnlyHistorical.map(({ filename }) => filename),
+  ...greenfieldManifest.reusableHistorical,
+  ...greenfieldManifest.pendingForward,
+].sort()
+assert.deepEqual(classifiedActiveMigrations, activeMigrationFiles)
+assert.equal(new Set(classifiedActiveMigrations).size, activeMigrationFiles.length)
+assert.equal(greenfieldManifest.reusableHistorical.length, 21)
+
+assert.match(greenfieldBootstrap, /projectRef === manifest\.productionProjectRef/)
+assert.match(greenfieldBootstrap, /--confirm-empty-non-production/)
+assert.match(greenfieldBootstrap, /inspect', 'db', 'table-stats', '--project-ref', projectRef/)
+assert.match(greenfieldBootstrap, /Historical baseline hash mismatch/)
+assert.match(greenfieldBootstrap, /Historical baseline contains row-data SQL/)
+assert.match(greenfieldBootstrap, /to_regclass\('public\.contractors'\)/)
+assert.match(greenfieldBootstrap, /'--project-ref', projectRef/)
+assert.match(greenfieldBootstrap, /manifest\.productionOnlyHistorical\.map/)
+assert.doesNotMatch(greenfieldBootstrap, /qespkkmxaxzsfqrlghev/)
+assert.match(greenfieldDocumentation, /EMPTY NON-PRODUCTION|empty non-production/i)
+assert.match(greenfieldDocumentation, /never run.*Aymero Production/i)
+assert.match(greenfieldDocumentation, /20260831_add_estimate_scope_assistant_state\.sql/)
+assert.match(greenfieldDocumentation, /20260622_create_miguel_contractor_profile\.sql/)
+assert.match(greenfieldDocumentation, /20260622235648_link_miguel_contractor_membership\.sql/)
+assert.match(stagingSchemaVerification, /projectRef === productionRef/)
+assert.match(stagingSchemaVerification, /scope_assistant_state/)
+assert.match(stagingSchemaVerification, /estimates_scope_assistant_state_object_check/)
+assert.match(stagingSchemaVerification, /Unexpected row data in staging table/)
+assert.match(stagingSchemaVerification, /has_function_privilege/)
+assert.match(stagingSchemaVerification, /'--project-ref', projectRef/)
 const historicalMigrationFiles = migrationFiles.filter((name) => name !== onboardingAclMigrationName)
 assert.equal(historicalMigrationFiles.length, 22)
 assert.equal(repositoryMigrationFiles.length, 25)

@@ -6,3 +6,4 @@ __MACOSX/
 .env
 .env.local
 .env.*.local
+supabase/.temp/

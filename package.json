@@ -38,7 +38,9 @@
     "verify:billing-production": "node scripts/verify-billing-production-readiness.mjs",
     "verify:database-reconciliation": "node scripts/verify-database-reconciliation.mjs",
     "verify:ai-scope-assistant": "node scripts/verify-ai-scope-assistant-foundation.mjs",
-    "verify:ai-scope-builder": "node scripts/verify-ai-scope-assistant-builder.mjs"
+    "verify:ai-scope-builder": "node scripts/verify-ai-scope-assistant-builder.mjs",
+    "bootstrap:greenfield": "node scripts/bootstrap-aymero-greenfield.mjs",
+    "verify:staging-schema": "node scripts/verify-aymero-staging-schema.mjs"
   },
   "dependencies": {
     "@vitejs/plugin-react": "latest",
