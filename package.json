@@ -41,6 +41,7 @@
     "verify:ai-scope-builder": "node scripts/verify-ai-scope-assistant-builder.mjs",
     "validate:ai-scope-staging-gate": "node scripts/validate-ai-scope-first-gate.mjs",
     "validate:ai-scope-staging-runtime": "node scripts/validate-ai-scope-luna-runtime.mjs",
+    "validate:ai-scope-refinement-runtime": "node scripts/validate-ai-scope-refinement-runtime.mjs",
     "bootstrap:greenfield": "node scripts/bootstrap-aymero-greenfield.mjs",
     "verify:staging-schema": "node scripts/verify-aymero-staging-schema.mjs",
     "prepare:staging-runtime": "node scripts/prepare-aymero-staging-runtime.mjs",

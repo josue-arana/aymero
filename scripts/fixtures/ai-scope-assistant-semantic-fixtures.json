@@ -90,5 +90,14 @@
     "expected": { "scope": "Repair only the damaged section. Painting is not included. Complete before October 15 if weather permits." },
     "preservedPairs": [["únicamente", "only"], ["No incluye pintura", "Painting is not included"], ["15 de octubre", "October 15"], ["si el clima lo permite", "if weather permits"]],
     "forbidden": ["entire wall", "guaranteed", "primer"]
+  },
+  {
+    "id": "roofing-terminology-and-commercial-facts",
+    "action": "professionalize",
+    "sourceLanguage": "es",
+    "source": "revisar los PlayBook dañados para reemplazarlos, colocar flashing y Shingle Roof negro. Garantía de 25 años de la compañía. Remover escombros. Costo $6000 con Don payment de $4000 y $2000 al terminar.",
+    "expected": { "scope": "- Revisar el plywood o roof decking dañado y reemplazarlo según sea necesario.\n- Instalar flashing y shingles de techo negros.\n- Mantener la garantía de fabricación de 25 años indicada.\n- Retirar los escombros generados.", "reviewWarnings": ["Tus notas también incluyen información de precio/pago. Verifica las secciones Precio y Términos de pago del estimado."] },
+    "preservedPairs": [["PlayBook", "plywood"], ["flashing", "flashing"], ["Shingle Roof negro", "shingles de techo negros"], ["25 años", "25 años"], ["Remover escombros", "Retirar los escombros"]],
+    "forbidden": ["materiales incluidos", "mano de obra incluida", "permiso", "garantía de mano de obra", "$6000", "$4000", "$2000"]
   }
 ]

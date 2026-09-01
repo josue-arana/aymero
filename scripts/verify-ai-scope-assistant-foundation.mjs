@@ -20,6 +20,7 @@ import {
 } from '../src/utils/scopeAssistantState.js'
 import {
   AI_SCOPE_LIMITS,
+  AI_SCOPE_PROMPT_VERSIONS,
   buildAiScopeResponsesRequest,
   classifyAiScopeProviderStatus,
   createAiScopeFingerprint,
@@ -148,6 +149,17 @@ const professionalizeRequest = buildAiScopeResponsesRequest({
 assert.equal(professionalizeRequest.store, false)
 assert.deepEqual(professionalizeRequest.reasoning, { effort: 'low' })
 assert.equal(professionalizeRequest.model, 'gpt-5.6-terra')
+assert.equal(AI_SCOPE_PROMPT_VERSIONS.professionalize, 'professionalize-v2')
+assert.equal(AI_SCOPE_PROMPT_VERSIONS.translate, 'translate-v2')
+assert.match(professionalizeRequest.instructions, /Language inference is allowed; scope invention is not/)
+assert.match(professionalizeRequest.instructions, /PlayBook in roof-decking context as plywood or roof decking/)
+assert.match(professionalizeRequest.instructions, /do not leave it as generic wood or panels/)
+assert.match(professionalizeRequest.instructions, /ice and water shield/)
+assert.match(professionalizeRequest.instructions, /Price and Payment Terms sections/)
+assert.match(professionalizeRequest.instructions, /Precio y Términos de pago/)
+assert.match(professionalizeRequest.instructions, /retain a conservative statement of that duration in scope/)
+assert.match(professionalizeRequest.instructions, /actionable construction bullets/)
+assert.match(professionalizeRequest.instructions, /Do not add, infer, recommend, promise, or invent materials responsibility/)
 assert.equal(professionalizeRequest.text.format.type, 'json_schema')
 assert.equal(professionalizeRequest.text.format.strict, true)
 assert.equal(professionalizeRequest.text.format.schema.additionalProperties, false)
@@ -211,7 +223,7 @@ assert.throws(
 )
 
 const semanticFixtures = JSON.parse(read('./fixtures/ai-scope-assistant-semantic-fixtures.json'))
-assert.equal(semanticFixtures.length, 10)
+assert.equal(semanticFixtures.length, 11)
 for (const fixture of semanticFixtures) {
   const validated = validateAiScopeStructuredOutput(fixture.action, fixture.expected)
   assert.equal(validated.scope, fixture.expected.scope, fixture.id)
