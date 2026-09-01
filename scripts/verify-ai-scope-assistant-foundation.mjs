@@ -150,7 +150,7 @@ assert.equal(professionalizeRequest.store, false)
 assert.deepEqual(professionalizeRequest.reasoning, { effort: 'low' })
 assert.equal(professionalizeRequest.model, 'gpt-5.6-terra')
 assert.equal(AI_SCOPE_PROMPT_VERSIONS.professionalize, 'professionalize-v2')
-assert.equal(AI_SCOPE_PROMPT_VERSIONS.translate, 'translate-v2')
+assert.equal(AI_SCOPE_PROMPT_VERSIONS.translate, 'translate-v3')
 assert.match(professionalizeRequest.instructions, /Language inference is allowed; scope invention is not/)
 assert.match(professionalizeRequest.instructions, /PlayBook in roof-decking context as plywood or roof decking/)
 assert.match(professionalizeRequest.instructions, /do not leave it as generic wood or panels/)
@@ -160,6 +160,22 @@ assert.match(professionalizeRequest.instructions, /Precio y Términos de pago/)
 assert.match(professionalizeRequest.instructions, /retain a conservative statement of that duration in scope/)
 assert.match(professionalizeRequest.instructions, /actionable construction bullets/)
 assert.match(professionalizeRequest.instructions, /Do not add, infer, recommend, promise, or invent materials responsibility/)
+
+const translateRequest = buildAiScopeResponsesRequest({
+  action: 'translate',
+  model: 'gpt-5.6-terra',
+  source: 'Instalar tejas asfálticas negras.',
+  sourceLanguage: 'es',
+  targetLanguage: 'en',
+})
+assert.match(translateRequest.instructions, /natural, concise, professional U\.S\. residential-construction language/)
+assert.match(translateRequest.instructions, /Translate the meaning, not Spanish sentence structure/)
+assert.match(translateRequest.instructions, /never raw notes, an unapproved draft, a prior translation, or canonical client scope/)
+assert.match(translateRequest.instructions, /damaged roof decking or plywood \(not roof plywood or decking\)/)
+assert.match(translateRequest.instructions, /ridge vent or ridge vent system/)
+assert.match(translateRequest.instructions, /Do not carry plastic, line, or air-extraction labels/)
+assert.match(translateRequest.instructions, /not structural roof demolition/)
+assert.match(translateRequest.instructions, /Do not add, remove, broaden, narrow, strengthen, weaken/)
 assert.equal(professionalizeRequest.text.format.type, 'json_schema')
 assert.equal(professionalizeRequest.text.format.strict, true)
 assert.equal(professionalizeRequest.text.format.schema.additionalProperties, false)
@@ -223,7 +239,7 @@ assert.throws(
 )
 
 const semanticFixtures = JSON.parse(read('./fixtures/ai-scope-assistant-semantic-fixtures.json'))
-assert.equal(semanticFixtures.length, 11)
+assert.equal(semanticFixtures.length, 19)
 for (const fixture of semanticFixtures) {
   const validated = validateAiScopeStructuredOutput(fixture.action, fixture.expected)
   assert.equal(validated.scope, fixture.expected.scope, fixture.id)
