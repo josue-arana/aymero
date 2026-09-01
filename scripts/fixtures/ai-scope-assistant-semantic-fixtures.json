@@ -1,0 +1,94 @@
+[
+  {
+    "id": "spanish-bathroom-renovation",
+    "action": "professionalize",
+    "sourceLanguage": "es",
+    "source": "baño: quitar tocador viejo, instalar tocador nuevo y pintar paredes. azulejo se queda.",
+    "expected": { "scope": "Retirar el tocador existente, instalar el tocador nuevo y pintar las paredes del baño. El azulejo existente permanecerá.", "reviewWarnings": [] },
+    "preservedPairs": [["quitar tocador viejo", "Retirar el tocador existente"], ["azulejo se queda", "azulejo existente permanecerá"]],
+    "forbidden": ["plomería", "ducha", "permiso"]
+  },
+  {
+    "id": "materials-not-included",
+    "action": "professionalize",
+    "sourceLanguage": "en",
+    "source": "install cabinet hardware. materials not included.",
+    "expected": { "scope": "Install the cabinet hardware. Materials are not included.", "reviewWarnings": [] },
+    "preservedPairs": [["materials not included", "Materials are not included"]],
+    "forbidden": ["provide materials", "warranty"]
+  },
+  {
+    "id": "exact-dimensions",
+    "action": "professionalize",
+    "sourceLanguage": "en",
+    "source": "replace 36 x 48 bathroom window only",
+    "expected": { "scope": "Replace only the 36 x 48 bathroom window.", "reviewWarnings": [] },
+    "preservedPairs": [["36 x 48", "36 x 48"], ["only", "only"]],
+    "forbidden": ["trim", "permit", "code"]
+  },
+  {
+    "id": "exact-quantities",
+    "action": "translate",
+    "sourceLanguage": "en",
+    "targetLanguage": "es",
+    "source": "Install 12 cabinet pulls and replace 3 hinges.",
+    "expected": { "scope": "Instalar 12 tiradores de gabinete y reemplazar 3 bisagras." },
+    "preservedPairs": [["12", "12"], ["3", "3"]],
+    "forbidden": ["13", "4", "garantía"]
+  },
+  {
+    "id": "exclusion-and-qualification",
+    "action": "professionalize",
+    "sourceLanguage": "en",
+    "source": "repair damaged siding if matching boards available. painting excluded.",
+    "expected": { "scope": "Repair the damaged siding if matching boards are available. Painting is excluded.", "reviewWarnings": [] },
+    "preservedPairs": [["if matching boards available", "if matching boards are available"], ["painting excluded", "Painting is excluded"]],
+    "forbidden": ["paint the siding", "guaranteed match"]
+  },
+  {
+    "id": "ambiguous-source",
+    "action": "professionalize",
+    "sourceLanguage": "en",
+    "source": "repair bad boards if needed maybe around 8",
+    "expected": { "scope": "Repair damaged boards as needed; the anticipated quantity may be approximately eight.", "reviewWarnings": ["Confirm the quantity of boards before approving the scope."] },
+    "preservedPairs": [["if needed", "as needed"], ["maybe around 8", "may be approximately eight"]],
+    "forbidden": ["exactly eight", "all boards"]
+  },
+  {
+    "id": "electrical-no-code-claims",
+    "action": "professionalize",
+    "sourceLanguage": "en",
+    "source": "replace 4 kitchen outlets. owner supplies outlets.",
+    "expected": { "scope": "Replace four kitchen outlets. The owner will supply the outlets.", "reviewWarnings": [] },
+    "preservedPairs": [["4 kitchen outlets", "four kitchen outlets"], ["owner supplies outlets", "owner will supply the outlets"]],
+    "forbidden": ["code", "permit", "inspection", "GFCI"]
+  },
+  {
+    "id": "multi-room-renovation",
+    "action": "professionalize",
+    "sourceLanguage": "en",
+    "source": "living room: patch walls. bedroom: replace baseboard. kitchen: paint ceiling only.",
+    "expected": { "scope": "Living room: patch the walls. Bedroom: replace the baseboard. Kitchen: paint only the ceiling.", "reviewWarnings": [] },
+    "preservedPairs": [["living room", "Living room"], ["bedroom", "Bedroom"], ["kitchen", "Kitchen"], ["ceiling only", "only the ceiling"]],
+    "forbidden": ["bathroom", "flooring", "cabinets"]
+  },
+  {
+    "id": "english-contractor-notes",
+    "action": "professionalize",
+    "sourceLanguage": "en",
+    "source": "remove old door and put new one. disposal by customer.",
+    "expected": { "scope": "Remove the existing door and install the new door. The customer is responsible for disposal.", "reviewWarnings": [] },
+    "preservedPairs": [["remove old door", "Remove the existing door"], ["disposal by customer", "customer is responsible for disposal"]],
+    "forbidden": ["contractor disposal", "paint", "warranty"]
+  },
+  {
+    "id": "spanish-to-english-faithful-translation",
+    "action": "translate",
+    "sourceLanguage": "es",
+    "targetLanguage": "en",
+    "source": "Reparar únicamente la sección dañada. No incluye pintura. Completar antes del 15 de octubre si el clima lo permite.",
+    "expected": { "scope": "Repair only the damaged section. Painting is not included. Complete before October 15 if weather permits." },
+    "preservedPairs": [["únicamente", "only"], ["No incluye pintura", "Painting is not included"], ["15 de octubre", "October 15"], ["si el clima lo permite", "if weather permits"]],
+    "forbidden": ["entire wall", "guaranteed", "primer"]
+  }
+]

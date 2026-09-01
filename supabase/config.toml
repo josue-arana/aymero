@@ -6,3 +6,6 @@ verify_jwt = true
 
 [functions.create-billing-portal]
 verify_jwt = true
+
+[functions.ai-scope-assistant]
+verify_jwt = true

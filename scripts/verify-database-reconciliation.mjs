@@ -9,7 +9,9 @@ function read(relativePath) {
 
 const migrationDirectory = fileURLToPath(new URL('../supabase/migrations/', import.meta.url))
 const migrationArchiveDirectory = fileURLToPath(new URL('../supabase/migrations_archive/', import.meta.url))
-const migrationFiles = readdirSync(migrationDirectory).filter((name) => name.endsWith('.sql')).sort()
+const activeMigrationFiles = readdirSync(migrationDirectory).filter((name) => name.endsWith('.sql')).sort()
+const scopeAssistantMigrationName = '20260831_add_estimate_scope_assistant_state.sql'
+const migrationFiles = activeMigrationFiles.filter((name) => name !== scopeAssistantMigrationName)
 const archivedMigrationFiles = readdirSync(migrationArchiveDirectory).filter((name) => name.endsWith('.sql')).sort()
 const repositoryMigrationFiles = [...migrationFiles, ...archivedMigrationFiles].sort()
 const reconciliation = read('../docs/PRODUCTION_DATABASE_RECONCILIATION.md')
@@ -22,6 +24,7 @@ const cancelAtMigration = read('../supabase/migrations/20260828_add_billing_subs
 const onboardingMigration = read('../supabase/migrations/20260622235647_enable_self_service_beta_onboarding.sql')
 const onboardingAclMigrationName = '20260829191542_restrict_beta_onboarding_function_execute.sql'
 const onboardingAclMigration = read(`../supabase/migrations/${onboardingAclMigrationName}`)
+const scopeAssistantMigration = read(`../supabase/migrations/${scopeAssistantMigrationName}`)
 const app = read('../src/App.jsx')
 const authContext = read('../src/contexts/AuthContext.jsx')
 const onboardingService = read('../src/services/supabase/contractorOnboardingSupabaseService.js')
@@ -30,6 +33,7 @@ const checkout = read('../supabase/functions/create-billing-checkout/index.ts')
 const portal = read('../supabase/functions/create-billing-portal/index.ts')
 const webhook = read('../supabase/functions/stripe-billing-webhook/index.ts')
 
+assert.equal(activeMigrationFiles.length, 24)
 assert.equal(migrationFiles.length, 23)
 assert.equal(archivedMigrationFiles.length, 2)
 assert.deepEqual(archivedMigrationFiles, [
@@ -46,12 +50,12 @@ for (const migrationFile of repositoryMigrationFiles) {
 }
 
 // Active migration history is normalized to one file per unique version.
-const versions = migrationFiles.map((name) => name.match(/^(\d+)_/)?.[1] || '').filter(Boolean)
+const versions = activeMigrationFiles.map((name) => name.match(/^(\d+)_/)?.[1] || '').filter(Boolean)
 const versionCounts = versions.reduce(
   (result, version) => result.set(version, (result.get(version) || 0) + 1),
   new Map(),
 )
-assert.equal(versionCounts.size, 23)
+assert.equal(versionCounts.size, 24)
 const duplicateVersions = [...versionCounts].filter(([, count]) => count > 1).map(([version]) => version)
 assert.deepEqual(duplicateVersions, [])
 
@@ -284,5 +288,8 @@ assert.match(cleanupSql, /rollback;/)
 assert.ok(migrationFiles.includes('20260622_create_miguel_contractor_profile.sql'))
 assert.ok(migrationFiles.includes('20260828_add_billing_subscription_cancel_at.sql'))
 assert.ok(migrationFiles.includes(onboardingAclMigrationName))
+assert.ok(activeMigrationFiles.includes(scopeAssistantMigrationName))
+assert.match(scopeAssistantMigration, /add column if not exists scope_assistant_state jsonb not null default '\{\}'::jsonb/)
+assert.match(scopeAssistantMigration, /jsonb_typeof\(scope_assistant_state\) = 'object'/)
 
-console.log('Database reconciliation validated: 23 fully present migrations, 2 byte-preserved archives, and zero pending migrations.')
+console.log('Database reconciliation validated: the 23-migration production baseline and 2 archives remain intact; 1 new Scope Assistant migration is intentionally pending.')

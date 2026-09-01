@@ -241,6 +241,9 @@ create table estimates (
   estimate_number text,
   title text not null,
   scope_of_work text,
+  scope_assistant_state jsonb not null default '{}'::jsonb
+    constraint estimates_scope_assistant_state_object_check
+    check (jsonb_typeof(scope_assistant_state) = 'object'),
   line_items jsonb not null default '[]'::jsonb,
   subtotal numeric(12,2) not null default 0,
   discount_amount numeric(12,2) not null default 0,
