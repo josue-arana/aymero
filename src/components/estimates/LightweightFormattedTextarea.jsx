@@ -676,7 +676,7 @@ export const LightweightFormattedTextarea = forwardRef(function LightweightForma
         role="toolbar"
         aria-label={t('textFormatting')}
         aria-controls={editorId}
-        className="relative z-10 flex min-w-0 flex-wrap items-center gap-1 border-b border-slate-200 bg-white/80 px-2 py-1.5"
+        className="relative z-10 flex min-w-0 flex-wrap items-center gap-0.5 border-b border-slate-200 bg-white/80 px-1 py-1.5 sm:gap-1 sm:px-2"
       >
         <button type="button" aria-label={t('bold')} title={t('bold')} aria-pressed={activeFormats.bold} className={toolbarButtonClasses(activeFormats.bold)} onMouseDown={(event) => event.preventDefault()} onClick={() => applyInlineFormat('bold')}>
           <Bold aria-hidden="true" className="h-4 w-4" />

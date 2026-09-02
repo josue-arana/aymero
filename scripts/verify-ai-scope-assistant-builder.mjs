@@ -202,9 +202,20 @@ assert.match(service, /body: JSON\.stringify\(\{ action, estimateId: normalizedE
 assert.doesNotMatch(service, /contractorId|rawContractorInput|approvedContractorScope/)
 assert.match(backendConfig, /VITE_AI_SCOPE_ASSISTANT_ENABLED === 'true'/)
 assert.match(panel, /isEditing && isEnabled/)
-assert.match(panel, /xl:grid-cols-2/)
+assert.match(panel, /approvalCurrent && !showApprovedEditor/)
+assert.match(panel, /scopeAssistantApprovedDescription/)
+assert.match(panel, /scopeAssistantViewApproved/)
+assert.match(panel, /setShowApprovedEditor\(true\)/)
+assert.match(panel, /ReviewNotices warnings=\{state\.reviewWarnings\} approved/)
+assert.match(panel, /function ReviewNotices\([\s\S]*if \(approved\)[\s\S]*scopeAssistantReviewItemOne/)
+assert.match(panel, /approvalCurrent && translationRequired/)
+assert.match(panel, /approvalCurrent && !translationRequired/)
+assert.match(panel, /scopeAssistantTranslateToLanguage/)
+assert.match(panel, /scopeAssistantClientLanguageNotice/)
+assert.doesNotMatch(panel, /xl:grid-cols-2/)
+assert.doesNotMatch(panel, /<VersionLabel title=\{t\('scopeAssistantContractorVersion'\)/)
 assert.match(panel, /min-h-11/)
-assert.match(panel, /w-full[\s\S]{0,200}sm:w-auto/)
+assert.match(panel, /w-full[\s\S]{0,400}sm:w-auto/)
 assert.match(panel, /min-w-0/)
 assert.match(panel, /flex flex-col gap-2 sm:flex-row sm:flex-wrap/)
 assert.match(panel, /focus-visible:ring-2/)
@@ -227,12 +238,22 @@ const translationKeys = [
   'scopeAssistantRegenerate',
   'scopeAssistantApprove',
   'scopeAssistantApproved',
+  'scopeAssistantApprovedDescription',
+  'scopeAssistantViewApproved',
+  'scopeAssistantEdit',
   'scopeAssistantViewOriginal',
   'scopeAssistantTranslate',
+  'scopeAssistantTranslateToLanguage',
+  'scopeAssistantRetranslate',
   'scopeAssistantTranslating',
   'scopeAssistantContractorVersion',
   'scopeAssistantClientVersion',
+  'scopeAssistantReadyToReview',
+  'scopeAssistantNotTranslated',
+  'scopeAssistantClientLanguageNotice',
   'scopeAssistantUseClientVersion',
+  'scopeAssistantReviewItemOne',
+  'scopeAssistantReviewItemMany',
   'scopeAssistantApprovalStaleNotice',
   'scopeAssistantTranslationStaleNotice',
   'scopeAssistantUnavailable',
