@@ -30,6 +30,7 @@
 const SUPABASE_URL = import.meta.env.VITE_SUPABASE_URL?.trim() || ''
 const SUPABASE_ANON_KEY = import.meta.env.VITE_SUPABASE_ANON_KEY?.trim() || ''
 const ENABLE_DEVELOPER_ROUTES_FLAG = import.meta.env.DEV || import.meta.env.VITE_ENABLE_DEVELOPER_ROUTES === 'true'
+const ENABLE_AI_SCOPE_ASSISTANT_FLAG = import.meta.env.VITE_AI_SCOPE_ASSISTANT_ENABLED === 'true'
 
 export const USE_SUPABASE = false
 export const USE_SUPABASE_SETTINGS = true
@@ -48,6 +49,7 @@ export const USE_REAL_SMS = false
 export const USE_PDF_EXPORT = false
 export const BETA_CONTRACTOR_ID = '00000000-0000-0000-0000-000000000001'
 export const ENABLE_DEVELOPER_ROUTES = ENABLE_DEVELOPER_ROUTES_FLAG
+export const ENABLE_AI_SCOPE_ASSISTANT = ENABLE_AI_SCOPE_ASSISTANT_FLAG
 
 export const backendConfig = {
   useSupabase: USE_SUPABASE,
@@ -66,6 +68,7 @@ export const backendConfig = {
   useRealSms: USE_REAL_SMS,
   usePdfExport: USE_PDF_EXPORT,
   enableDeveloperRoutes: ENABLE_DEVELOPER_ROUTES,
+  enableAiScopeAssistant: ENABLE_AI_SCOPE_ASSISTANT,
   supabaseUrl: SUPABASE_URL,
   supabaseAnonKey: SUPABASE_ANON_KEY,
   betaContractorId: BETA_CONTRACTOR_ID,

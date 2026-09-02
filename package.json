@@ -36,7 +36,19 @@
     "verify:billing-cancellation": "node scripts/verify-billing-cancellation-lifecycle.mjs",
     "verify:billing-webhook-uuid": "node scripts/verify-billing-webhook-uuid.mjs",
     "verify:billing-production": "node scripts/verify-billing-production-readiness.mjs",
-    "verify:database-reconciliation": "node scripts/verify-database-reconciliation.mjs"
+    "verify:database-reconciliation": "node scripts/verify-database-reconciliation.mjs",
+    "verify:ai-scope-assistant": "node scripts/verify-ai-scope-assistant-foundation.mjs",
+    "verify:ai-scope-builder": "node scripts/verify-ai-scope-assistant-builder.mjs",
+    "validate:ai-scope-staging-gate": "node scripts/validate-ai-scope-first-gate.mjs",
+    "validate:ai-scope-staging-runtime": "node scripts/validate-ai-scope-luna-runtime.mjs",
+    "validate:ai-scope-refinement-runtime": "node scripts/validate-ai-scope-refinement-runtime.mjs",
+    "validate:ai-scope-translation-v3-runtime": "node scripts/validate-ai-scope-translation-v3-runtime.mjs",
+    "validate:ai-scope-miguel-corpus": "node scripts/validate-miguel-scope-regression-runtime.mjs",
+    "verify:ai-scope-miguel-corpus": "node scripts/validate-miguel-scope-regression-runtime.mjs --verify-fixture",
+    "bootstrap:greenfield": "node scripts/bootstrap-aymero-greenfield.mjs",
+    "verify:staging-schema": "node scripts/verify-aymero-staging-schema.mjs",
+    "prepare:staging-runtime": "node scripts/prepare-aymero-staging-runtime.mjs",
+    "verify:staging-runtime": "node scripts/verify-aymero-staging-runtime-preparation.mjs"
   },
   "dependencies": {
     "@vitejs/plugin-react": "latest",

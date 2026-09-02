@@ -6,6 +6,10 @@ import {
   normalizeEstimateFormattedTextForStorage,
   resolveEstimatePricingMode,
 } from '../../utils/estimateDocument'
+import {
+  normalizeScopeAssistantState,
+  normalizeScopeAssistantStateForStorage,
+} from '../../utils/scopeAssistantState'
 
 const TABLE_NAME = 'estimates'
 
@@ -194,6 +198,7 @@ function toAppEstimate(row) {
     projectTitle: row?.title || 'Estimate',
     summary: row?.scope_of_work || '',
     scopeOfWork: row?.scope_of_work || '',
+    scopeAssistantState: normalizeScopeAssistantState(row?.scope_assistant_state),
     lineItems,
     pricingMode: resolveEstimatePricingMode(row?.pricing_mode, lineItems),
     subtotal: toNumber(row?.subtotal),
@@ -235,6 +240,7 @@ function toSupabasePayload(contractorId, estimate = {}, { isCreate = false } = {
   const statusInput = readField(estimate, ['status'])
   const materialsIncludedInput = readField(estimate, ['materialsIncluded', 'materials_included'])
   const estimateLanguageInput = readField(estimate, ['estimateLanguage'])
+  const scopeAssistantStateInput = readField(estimate, ['scopeAssistantState', 'scope_assistant_state'])
 
   if (contractorId) {
     payload.contractor_id = contractorId
@@ -323,6 +329,10 @@ function toSupabasePayload(contractorId, estimate = {}, { isCreate = false } = {
 
   if (isCreate || estimateLanguageInput !== undefined) {
     payload.estimate_language = normalizeSupportedLanguageOrEmpty(estimateLanguageInput) || null
+  }
+
+  if (scopeAssistantStateInput !== undefined) {
+    payload.scope_assistant_state = normalizeScopeAssistantStateForStorage(scopeAssistantStateInput)
   }
 
   if (statusInput !== undefined) {

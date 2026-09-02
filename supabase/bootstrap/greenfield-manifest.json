@@ -1,0 +1,52 @@
+{
+  "baseline": {
+    "sourceCommit": "b8ee1e7c58b6c5a86d25173256c6883984f0db4c",
+    "sourcePath": "supabase/schema.sql",
+    "sha256": "25e6763de81c63b345d6fc16a0fe8ba86ff9b26ce19366a058dc3e9697925a4d",
+    "temporaryLedgerVersion": "00000000000000"
+  },
+  "productionProjectRef": "qespkkmxaxzsfqrlghev",
+  "productionOnlyHistorical": [
+    {
+      "version": "20260622",
+      "filename": "20260622_create_miguel_contractor_profile.sql",
+      "reason": "Production-only Miguel Giron / Skinner Division Contractor seed; intentionally excluded from reusable environments."
+    },
+    {
+      "version": "20260622235648",
+      "filename": "20260622235648_link_miguel_contractor_membership.sql",
+      "reason": "Production-only Miguel Giron membership link; intentionally excluded from reusable environments."
+    }
+  ],
+  "reusableHistorical": [
+    "20260622235647_enable_self_service_beta_onboarding.sql",
+    "20260624_enable_payments_supabase_beta.sql",
+    "20260625_enable_events_supabase_beta.sql",
+    "20260629002608_enable_project_photos_storage_beta.sql",
+    "20260629002610_fix_project_photos_identity_rls.sql",
+    "20260630_add_analytics_mode_to_company_settings.sql",
+    "20260707152523_add_client_language_preferences.sql",
+    "20260707170751_add_estimate_language.sql",
+    "20260718_add_premium_onboarding_state.sql",
+    "20260719020608_add_sample_workspace_manifest.sql",
+    "20260719020609_connect_sample_workspace_journey.sql",
+    "20260721003929_enable_invoices_supabase_rls.sql",
+    "20260721173314_enable_contracts_delete_rls.sql",
+    "20260721173315_enable_estimates_delete_rls.sql",
+    "20260725_add_company_accepted_payment_methods.sql",
+    "20260726_add_invoice_customer_notes.sql",
+    "20260812_add_public_client_portal_tokens.sql",
+    "20260816_add_public_estimate_share_tokens.sql",
+    "20260826_add_saas_billing_foundation.sql",
+    "20260828_add_billing_subscription_cancel_at.sql",
+    "20260829191542_restrict_beta_onboarding_function_execute.sql"
+  ],
+  "supersededHistoryOnly": [
+    "20260628211023_add_simple_mode_to_company_settings.sql",
+    "20260629002609_fix_project_photos_rls.sql"
+  ],
+  "pendingForward": [
+    "20260831_add_estimate_scope_assistant_state.sql",
+    "20260901143000_enable_core_crm_rls.sql"
+  ]
+}

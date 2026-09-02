@@ -9,7 +9,11 @@ function read(relativePath) {
 
 const migrationDirectory = fileURLToPath(new URL('../supabase/migrations/', import.meta.url))
 const migrationArchiveDirectory = fileURLToPath(new URL('../supabase/migrations_archive/', import.meta.url))
-const migrationFiles = readdirSync(migrationDirectory).filter((name) => name.endsWith('.sql')).sort()
+const activeMigrationFiles = readdirSync(migrationDirectory).filter((name) => name.endsWith('.sql')).sort()
+const scopeAssistantMigrationName = '20260831_add_estimate_scope_assistant_state.sql'
+const coreCrmRlsMigrationName = '20260901143000_enable_core_crm_rls.sql'
+const pendingForwardMigrationNames = [scopeAssistantMigrationName, coreCrmRlsMigrationName]
+const migrationFiles = activeMigrationFiles.filter((name) => !pendingForwardMigrationNames.includes(name))
 const archivedMigrationFiles = readdirSync(migrationArchiveDirectory).filter((name) => name.endsWith('.sql')).sort()
 const repositoryMigrationFiles = [...migrationFiles, ...archivedMigrationFiles].sort()
 const reconciliation = read('../docs/PRODUCTION_DATABASE_RECONCILIATION.md')
@@ -22,6 +26,12 @@ const cancelAtMigration = read('../supabase/migrations/20260828_add_billing_subs
 const onboardingMigration = read('../supabase/migrations/20260622235647_enable_self_service_beta_onboarding.sql')
 const onboardingAclMigrationName = '20260829191542_restrict_beta_onboarding_function_execute.sql'
 const onboardingAclMigration = read(`../supabase/migrations/${onboardingAclMigrationName}`)
+const scopeAssistantMigration = read(`../supabase/migrations/${scopeAssistantMigrationName}`)
+const coreCrmRlsMigration = read(`../supabase/migrations/${coreCrmRlsMigrationName}`)
+const greenfieldManifest = JSON.parse(read('../supabase/bootstrap/greenfield-manifest.json'))
+const greenfieldBootstrap = read('../scripts/bootstrap-aymero-greenfield.mjs')
+const greenfieldDocumentation = read('../docs/STAGING_DATABASE_BOOTSTRAP.md')
+const stagingSchemaVerification = read('../scripts/verify-aymero-staging-schema.mjs')
 const app = read('../src/App.jsx')
 const authContext = read('../src/contexts/AuthContext.jsx')
 const onboardingService = read('../src/services/supabase/contractorOnboardingSupabaseService.js')
@@ -30,12 +40,60 @@ const checkout = read('../supabase/functions/create-billing-checkout/index.ts')
 const portal = read('../supabase/functions/create-billing-portal/index.ts')
 const webhook = read('../supabase/functions/stripe-billing-webhook/index.ts')
 
+assert.equal(activeMigrationFiles.length, 25)
 assert.equal(migrationFiles.length, 23)
 assert.equal(archivedMigrationFiles.length, 2)
 assert.deepEqual(archivedMigrationFiles, [
   '20260628211023_add_simple_mode_to_company_settings.sql',
   '20260629002609_fix_project_photos_rls.sql',
 ])
+
+// Empty non-production environments use a schema-only historical baseline,
+// while production keeps its already-reconciled forward-history guarantees.
+assert.equal(greenfieldManifest.productionProjectRef, 'qespkkmxaxzsfqrlghev')
+assert.equal(greenfieldManifest.baseline.sourceCommit, 'b8ee1e7c58b6c5a86d25173256c6883984f0db4c')
+assert.equal(greenfieldManifest.baseline.sourcePath, 'supabase/schema.sql')
+assert.match(greenfieldManifest.baseline.sha256, /^[0-9a-f]{64}$/)
+assert.equal(greenfieldManifest.baseline.temporaryLedgerVersion, '00000000000000')
+assert.deepEqual(
+  greenfieldManifest.productionOnlyHistorical.map(({ filename }) => filename).sort(),
+  [
+    '20260622235648_link_miguel_contractor_membership.sql',
+    '20260622_create_miguel_contractor_profile.sql',
+  ],
+)
+assert.deepEqual(greenfieldManifest.pendingForward, pendingForwardMigrationNames)
+assert.deepEqual(greenfieldManifest.supersededHistoryOnly.sort(), archivedMigrationFiles)
+
+const classifiedActiveMigrations = [
+  ...greenfieldManifest.productionOnlyHistorical.map(({ filename }) => filename),
+  ...greenfieldManifest.reusableHistorical,
+  ...greenfieldManifest.pendingForward,
+].sort()
+assert.deepEqual(classifiedActiveMigrations, activeMigrationFiles)
+assert.equal(new Set(classifiedActiveMigrations).size, activeMigrationFiles.length)
+assert.equal(greenfieldManifest.reusableHistorical.length, 21)
+
+assert.match(greenfieldBootstrap, /projectRef === manifest\.productionProjectRef/)
+assert.match(greenfieldBootstrap, /--confirm-empty-non-production/)
+assert.match(greenfieldBootstrap, /inspect', 'db', 'table-stats', '--project-ref', projectRef/)
+assert.match(greenfieldBootstrap, /Historical baseline hash mismatch/)
+assert.match(greenfieldBootstrap, /Historical baseline contains row-data SQL/)
+assert.match(greenfieldBootstrap, /to_regclass\('public\.contractors'\)/)
+assert.match(greenfieldBootstrap, /'--project-ref', projectRef/)
+assert.match(greenfieldBootstrap, /manifest\.productionOnlyHistorical\.map/)
+assert.doesNotMatch(greenfieldBootstrap, /qespkkmxaxzsfqrlghev/)
+assert.match(greenfieldDocumentation, /EMPTY NON-PRODUCTION|empty non-production/i)
+assert.match(greenfieldDocumentation, /never run.*Aymero Production/i)
+assert.match(greenfieldDocumentation, /20260831_add_estimate_scope_assistant_state\.sql/)
+assert.match(greenfieldDocumentation, /20260622_create_miguel_contractor_profile\.sql/)
+assert.match(greenfieldDocumentation, /20260622235648_link_miguel_contractor_membership\.sql/)
+assert.match(stagingSchemaVerification, /projectRef === productionRef/)
+assert.match(stagingSchemaVerification, /scope_assistant_state/)
+assert.match(stagingSchemaVerification, /estimates_scope_assistant_state_object_check/)
+assert.match(stagingSchemaVerification, /Unexpected row data in staging table/)
+assert.match(stagingSchemaVerification, /has_function_privilege/)
+assert.match(stagingSchemaVerification, /'--project-ref', projectRef/)
 const historicalMigrationFiles = migrationFiles.filter((name) => name !== onboardingAclMigrationName)
 assert.equal(historicalMigrationFiles.length, 22)
 assert.equal(repositoryMigrationFiles.length, 25)
@@ -46,12 +104,12 @@ for (const migrationFile of repositoryMigrationFiles) {
 }
 
 // Active migration history is normalized to one file per unique version.
-const versions = migrationFiles.map((name) => name.match(/^(\d+)_/)?.[1] || '').filter(Boolean)
+const versions = activeMigrationFiles.map((name) => name.match(/^(\d+)_/)?.[1] || '').filter(Boolean)
 const versionCounts = versions.reduce(
   (result, version) => result.set(version, (result.get(version) || 0) + 1),
   new Map(),
 )
-assert.equal(versionCounts.size, 23)
+assert.equal(versionCounts.size, 25)
 const duplicateVersions = [...versionCounts].filter(([, count]) => count > 1).map(([version]) => version)
 assert.deepEqual(duplicateVersions, [])
 
@@ -284,5 +342,14 @@ assert.match(cleanupSql, /rollback;/)
 assert.ok(migrationFiles.includes('20260622_create_miguel_contractor_profile.sql'))
 assert.ok(migrationFiles.includes('20260828_add_billing_subscription_cancel_at.sql'))
 assert.ok(migrationFiles.includes(onboardingAclMigrationName))
+assert.ok(activeMigrationFiles.includes(scopeAssistantMigrationName))
+assert.ok(activeMigrationFiles.includes(coreCrmRlsMigrationName))
+assert.match(scopeAssistantMigration, /add column if not exists scope_assistant_state jsonb not null default '\{\}'::jsonb/)
+assert.match(scopeAssistantMigration, /jsonb_typeof\(scope_assistant_state\) = 'object'/)
+assert.match(coreCrmRlsMigration, /alter table public\.clients enable row level security/)
+assert.match(coreCrmRlsMigration, /alter table public\.estimates enable row level security/)
+assert.match(coreCrmRlsMigration, /beta_active_members_can_insert_estimates/)
+assert.match(coreCrmRlsMigration, /beta_active_members_can_insert_contracts/)
+assert.match(coreCrmRlsMigration, /to authenticated/)
 
-console.log('Database reconciliation validated: 23 fully present migrations, 2 byte-preserved archives, and zero pending migrations.')
+console.log('Database reconciliation validated: the 23-migration production baseline and 2 archives remain intact; the Scope Assistant and core CRM RLS migrations are forward-only.')

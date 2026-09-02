@@ -1,0 +1,183 @@
+[
+  {
+    "id": "spanish-bathroom-renovation",
+    "action": "professionalize",
+    "sourceLanguage": "es",
+    "source": "baño: quitar tocador viejo, instalar tocador nuevo y pintar paredes. azulejo se queda.",
+    "expected": { "scope": "Retirar el tocador existente, instalar el tocador nuevo y pintar las paredes del baño. El azulejo existente permanecerá.", "reviewWarnings": [] },
+    "preservedPairs": [["quitar tocador viejo", "Retirar el tocador existente"], ["azulejo se queda", "azulejo existente permanecerá"]],
+    "forbidden": ["plomería", "ducha", "permiso"]
+  },
+  {
+    "id": "materials-not-included",
+    "action": "professionalize",
+    "sourceLanguage": "en",
+    "source": "install cabinet hardware. materials not included.",
+    "expected": { "scope": "Install the cabinet hardware. Materials are not included.", "reviewWarnings": [] },
+    "preservedPairs": [["materials not included", "Materials are not included"]],
+    "forbidden": ["provide materials", "warranty"]
+  },
+  {
+    "id": "exact-dimensions",
+    "action": "professionalize",
+    "sourceLanguage": "en",
+    "source": "replace 36 x 48 bathroom window only",
+    "expected": { "scope": "Replace only the 36 x 48 bathroom window.", "reviewWarnings": [] },
+    "preservedPairs": [["36 x 48", "36 x 48"], ["only", "only"]],
+    "forbidden": ["trim", "permit", "code"]
+  },
+  {
+    "id": "exact-quantities",
+    "action": "translate",
+    "sourceLanguage": "en",
+    "targetLanguage": "es",
+    "source": "Install 12 cabinet pulls and replace 3 hinges.",
+    "expected": { "scope": "Instalar 12 tiradores de gabinete y reemplazar 3 bisagras." },
+    "preservedPairs": [["12", "12"], ["3", "3"]],
+    "forbidden": ["13", "4", "garantía"]
+  },
+  {
+    "id": "exclusion-and-qualification",
+    "action": "professionalize",
+    "sourceLanguage": "en",
+    "source": "repair damaged siding if matching boards available. painting excluded.",
+    "expected": { "scope": "Repair the damaged siding if matching boards are available. Painting is excluded.", "reviewWarnings": [] },
+    "preservedPairs": [["if matching boards available", "if matching boards are available"], ["painting excluded", "Painting is excluded"]],
+    "forbidden": ["paint the siding", "guaranteed match"]
+  },
+  {
+    "id": "ambiguous-source",
+    "action": "professionalize",
+    "sourceLanguage": "en",
+    "source": "repair bad boards if needed maybe around 8",
+    "expected": { "scope": "Repair damaged boards as needed; the anticipated quantity may be approximately eight.", "reviewWarnings": ["Confirm the quantity of boards before approving the scope."] },
+    "preservedPairs": [["if needed", "as needed"], ["maybe around 8", "may be approximately eight"]],
+    "forbidden": ["exactly eight", "all boards"]
+  },
+  {
+    "id": "electrical-no-code-claims",
+    "action": "professionalize",
+    "sourceLanguage": "en",
+    "source": "replace 4 kitchen outlets. owner supplies outlets.",
+    "expected": { "scope": "Replace four kitchen outlets. The owner will supply the outlets.", "reviewWarnings": [] },
+    "preservedPairs": [["4 kitchen outlets", "four kitchen outlets"], ["owner supplies outlets", "owner will supply the outlets"]],
+    "forbidden": ["code", "permit", "inspection", "GFCI"]
+  },
+  {
+    "id": "multi-room-renovation",
+    "action": "professionalize",
+    "sourceLanguage": "en",
+    "source": "living room: patch walls. bedroom: replace baseboard. kitchen: paint ceiling only.",
+    "expected": { "scope": "Living room: patch the walls. Bedroom: replace the baseboard. Kitchen: paint only the ceiling.", "reviewWarnings": [] },
+    "preservedPairs": [["living room", "Living room"], ["bedroom", "Bedroom"], ["kitchen", "Kitchen"], ["ceiling only", "only the ceiling"]],
+    "forbidden": ["bathroom", "flooring", "cabinets"]
+  },
+  {
+    "id": "english-contractor-notes",
+    "action": "professionalize",
+    "sourceLanguage": "en",
+    "source": "remove old door and put new one. disposal by customer.",
+    "expected": { "scope": "Remove the existing door and install the new door. The customer is responsible for disposal.", "reviewWarnings": [] },
+    "preservedPairs": [["remove old door", "Remove the existing door"], ["disposal by customer", "customer is responsible for disposal"]],
+    "forbidden": ["contractor disposal", "paint", "warranty"]
+  },
+  {
+    "id": "spanish-to-english-faithful-translation",
+    "action": "translate",
+    "sourceLanguage": "es",
+    "targetLanguage": "en",
+    "source": "Reparar únicamente la sección dañada. No incluye pintura. Completar antes del 15 de octubre si el clima lo permite.",
+    "expected": { "scope": "Repair only the damaged section. Painting is not included. Complete before October 15 if weather permits." },
+    "preservedPairs": [["únicamente", "only"], ["No incluye pintura", "Painting is not included"], ["15 de octubre", "October 15"], ["si el clima lo permite", "if weather permits"]],
+    "forbidden": ["entire wall", "guaranteed", "primer"]
+  },
+  {
+    "id": "roofing-terminology-and-commercial-facts",
+    "action": "professionalize",
+    "sourceLanguage": "es",
+    "source": "revisar los PlayBook dañados para reemplazarlos, colocar flashing y Shingle Roof negro. Garantía de 25 años de la compañía. Remover escombros. Costo $6000 con Don payment de $4000 y $2000 al terminar.",
+    "expected": { "scope": "- Revisar el plywood o roof decking dañado y reemplazarlo según sea necesario.\n- Instalar flashing y shingles de techo negros.\n- Mantener la garantía de fabricación de 25 años indicada.\n- Retirar los escombros generados.", "reviewWarnings": ["Tus notas también incluyen información de precio/pago. Verifica las secciones Precio y Términos de pago del estimado."] },
+    "preservedPairs": [["PlayBook", "plywood"], ["flashing", "flashing"], ["Shingle Roof negro", "shingles de techo negros"], ["25 años", "25 años"], ["Remover escombros", "Retirar los escombros"]],
+    "forbidden": ["materiales incluidos", "mano de obra incluida", "permiso", "garantía de mano de obra", "$6000", "$4000", "$2000"]
+  },
+  {
+    "id": "translate-v3-roofing-naturalness",
+    "action": "translate",
+    "sourceLanguage": "es",
+    "targetLanguage": "en",
+    "source": "Instalar protección contra hielo y agua en los bordes del tejado. Instalar ventilación de cumbrera. Instalar tejas asfálticas negras.",
+    "expected": { "scope": "Install ice and water shield along the roof edges. Install a ridge vent. Install black asphalt shingles." },
+    "preservedPairs": [["protección contra hielo y agua", "ice and water shield"], ["ventilación de cumbrera", "ridge vent"], ["tejas asfálticas negras", "black asphalt shingles"]],
+    "forbidden": ["permit", "code", "labor and materials included"]
+  },
+  {
+    "id": "translate-v3-flooring",
+    "action": "translate",
+    "sourceLanguage": "es",
+    "targetLanguage": "en",
+    "source": "Retirar alfombra, tiras de tachuelas y accesorios. Nivelar el piso según sea necesario. Instalar laminado y shoe molding. Pintar la moldura blanca semi brillante.",
+    "expected": { "scope": "Remove the carpet, tack strips, and accessories. Level the floor as needed. Install laminate flooring and shoe molding. Paint the trim white with a semi-gloss finish." },
+    "preservedPairs": [["alfombra", "carpet"], ["tiras de tachuelas", "tack strips"], ["según sea necesario", "as needed"], ["laminado", "laminate flooring"], ["semi brillante", "semi-gloss"]],
+    "forbidden": ["subfloor repair", "moisture treatment", "primer", "two coats"]
+  },
+  {
+    "id": "translate-v3-electrical-responsibility",
+    "action": "translate",
+    "sourceLanguage": "es",
+    "targetLanguage": "en",
+    "source": "Reemplazar exactamente cuatro tomacorrientes de cocina. El propietario suministra los tomacorrientes. Los materiales no están incluidos.",
+    "expected": { "scope": "Replace exactly four kitchen outlets. The homeowner will supply the outlets. Materials are not included." },
+    "preservedPairs": [["cuatro", "four"], ["propietario suministra", "homeowner will supply"], ["materiales no están incluidos", "Materials are not included"]],
+    "forbidden": ["GFCI", "AFCI", "permit", "code", "circuit"]
+  },
+  {
+    "id": "translate-v3-conditional-work",
+    "action": "translate",
+    "sourceLanguage": "es",
+    "targetLanguage": "en",
+    "source": "Reparar el revestimiento dañado si es necesario y solo a solicitud del propietario.",
+    "expected": { "scope": "Repair the damaged siding if needed and only at the homeowner's request." },
+    "preservedPairs": [["si es necesario", "if needed"], ["solicitud del propietario", "homeowner's request"]],
+    "forbidden": ["replace all siding", "guaranteed"]
+  },
+  {
+    "id": "translate-v3-dimensions-and-quantities",
+    "action": "translate",
+    "sourceLanguage": "es",
+    "targetLanguage": "en",
+    "source": "Instalar 12 tiradores y reemplazar 3 bisagras. Reemplazar únicamente la ventana de baño de 36 x 48.",
+    "expected": { "scope": "Install 12 cabinet pulls and replace 3 hinges. Replace only the 36 x 48 bathroom window." },
+    "preservedPairs": [["12", "12"], ["3", "3"], ["36 x 48", "36 x 48"], ["únicamente", "only"]],
+    "forbidden": ["13", "4 hinges", "trim"]
+  },
+  {
+    "id": "translate-v3-ambiguous-material",
+    "action": "translate",
+    "sourceLanguage": "es",
+    "targetLanguage": "en",
+    "source": "Reparar el material azul dañado cerca de la salida de ventilación.",
+    "expected": { "scope": "Repair the damaged blue material near the ventilation outlet." },
+    "preservedPairs": [["material azul", "blue material"]],
+    "forbidden": ["shingle", "plywood", "flashing", "roof decking"]
+  },
+  {
+    "id": "translate-v3-disposal-boundary",
+    "action": "translate",
+    "sourceLanguage": "es",
+    "targetLanguage": "en",
+    "source": "Retirar la puerta existente e instalar una puerta nueva. El cliente es responsable de la disposición.",
+    "expected": { "scope": "Remove the existing door and install a new door. The customer is responsible for disposal." },
+    "preservedPairs": [["disposición", "responsible for disposal"]],
+    "forbidden": ["contractor disposal", "cleanup included"]
+  },
+  {
+    "id": "translate-v3-no-disposal-invention",
+    "action": "translate",
+    "sourceLanguage": "es",
+    "targetLanguage": "en",
+    "source": "Retirar la puerta existente e instalar una puerta nueva.",
+    "expected": { "scope": "Remove the existing door and install a new door." },
+    "preservedPairs": [["puerta existente", "existing door"]],
+    "forbidden": ["disposal", "cleanup", "haul away"]
+  }
+]

@@ -1,0 +1,282 @@
+[
+  {
+    "id": "roof-replacement",
+    "classification": "positive",
+    "phase": "representative",
+    "sourceLanguage": "es",
+    "clientLanguage": "en",
+    "rawInput": "Demolición e instalación de roofing completo: retirar todo el techo en mal estado; revisar los PlayBook dañados para reemplazarlos; reemplazar las salidas de ventilación del ático; instalar protección contra hielo y agua en los bordes; agregar metales y flashing; cubrir con underlayment DuPont; instalar ridge vent y shingles asfálticos negros. Garantía de 25 años de la compañía. Remover escombros. Costo $6,000: $4,000 de Don payment al empezar y $2,000 al terminar.",
+    "expected": {
+      "projectType": "roofing",
+      "terminology": ["PlayBook → plywood/roof decking", "ice-and-water roll → ice and water protection", "Don payment → down payment review metadata"],
+      "requiredWork": ["full roofing removal", "damaged roof decking", "attic ventilation outlets", "ice and water protection", "DuPont underlayment", "ridge vent", "metal/flashing", "black asphalt shingles", "debris disposal"],
+      "warrantyFacts": ["25-year manufacturer-associated warranty"],
+      "commercialFacts": ["$6,000", "$4,000 down", "$2,000 completion"],
+      "mustNotIntroduce": ["materials and labor included", "workmanship warranty", "permits/code", "extra finishing or sealing"],
+      "requiredGroups": {
+        "roofRemoval": ["retir", "tejad|techo|cubierta|roof"],
+        "decking": ["plywood|entablado|decking"],
+        "ventilation": ["ventil"],
+        "iceWater": ["hielo.*agua|ice.*water"],
+        "dupont": ["du\\s*pont"],
+        "ridgeVent": ["ridge.*vent|ventilacion.*cumbrera"],
+        "flashing": ["flashing|tapajuntas"],
+        "blackShingles": ["shingles?.*negro|tejas?.*asfalt.*negr"],
+        "debris": ["escombro|desecho|basura"],
+        "warranty": ["25", "garantia"]
+      },
+      "forbiddenPatterns": ["plataforma del techo", "materiales? y mano de obra incluid", "garantia de mano de obra", "permiso", "codigo", "sellado adicional"],
+      "commercialScopePatterns": ["\\$\\s*(?:6[,.]?000|4[,.]?000|2[,.]?000)", "don payment", "pago inicial", "down payment"],
+      "commercialWarningPatterns": ["precio|pago"]
+    }
+  },
+  {
+    "id": "basement-flooring",
+    "classification": "positive",
+    "phase": "remaining",
+    "sourceLanguage": "es",
+    "clientLanguage": "en",
+    "rawInput": "En el cuarto del sótano y las escaleras, remover alfombra, accesorios y tiras. Nivelar el piso según sea necesario. Instalar laminado y shu molding alrededor del perímetro. Pintar la moldura blanca semi brillante. Precio $2,540 con $1,300 de anticipo.",
+    "expected": {
+      "projectType": "basement flooring",
+      "terminology": ["shu/show molding → shoe molding or floating-floor perimeter molding"],
+      "requiredWork": ["carpet removal", "basement bedroom", "stairs", "carpet accessories", "floor leveling", "laminate", "perimeter molding", "white semi-gloss"],
+      "commercialFacts": ["$2,540", "$1,300 down"],
+      "mustNotIntroduce": ["remaining balance schedule", "cleanup", "moisture or subfloor repair"],
+      "requiredGroups": {
+        "carpet": ["alfombra"], "stairs": ["escalera"], "leveling": ["nivel"], "laminate": ["laminad"], "molding": ["shoe molding|moldura.*perimet"], "finish": ["blanc", "semi" ]
+      },
+      "forbiddenPatterns": ["saldo restante", "limpieza", "humedad", "subfloor", "subsuelo"],
+      "commercialScopePatterns": ["\\$\\s*(?:2[,.]?540|1[,.]?300)", "anticipo"],
+      "commercialWarningPatterns": ["precio|pago"]
+    }
+  },
+  {
+    "id": "powder-room",
+    "classification": "positive",
+    "phase": "remaining",
+    "sourceLanguage": "es",
+    "clientLanguage": "en",
+    "rawInput": "Powder room: instalar 2 luces empotradas, 1 tomacorriente y cambiar 4 switch plates por una placa de 3 switches. Reemplazar espejo con luz trasera, hacer color drenching, instalar lavamanos de pared, lámpara de techo y centrar líneas de suministro. Precio $3,500: $2,000 de anticipo y $1,500 final.",
+    "expected": {
+      "projectType": "powder room",
+      "requiredWork": ["2 recessed lights", "1 outlet", "four switch plates to three-switch plate", "backlit mirror", "color drenching", "wall-mounted sink", "ceiling fixture", "centered supply lines"],
+      "commercialFacts": ["$3,500", "$2,000 down", "$1,500 final"],
+      "mustNotIntroduce": ["generic finishing", "cleanup"],
+      "requiredGroups": {
+        "recessedLights": ["2|dos", "empotr|recess"], "outlet": ["1|un", "tomacorr|outlet"], "switchPlate": ["3", "placa|plate", "switch|interruptor"], "mirror": ["espejo|mirror"], "colorDrenching": ["color drenching"], "sink": ["lavamanos|sink", "pared|wall"], "ceilingFixture": ["techo|ceiling", "lampara|fixture"], "supplyLines": ["lineas? de suministro|supply lines"]
+      },
+      "forbiddenPatterns": ["limpieza", "acabado general"],
+      "commercialScopePatterns": ["\\$\\s*(?:3[,.]?500|2[,.]?000|1[,.]?500)", "anticipo"],
+      "commercialWarningPatterns": ["precio|pago"]
+    }
+  },
+  {
+    "id": "porch-restoration",
+    "classification": "positive",
+    "phase": "remaining",
+    "sourceLanguage": "es",
+    "clientLanguage": "en",
+    "rawInput": "Restaurar el porch: reemplazar madera o plywood deteriorado y molding podrido; reparar columnas; reemplazar con PVC; agregar refuerzo y soportes; pintar exterior blanco; instalar barandal de metal. Excel exterior. Precio actualizado $2,300. Trabajo de ventana trasera $450. Anticipo $1,000.",
+    "expected": {
+      "projectType": "porch restoration",
+      "requiredWork": ["deteriorated wood/plywood", "rotten molding", "column repair", "PVC replacement", "reinforcement/supports", "white exterior painting", "metal railing", "rear-window work"],
+      "ambiguity": ["Excel exterior must not become a guessed paint brand/product"],
+      "commercialFacts": ["$2,300", "$450", "$1,000 down"],
+      "requiredGroups": {
+        "wood": ["madera|plywood"], "molding": ["molding|moldura"], "columns": ["columna"], "pvc": ["pvc"], "supports": ["refuerzo|soporte"], "paint": ["pint", "blanc", "exterior"], "railing": ["barandal|railing|pasamanos"]
+      },
+      "forbiddenPatterns": ["pintura excel", "marca excel", "limpieza incluida"],
+      "commercialScopePatterns": ["\\$\\s*(?:2[,.]?300|450|1[,.]?000)", "anticipo"],
+      "commercialWarningPatterns": ["precio|pago"]
+    }
+  },
+  {
+    "id": "townhouse-exterior",
+    "classification": "positive",
+    "phase": "representative",
+    "sourceLanguage": "es",
+    "clientLanguage": "en",
+    "rawInput": "Townhouse exterior: 1) instalar Stone Door $450; 2) aplicar Coqui en juntas $325; 3) reparar concreto con hipóxica $550; 4) reparar Sofi $425; 5) instalar screen covers en los vents del Sofi $280; 6) pintar moldura exterior $600, materiales y mano de obra incluidos; 7) reparar puerta trasera $525. Total $3,155.",
+    "expected": {
+      "projectType": "townhouse exterior",
+      "terminology": ["Stone Door → storm door", "Coqui → caulking", "hipóxica → epoxy", "Sofi → soffit", "screen covers → soffit vent screen covers"],
+      "requiredWork": ["seven priced job items"],
+      "materialResponsibility": ["materials/labor only for exterior trim painting"],
+      "commercialFacts": ["seven line prices", "$3,155 total"],
+      "requiredGroups": {
+        "stormDoor": ["storm door|puerta contra tormentas"], "caulking": ["caulking|calafate|sellador"], "epoxy": ["epoxy|epoxi|epoxica"], "soffit": ["soffit|sofito"], "ventScreens": ["cubiertas? de pantalla|cubiertas? de malla|screen", "respiraderos|vents?", "soffit|sofito"], "trimPaint": ["pint", "moldura|trim"], "rearDoor": ["puerta trasera|rear door"]
+      },
+      "forbiddenPatterns": ["todos los materiales.*incluid", "toda la mano de obra.*incluid"],
+      "commercialScopePatterns": ["\\$\\s*(?:450|325|550|425|280|600|525|3[,.]?155)"],
+      "commercialWarningPatterns": ["precio|pago"]
+    }
+  },
+  {
+    "id": "backyard-concrete-tile",
+    "classification": "positive",
+    "phase": "representative",
+    "sourceLanguage": "es",
+    "clientLanguage": "en",
+    "rawInput": "Patio trasero solamente: 45 ft de largo, 20 ft en un lado y 16 ft en el extremo opuesto. Excavar 4 pulgadas, dar pendiente 3/4, instalar varilla, concreto 6,500 PSI y losa de 4 pulgadas. Instalar loseta 24 x 24 con 70 cajas, 40 bolsas de adhesivo y 6 bolsas de grout.",
+    "expected": {
+      "projectType": "backyard concrete and tile",
+      "requiredDimensions": ["45 ft", "20 ft", "16 ft", "4-inch excavation", "3/4 slope", "4-inch slab", "24 x 24 tile"],
+      "requiredQuantities": ["70 boxes", "40 adhesive bags", "6 grout bags"],
+      "requiredWork": ["only exclusion", "reinforcing steel", "6,500 PSI concrete"],
+      "mustNotIntroduce": ["price", "drainage/durability as added contractual work"],
+      "requiredGroups": {
+        "only": ["solo|solamente|unicamente"], "length": ["45", "ft|pies"], "side": ["20", "ft|pies"], "opposite": ["16", "ft|pies"], "excavation": ["4", "excav"], "slope": ["3/4|0\\.75", "pendiente"], "rebar": ["varilla|acero de refuerzo"], "psi": ["6[,.]?500", "psi"], "slab": ["4", "losa"], "tile": ["24\\s*x\\s*24", "loseta|tile"], "boxes": ["70", "caja"], "adhesive": ["40", "adhes"], "grout": ["6", "grout|boquilla"]
+      },
+      "forbiddenPatterns": ["precio", "drenaje", "durabilidad", "resistencia adicional"]
+    }
+  },
+  {
+    "id": "outdoor-living-expansion",
+    "classification": "positive",
+    "phase": "remaining",
+    "sourceLanguage": "es",
+    "clientLanguage": "en",
+    "rawInput": "Ampliación exterior: trabajo decorativo en techo del deck, Light Recess Light, abanico, canaletas y bajantes, framing, grill, zinc, cuarzo exterior y conexión de drenaje al Sam pum. Precio $21,500, $8,500 de anticipo y pagos semanales. No está claro risas.",
+    "expected": {
+      "projectType": "outdoor living expansion",
+      "terminology": ["Light Recess Light → recessed lighting", "zinc → sink", "Sam pum → sump pump"],
+      "requiredWork": ["deck ceiling decorative work", "fan", "gutters/downspouts", "framing", "grill", "sink", "exterior quartz", "sump-pump drainage connection"],
+      "ambiguity": ["risas remains unresolved"],
+      "commercialFacts": ["$21,500", "$8,500 down", "weekly payments"],
+      "mustNotIntroduce": ["electrical rough-in beyond stated work"],
+      "requiredGroups": {
+        "deckCeiling": ["techo.*deck|deck.*techo"], "recessed": ["empotr|recess"], "fan": ["abanico|fan"], "gutters": ["canaleta|gutter"], "framing": ["framing|estructura|entramado"], "grill": ["grill|parrilla"], "sink": ["lavamanos|sink|fregadero"], "quartz": ["cuarzo|quartz"], "sump": ["sump pump|bomba de sumidero|bomba de achique"]
+      },
+      "forbiddenPatterns": ["rough-in electrico", "instalacion electrica completa"],
+      "commercialScopePatterns": ["\\$\\s*(?:21[,.]?500|8[,.]?500)", "pagos semanales"],
+      "commercialWarningPatterns": ["precio|pago"]
+    }
+  },
+  {
+    "id": "deck-ceiling-conditional",
+    "classification": "positive",
+    "phase": "representative",
+    "sourceLanguage": "es",
+    "clientLanguage": "en",
+    "rawInput": "En el deck, hacer framing, instalar lámina galvanizada y canaletas/bajantes de PVC. Dejar acomodación eléctrica. Instalar material decorativo de techo y color seleccionado por el propietario. Tomacorrientes y luces LED solo si el propietario los solicita.",
+    "expected": {
+      "projectType": "deck ceiling",
+      "requiredWork": ["framing", "galvanized sheet", "PVC gutters/downspouts", "electrical accommodation", "homeowner-selected decorative ceiling material/color"],
+      "requiredConditions": ["outlets conditional", "LED lighting conditional"],
+      "mustNotIntroduce": ["all labor/materials included", "extra weather protection"],
+      "requiredGroups": {
+        "framing": ["framing|estructura|entramado"], "galvanized": ["galvaniz"], "pvc": ["pvc"], "gutters": ["canaleta|gutter"], "electrical": ["acomodacion electrica|prevista.*electrica|electrical accommodation"], "decorative": ["decorativ"], "homeownerSelection": ["propietario|owner", "seleccion"], "conditionalOutlets": ["tomacorr|outlet", "solo si|unicamente si|if.*request"], "conditionalLed": ["led", "solo si|unicamente si|if.*request"]
+      },
+      "forbiddenPatterns": ["materiales y mano de obra incluid", "proteccion contra clima", "impermeabilizacion adicional"]
+    }
+  },
+  {
+    "id": "interior-painting-negative",
+    "classification": "negative-contrast",
+    "phase": "representative",
+    "sourceLanguage": "en",
+    "clientLanguage": "en",
+    "rawInput": "Paint walls and ceilings on the first and second levels. Materials included.",
+    "expected": {
+      "projectType": "interior painting",
+      "requiredWork": ["walls and ceilings", "first and second levels", "materials included"],
+      "historicalOverreach": ["surface preparation", "premium paint", "floor/fixture protection", "cleanup", "labor included"],
+      "requiredGroups": {
+        "walls": ["walls"], "ceilings": ["ceilings"], "levels": ["first", "second", "level"], "materials": ["materials", "included"]
+      },
+      "forbiddenPatterns": ["surface preparation", "\\bprepare\\b", "premium paint", "protect.*floors", "protect.*fixtures", "cleanup", "labor included"]
+    }
+  },
+  {
+    "id": "interior-renovation",
+    "classification": "positive",
+    "phase": "representative",
+    "sourceLanguage": "en",
+    "clientLanguage": "en",
+    "rawInput": "Interior renovation on first floor, second floor, and part of basement: doors including office and closet doors with black hinges; baseboards 4.5 to 5 inches with small white molding; two wood columns; ceilings and walls in the named rooms. Remove debris. Rear-house work to be discussed. Price $47,500 with 50% down.",
+    "expected": {
+      "projectType": "interior renovation",
+      "requiredWork": ["first/second floor and part basement", "office/closet doors", "black hinges", "baseboards", "4.5–5 inch", "small white molding", "two wood columns", "ceilings/walls", "debris disposal"],
+      "ambiguity": ["rear-house work remains broad or warned"],
+      "commercialFacts": ["$47,500", "50% down"],
+      "mustNotIntroduce": ["bedroom doors", "cleanup beyond debris removal"],
+      "requiredGroups": {
+        "floors": ["first", "second", "basement"], "doors": ["office", "closet", "doors"], "hinges": ["black", "hinges"], "baseboards": ["baseboards"], "dimension": ["4\\.5|4½", "5", "inch"], "molding": ["small white molding"], "columns": ["two", "wood columns"], "ceilingsWalls": ["ceilings", "walls"], "debris": ["debris"], "rearHouse": ["rear-house|rear house"]
+      },
+      "forbiddenPatterns": ["bedroom doors", "full cleanup"],
+      "commercialScopePatterns": ["\\$\\s*47[,.]?500", "50% down"],
+      "commercialWarningPatterns": ["price|payment|precio|pago"]
+    }
+  },
+  {
+    "id": "combined-contract-boundary",
+    "classification": "context-product-boundary",
+    "phase": "context-only",
+    "sourceLanguage": "en",
+    "clientLanguage": "en",
+    "rawInput": "Historical combined contract depended on later clarification and previously accepted scopes.",
+    "expected": {
+      "clarificationBoundary": "A single professionalize request must not infer later clarification or create a combined contract.",
+      "mustNotIntroduce": ["combined contracts", "blanket labor/material/equipment/cleanup language"]
+    }
+  },
+  {
+    "id": "basement-baseboards-multiple-jobs",
+    "classification": "positive",
+    "phase": "remaining",
+    "sourceLanguage": "es",
+    "clientLanguage": "en",
+    "rawInput": "Trabajo 1: parchar plaster en áreas del sótano, instalar zócalo de 3 pulgadas y shu molding, pintar blanco semi brillante; materiales y mano de obra $2,250. Trabajo 2: dryer vent $125. Trabajo 3: nivelar piso $150. clabos incluidos solo para el primer trabajo. Llevarlo a votar los desperdicios del primer trabajo. Total $2,525.",
+    "expected": {
+      "projectType": "basement baseboards and multiple jobs",
+      "terminology": ["shu/show molding → shoe molding", "zócalo → baseboard", "clabos → nails", "llevarlo a votar → dispose"],
+      "requiredWork": ["plaster patching", "basement areas", "3-inch molding", "white semi-gloss", "dryer vent", "leveling", "first-job debris disposal"],
+      "materialResponsibility": ["materials/labor only for first job"],
+      "commercialFacts": ["$2,250", "$125", "$150", "$2,525 total"],
+      "requiredGroups": {
+        "plaster": ["plaster|yeso"], "basement": ["sotano"], "baseboard": ["baseboard|zocalo"], "dimension": ["3", "pulgada"], "shoe": ["shoe molding|moldura"], "semiGloss": ["semi"], "dryerVent": ["dryer vent|conducto.*secadora|ventilacion.*secadora"], "leveling": ["nivel"], "nails": ["clavos|nails"], "dispose": ["dispos|desecho|desechar|escombro"]
+      },
+      "forbiddenPatterns": ["materiales y mano de obra.*dryer vent", "materiales y mano de obra.*nivel"],
+      "commercialScopePatterns": ["\\$\\s*(?:2[,.]?250|125|150|2[,.]?525)"],
+      "commercialWarningPatterns": ["precio|pago"]
+    }
+  },
+  {
+    "id": "bathroom-leak-negative",
+    "classification": "negative-contrast",
+    "phase": "representative",
+    "sourceLanguage": "en",
+    "clientLanguage": "en",
+    "rawInput": "Inspect the toilet, sink, and tub. The bathtub is the leak source. Open the ceiling, replace some parts, close the drywall, and leave plaster ready for painting. Price $485. Materials included.",
+    "expected": {
+      "projectType": "bathroom leak",
+      "requiredWork": ["inspection toilet/sink/tub", "bathtub leak source", "ceiling access", "some parts replaced", "drywall closure", "plaster ready for painting", "materials included"],
+      "commercialFacts": ["$485"],
+      "historicalOverreach": ["exact drain components/fittings", "leak testing", "cleanup", "labor included"],
+      "requiredGroups": {
+        "fixtures": ["toilet", "sink", "tub|bathtub"], "source": ["bathtub", "leak"], "ceiling": ["ceiling"], "someParts": ["some parts|partes"], "drywall": ["drywall"], "plaster": ["plaster", "paint"], "materials": ["materials", "included"]
+      },
+      "forbiddenPatterns": ["drain pipe", "p-trap", "fitting", "leak test", "cleanup", "labor included"],
+      "commercialScopePatterns": ["\\$\\s*485"],
+      "commercialWarningPatterns": ["price|payment|precio|pago"]
+    }
+  },
+  {
+    "id": "context-dependence",
+    "classification": "context-isolation",
+    "phase": "remaining",
+    "sourceLanguage": "es",
+    "clientLanguage": "en",
+    "rawInput": "Powder room: instalar 2 luces empotradas, 1 tomacorriente y cambiar 4 switch plates por una placa de 3 switches. Reemplazar espejo con luz trasera, hacer color drenching, instalar lavamanos de pared, lámpara de techo y centrar líneas de suministro. Precio $3,500: $2,000 de anticipo y $1,500 final.",
+    "nearbyContextExcluded": "Unrelated neighboring discussion mentioned a shower remodel, new flooring, and a permit.",
+    "expected": {
+      "projectType": "trusted-estimate-state context isolation",
+      "clarificationBoundary": "Only the explicit estimate payload is eligible for professionalization.",
+      "requiredGroups": { "recessedLights": ["2|dos", "empotr|recess"], "sink": ["lavamanos|sink"] },
+      "forbiddenPatterns": ["shower", "flooring", "permit"],
+      "commercialScopePatterns": ["\\$\\s*(?:3[,.]?500|2[,.]?000|1[,.]?500)", "anticipo"],
+      "commercialWarningPatterns": ["precio|pago"]
+    }
+  }
+]
