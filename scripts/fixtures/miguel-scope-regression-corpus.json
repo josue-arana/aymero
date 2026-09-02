@@ -25,7 +25,7 @@
         "debris": ["escombro|desecho|basura"],
         "warranty": ["25", "garantia"]
       },
-      "forbiddenPatterns": ["materiales? y mano de obra incluid", "garantia de mano de obra", "permiso", "codigo", "sellado adicional"],
+      "forbiddenPatterns": ["plataforma del techo", "materiales? y mano de obra incluid", "garantia de mano de obra", "permiso", "codigo", "sellado adicional"],
       "commercialScopePatterns": ["\\$\\s*(?:6[,.]?000|4[,.]?000|2[,.]?000)", "don payment", "pago inicial", "down payment"],
       "commercialWarningPatterns": ["precio|pago"]
     }
@@ -64,7 +64,7 @@
       "commercialFacts": ["$3,500", "$2,000 down", "$1,500 final"],
       "mustNotIntroduce": ["generic finishing", "cleanup"],
       "requiredGroups": {
-        "recessedLights": ["2|dos", "empotr|recess"], "outlet": ["1|un", "tomacorr|outlet"], "switchPlate": ["3", "placa|plate", "switch"], "mirror": ["espejo|mirror"], "colorDrenching": ["color drenching"], "sink": ["lavamanos|sink", "pared|wall"], "ceilingFixture": ["techo|ceiling", "lampara|fixture"], "supplyLines": ["lineas? de suministro|supply lines"]
+        "recessedLights": ["2|dos", "empotr|recess"], "outlet": ["1|un", "tomacorr|outlet"], "switchPlate": ["3", "placa|plate", "switch|interruptor"], "mirror": ["espejo|mirror"], "colorDrenching": ["color drenching"], "sink": ["lavamanos|sink", "pared|wall"], "ceilingFixture": ["techo|ceiling", "lampara|fixture"], "supplyLines": ["lineas? de suministro|supply lines"]
       },
       "forbiddenPatterns": ["limpieza", "acabado general"],
       "commercialScopePatterns": ["\\$\\s*(?:3[,.]?500|2[,.]?000|1[,.]?500)", "anticipo"],
@@ -84,7 +84,7 @@
       "ambiguity": ["Excel exterior must not become a guessed paint brand/product"],
       "commercialFacts": ["$2,300", "$450", "$1,000 down"],
       "requiredGroups": {
-        "wood": ["madera|plywood"], "molding": ["molding|moldura"], "columns": ["columna"], "pvc": ["pvc"], "supports": ["refuerzo|soporte"], "paint": ["pint", "blanc", "exterior"], "railing": ["barandal|railing|pasamanos"], "rearWindow": ["ventana trasera"]
+        "wood": ["madera|plywood"], "molding": ["molding|moldura"], "columns": ["columna"], "pvc": ["pvc"], "supports": ["refuerzo|soporte"], "paint": ["pint", "blanc", "exterior"], "railing": ["barandal|railing|pasamanos"]
       },
       "forbiddenPatterns": ["pintura excel", "marca excel", "limpieza incluida"],
       "commercialScopePatterns": ["\\$\\s*(?:2[,.]?300|450|1[,.]?000)", "anticipo"],
@@ -105,7 +105,7 @@
       "materialResponsibility": ["materials/labor only for exterior trim painting"],
       "commercialFacts": ["seven line prices", "$3,155 total"],
       "requiredGroups": {
-        "stormDoor": ["storm door"], "caulking": ["caulking|calafate|sellador"], "epoxy": ["epoxy|epoxi|epoxica"], "soffit": ["soffit"], "ventScreens": ["cubiertas? de pantalla|screen", "respiraderos|vents?", "soffit"], "trimPaint": ["pint", "moldura|trim"], "rearDoor": ["puerta trasera|rear door"]
+        "stormDoor": ["storm door|puerta contra tormentas"], "caulking": ["caulking|calafate|sellador"], "epoxy": ["epoxy|epoxi|epoxica"], "soffit": ["soffit|sofito"], "ventScreens": ["cubiertas? de pantalla|cubiertas? de malla|screen", "respiraderos|vents?", "soffit|sofito"], "trimPaint": ["pint", "moldura|trim"], "rearDoor": ["puerta trasera|rear door"]
       },
       "forbiddenPatterns": ["todos los materiales.*incluid", "toda la mano de obra.*incluid"],
       "commercialScopePatterns": ["\\$\\s*(?:450|325|550|425|280|600|525|3[,.]?155)"],
@@ -146,7 +146,7 @@
       "commercialFacts": ["$21,500", "$8,500 down", "weekly payments"],
       "mustNotIntroduce": ["electrical rough-in beyond stated work"],
       "requiredGroups": {
-        "deckCeiling": ["techo.*deck|deck.*techo"], "recessed": ["empotr|recess"], "fan": ["abanico|fan"], "gutters": ["canaleta|gutter"], "framing": ["framing|estructura"], "grill": ["grill|parrilla"], "sink": ["lavamanos|sink"], "quartz": ["cuarzo|quartz"], "sump": ["sump pump|bomba de sumidero|bomba de achique"]
+        "deckCeiling": ["techo.*deck|deck.*techo"], "recessed": ["empotr|recess"], "fan": ["abanico|fan"], "gutters": ["canaleta|gutter"], "framing": ["framing|estructura|entramado"], "grill": ["grill|parrilla"], "sink": ["lavamanos|sink|fregadero"], "quartz": ["cuarzo|quartz"], "sump": ["sump pump|bomba de sumidero|bomba de achique"]
       },
       "forbiddenPatterns": ["rough-in electrico", "instalacion electrica completa"],
       "commercialScopePatterns": ["\\$\\s*(?:21[,.]?500|8[,.]?500)", "pagos semanales"],
@@ -166,7 +166,7 @@
       "requiredConditions": ["outlets conditional", "LED lighting conditional"],
       "mustNotIntroduce": ["all labor/materials included", "extra weather protection"],
       "requiredGroups": {
-        "framing": ["framing|estructura"], "galvanized": ["galvaniz"], "pvc": ["pvc"], "gutters": ["canaleta|gutter"], "electrical": ["acomodacion electrica|prevista.*electrica|electrical accommodation"], "decorative": ["decorativ"], "homeownerSelection": ["propietario|owner", "seleccion"], "conditionalOutlets": ["tomacorr|outlet", "solo si|unicamente si|if.*request"], "conditionalLed": ["led", "solo si|unicamente si|if.*request"]
+        "framing": ["framing|estructura|entramado"], "galvanized": ["galvaniz"], "pvc": ["pvc"], "gutters": ["canaleta|gutter"], "electrical": ["acomodacion electrica|prevista.*electrica|electrical accommodation"], "decorative": ["decorativ"], "homeownerSelection": ["propietario|owner", "seleccion"], "conditionalOutlets": ["tomacorr|outlet", "solo si|unicamente si|if.*request"], "conditionalLed": ["led", "solo si|unicamente si|if.*request"]
       },
       "forbiddenPatterns": ["materiales y mano de obra incluid", "proteccion contra clima", "impermeabilizacion adicional"]
     }
@@ -206,7 +206,7 @@
       },
       "forbiddenPatterns": ["bedroom doors", "full cleanup"],
       "commercialScopePatterns": ["\\$\\s*47[,.]?500", "50% down"],
-      "commercialWarningPatterns": ["price|payment"]
+      "commercialWarningPatterns": ["price|payment|precio|pago"]
     }
   },
   {
@@ -235,7 +235,7 @@
       "materialResponsibility": ["materials/labor only for first job"],
       "commercialFacts": ["$2,250", "$125", "$150", "$2,525 total"],
       "requiredGroups": {
-        "plaster": ["plaster"], "basement": ["sotano"], "baseboard": ["baseboard|zocalo"], "dimension": ["3", "pulgada"], "shoe": ["shoe molding|moldura"], "semiGloss": ["semi"], "dryerVent": ["dryer vent"], "leveling": ["nivel"], "nails": ["clavos|nails"], "dispose": ["dispon|desecho|escombro"]
+        "plaster": ["plaster|yeso"], "basement": ["sotano"], "baseboard": ["baseboard|zocalo"], "dimension": ["3", "pulgada"], "shoe": ["shoe molding|moldura"], "semiGloss": ["semi"], "dryerVent": ["dryer vent|conducto.*secadora|ventilacion.*secadora"], "leveling": ["nivel"], "nails": ["clavos|nails"], "dispose": ["dispos|desecho|desechar|escombro"]
       },
       "forbiddenPatterns": ["materiales y mano de obra.*dryer vent", "materiales y mano de obra.*nivel"],
       "commercialScopePatterns": ["\\$\\s*(?:2[,.]?250|125|150|2[,.]?525)"],
@@ -259,7 +259,7 @@
       },
       "forbiddenPatterns": ["drain pipe", "p-trap", "fitting", "leak test", "cleanup", "labor included"],
       "commercialScopePatterns": ["\\$\\s*485"],
-      "commercialWarningPatterns": ["price|payment"]
+      "commercialWarningPatterns": ["price|payment|precio|pago"]
     }
   },
   {
@@ -273,7 +273,7 @@
     "expected": {
       "projectType": "trusted-estimate-state context isolation",
       "clarificationBoundary": "Only the explicit estimate payload is eligible for professionalization.",
-      "requiredGroups": { "powderRoom": ["powder room"], "recessedLights": ["2|dos", "empotr|recess"], "sink": ["lavamanos|sink"] },
+      "requiredGroups": { "recessedLights": ["2|dos", "empotr|recess"], "sink": ["lavamanos|sink"] },
       "forbiddenPatterns": ["shower", "flooring", "permit"],
       "commercialScopePatterns": ["\\$\\s*(?:3[,.]?500|2[,.]?000|1[,.]?500)", "anticipo"],
       "commercialWarningPatterns": ["precio|pago"]

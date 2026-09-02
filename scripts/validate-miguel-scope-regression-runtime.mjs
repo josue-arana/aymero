@@ -18,6 +18,8 @@ const linkedRefPath = resolve(root, 'supabase/.temp/project-ref')
 const credentialsPath = resolve(root, '.env.staging.test.local')
 const corpusPath = resolve(root, 'scripts/fixtures/miguel-scope-regression-corpus.json')
 const phase = process.argv.find((value) => value.startsWith('--phase='))?.slice('--phase='.length) || 'representative'
+const requestedIds = (process.argv.find((value) => value.startsWith('--ids='))?.slice('--ids='.length) || '').split(',').map((value) => value.trim()).filter(Boolean)
+const repeat = Number(process.argv.find((value) => value.startsWith('--repeat='))?.slice('--repeat='.length) || 1)
 const verifyFixtureOnly = process.argv.includes('--verify-fixture')
 
 function runSupabase(args) {
@@ -130,9 +132,11 @@ async function main() {
     return
   }
   assert.ok(['representative', 'remaining', 'all'].includes(phase), `Unsupported phase: ${phase}`)
+  assert.ok(Number.isInteger(repeat) && repeat >= 1 && repeat <= 3, 'Repeat count must be between 1 and 3.')
   verifyStagingTarget()
   const selected = corpus.filter((fixture) => fixture.classification !== 'context-product-boundary'
-    && (phase === 'all' || fixture.phase === phase))
+    && (requestedIds.length ? requestedIds.includes(fixture.id) : phase === 'all' || fixture.phase === phase))
+  if (requestedIds.length) assert.equal(selected.length, requestedIds.length, 'One or more requested fixture IDs are unavailable.')
   assert.ok(selected.length, `No corpus fixtures selected for phase ${phase}.`)
   const contextFixture = corpus.find((fixture) => fixture.classification === 'context-product-boundary')
   assert.ok(contextFixture?.expected?.clarificationBoundary, 'Context/product-boundary fixture is malformed.')
@@ -148,32 +152,34 @@ async function main() {
 
   try {
     for (const fixture of selected) {
-      const state = normalizeScopeAssistantStateForStorage(createScopeAssistantState({
-        rawContractorInput: fixture.rawInput,
-        contractorLanguage: fixture.sourceLanguage,
-        clientLanguage: fixture.clientLanguage,
-      }))
-      const patched = await request(`/rest/v1/estimates?id=eq.${original.id}`, {
-        apiKey,
-        token: session.access_token,
-        method: 'PATCH',
-        body: { scope_assistant_state: state },
-        prefer: 'return=representation',
-      })
-      assert.equal(patched.length, 1, `${fixture.id}: staging fixture update failed.`)
-      const startedAt = Date.now()
-      const response = await request('/functions/v1/ai-scope-assistant', {
-        apiKey,
-        token: session.access_token,
-        method: 'POST',
-        body: { action: 'professionalize', estimateId: original.id },
-      })
-      assert.equal(response?.metadata?.model, EXPECTED_MODEL, `${fixture.id}: expected Luna.`)
-      assert.equal(response?.metadata?.promptVersion, 'professionalize-v2', `${fixture.id}: wrong prompt version.`)
-      const evaluation = evaluateFixture(fixture, response)
-      const entry = { id: fixture.id, classification: fixture.classification, ...evaluation, output: response.scope, reviewWarnings: response.reviewWarnings || [], usage: response.metadata.usage, elapsedMs: Date.now() - startedAt }
-      results.push(entry)
-      console.log(JSON.stringify(entry))
+      for (let run = 1; run <= repeat; run += 1) {
+        const state = normalizeScopeAssistantStateForStorage(createScopeAssistantState({
+          rawContractorInput: fixture.rawInput,
+          contractorLanguage: fixture.sourceLanguage,
+          clientLanguage: fixture.clientLanguage,
+        }))
+        const patched = await request(`/rest/v1/estimates?id=eq.${original.id}`, {
+          apiKey,
+          token: session.access_token,
+          method: 'PATCH',
+          body: { scope_assistant_state: state },
+          prefer: 'return=representation',
+        })
+        assert.equal(patched.length, 1, `${fixture.id}: staging fixture update failed.`)
+        const startedAt = Date.now()
+        const response = await request('/functions/v1/ai-scope-assistant', {
+          apiKey,
+          token: session.access_token,
+          method: 'POST',
+          body: { action: 'professionalize', estimateId: original.id },
+        })
+        assert.equal(response?.metadata?.model, EXPECTED_MODEL, `${fixture.id}: expected Luna.`)
+        assert.equal(response?.metadata?.promptVersion, 'professionalize-v3', `${fixture.id}: wrong prompt version.`)
+        const evaluation = evaluateFixture(fixture, response)
+        const entry = { id: fixture.id, run, classification: fixture.classification, ...evaluation, output: response.scope, reviewWarnings: response.reviewWarnings || [], usage: response.metadata.usage, elapsedMs: Date.now() - startedAt }
+        results.push(entry)
+        console.log(JSON.stringify(entry))
+      }
     }
   } finally {
     const restored = await request(`/rest/v1/estimates?id=eq.${original.id}`, {
@@ -190,8 +196,10 @@ async function main() {
   console.log(JSON.stringify({
     target: { name: STAGING_NAME, ref: STAGING_REF, productionRefUntouched: PRODUCTION_REF },
     phase,
+    requestedIds,
+    repeat,
     model: EXPECTED_MODEL,
-    promptVersion: 'professionalize-v2',
+    promptVersion: 'professionalize-v3',
     providerRequestCount: results.length,
     totalUsage: usageTotal(results),
     providerCost: 'not exposed by the Edge Function; not estimated by this evaluator',
