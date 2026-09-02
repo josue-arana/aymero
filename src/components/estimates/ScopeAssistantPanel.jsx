@@ -80,6 +80,7 @@ export function ScopeAssistantPanel({
   onUseClientVersion,
 }) {
   const [showApprovedEditor, setShowApprovedEditor] = useState(false)
+  const [isApprovedDisclosureOpen, setIsApprovedDisclosureOpen] = useState(false)
   const candidateEditorRef = useRef(null)
   const isManual = !state?.version
   const hasCandidate = Boolean(state?.contractorDraft)
@@ -101,8 +102,11 @@ export function ScopeAssistantPanel({
       SCOPE_ASSISTANT_SEND_REASON.TRANSLATION_REQUIRED,
       SCOPE_ASSISTANT_SEND_REASON.TRANSLATION_STALE,
     ].includes(readiness?.reason)
+  const hasAcceptedClientVersion = translationRequired && state?.canonicalAcceptance?.source === 'client'
+  const clientVersionAccepted = hasAcceptedClientVersion && readiness?.ready
   const actionPending = isImproving || isRegenerating || isApproving || isTranslating || isAccepting
   const wasApprovalCurrentRef = useRef(false)
+  const wasClientVersionAcceptedRef = useRef(false)
 
   useEffect(() => {
     if (approvalCurrent && !wasApprovalCurrentRef.current) setShowApprovedEditor(false)
@@ -112,6 +116,13 @@ export function ScopeAssistantPanel({
   useEffect(() => {
     if (showApprovedEditor) candidateEditorRef.current?.focus?.()
   }, [showApprovedEditor])
+
+  useEffect(() => {
+    if (hasAcceptedClientVersion && !wasClientVersionAcceptedRef.current) {
+      setIsApprovedDisclosureOpen(false)
+    }
+    wasClientVersionAcceptedRef.current = hasAcceptedClientVersion
+  }, [hasAcceptedClientVersion])
 
   if (isManual) {
     return (
@@ -186,8 +197,12 @@ export function ScopeAssistantPanel({
             status={t('scopeAssistantApproved')}
             t={t}
           />
-          <div className="flex flex-col gap-2 sm:flex-row sm:flex-wrap">
-            <details className="rounded-xl border border-emerald-100 bg-white px-3 py-3 sm:flex-1">
+          <div className="flex flex-col gap-2 sm:flex-row sm:flex-nowrap sm:items-center">
+            <details
+              open={isApprovedDisclosureOpen}
+              onToggle={(event) => setIsApprovedDisclosureOpen(event.currentTarget.open)}
+              className="rounded-xl border border-emerald-100 bg-white px-3 py-3 sm:min-w-0 sm:flex-1"
+            >
               <summary className="cursor-pointer text-sm font-bold text-slate-700 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-blue-500">
                 {t('scopeAssistantViewApproved')}
               </summary>
@@ -262,7 +277,11 @@ export function ScopeAssistantPanel({
             title={<span id="scope-assistant-client-title">{t('scopeAssistantClientVersion')}</span>}
             language={state.clientLanguage}
             status={translationCurrent
-              ? t(state.clientScopeManuallyEdited ? 'scopeAssistantManuallyEdited' : 'scopeAssistantReadyToReview')
+              ? t(clientVersionAccepted
+                ? 'scopeAssistantClientVersionReady'
+                : state.clientScopeManuallyEdited
+                  ? 'scopeAssistantManuallyEdited'
+                  : 'scopeAssistantReadyToReview')
               : t('scopeAssistantNotTranslated')}
             t={t}
           />
@@ -286,6 +305,15 @@ export function ScopeAssistantPanel({
               {t('scopeAssistantClientLanguageNotice', { language: languageName(state.clientLanguage, t) })}
             </p>
           )}
+          {clientVersionAccepted ? (
+            <div role="status" className="flex items-start gap-2 rounded-xl border border-emerald-200 bg-emerald-50 px-3 py-3 text-sm text-emerald-900">
+              <CheckCircle2 aria-hidden="true" className="mt-0.5 h-4 w-4 shrink-0" />
+              <div className="min-w-0">
+                <p className="font-bold">{t('scopeAssistantClientVersionReady')}</p>
+                <p className="mt-1 leading-6">{t('scopeAssistantClientVersionReadyHelp')}</p>
+              </div>
+            </div>
+          ) : null}
           {isEditing && isEnabled ? (
             <div className="flex flex-col gap-2 sm:flex-row sm:flex-wrap">
               <button type="button" disabled={actionPending} onClick={onTranslate} className={secondaryButtonClasses}>
@@ -296,7 +324,7 @@ export function ScopeAssistantPanel({
                     ? t('scopeAssistantRetranslate')
                     : t('scopeAssistantTranslateToLanguage', { language: languageName(state.clientLanguage, t) })}
               </button>
-              {translationCurrent ? (
+              {translationCurrent && !clientVersionAccepted ? (
                 <button type="button" disabled={actionPending || !state.clientScope.trim()} onClick={onUseClientVersion} className={primaryButtonClasses}>
                   <CheckCircle2 aria-hidden="true" className="h-4 w-4" />
                   {isAccepting ? t('scopeAssistantUsingClientVersion') : t('scopeAssistantUseClientVersion')}

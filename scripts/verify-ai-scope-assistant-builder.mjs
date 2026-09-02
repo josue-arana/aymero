@@ -82,6 +82,40 @@ const translated = await applyClientScope(approved, {
 assert.equal(originalCanonicalScope, 'paint walls 2 coats. materials not included.')
 assert.equal((await getScopeAssistantSendReadiness(translated, originalCanonicalScope)).reason, SCOPE_ASSISTANT_SEND_REASON.CLIENT_VERSION_NOT_ACCEPTED)
 
+const acceptedTranslatedClient = await acceptScopeAssistantCanonicalScope(translated, {
+  canonicalScope: translated.clientScope,
+  acceptedAt,
+})
+assert.deepEqual(await getScopeAssistantSendReadiness(acceptedTranslatedClient, translated.clientScope), {
+  ready: true,
+  manual: false,
+  reason: SCOPE_ASSISTANT_SEND_REASON.READY,
+})
+const editedAcceptedClient = editScopeAssistantClientScope(acceptedTranslatedClient, `${translated.clientScope} El cliente proporcionará acceso.`)
+assert.equal(editedAcceptedClient.canonicalAcceptance, null)
+assert.equal((await getScopeAssistantSendReadiness(editedAcceptedClient, translated.clientScope)).reason, SCOPE_ASSISTANT_SEND_REASON.CLIENT_VERSION_NOT_ACCEPTED)
+const reacceptedClient = await acceptScopeAssistantCanonicalScope(editedAcceptedClient, {
+  canonicalScope: editedAcceptedClient.clientScope,
+  acceptedAt,
+})
+assert.equal((await getScopeAssistantSendReadiness(reacceptedClient, reacceptedClient.clientScope)).ready, true)
+const regeneratedClient = await applyClientScope(acceptedTranslatedClient, {
+  scope: 'Pinte las paredes con dos manos y repare las áreas visibles. Los materiales no están incluidos.',
+  model: 'gpt-5.6-terra',
+  promptVersion: 'translate-v1',
+  generatedAt,
+})
+assert.equal(regeneratedClient.canonicalAcceptance, null)
+assert.equal((await getScopeAssistantSendReadiness(regeneratedClient, translated.clientScope)).reason, SCOPE_ASSISTANT_SEND_REASON.CLIENT_VERSION_NOT_ACCEPTED)
+const contractorEditedAfterClientAcceptance = editContractorDraft(acceptedTranslatedClient, `${approved.contractorDraft} Protect adjacent finishes.`)
+assert.equal(contractorEditedAfterClientAcceptance.approvedContractorScope, approved.approvedContractorScope)
+assert.equal(contractorEditedAfterClientAcceptance.canonicalAcceptance, null)
+assert.equal((await getScopeAssistantSendReadiness(contractorEditedAfterClientAcceptance, translated.clientScope)).reason, SCOPE_ASSISTANT_SEND_REASON.APPROVAL_STALE)
+const reapprovedAfterClientAcceptance = await approveContractorDraft(contractorEditedAfterClientAcceptance, { memberId, approvedAt })
+assert.equal((await getScopeAssistantSendReadiness(reapprovedAfterClientAcceptance, translated.clientScope)).reason, SCOPE_ASSISTANT_SEND_REASON.TRANSLATION_STALE)
+const reloadedAcceptedClient = JSON.parse(JSON.stringify(acceptedTranslatedClient))
+assert.equal((await getScopeAssistantSendReadiness(reloadedAcceptedClient, translated.clientScope)).ready, true)
+
 const manuallyEditedClient = editScopeAssistantClientScope(
   translated,
   `${translated.clientScope} El cliente proporcionará acceso.`,
@@ -189,6 +223,10 @@ assert.match(page, /professionalizeEstimateScope\(\{[\s\S]*estimateId,[\s\S]*acc
 assert.match(page, /translateApprovedEstimateScope\(\{[\s\S]*estimateId,[\s\S]*accessToken: scopeAssistantAccessToken/)
 assert.match(page, /getScopeAssistantSendReadiness\(scopeAssistantState, scope\)/)
 assert.match(page, /if \(!readiness\.ready\)/)
+assert.match(page, /const isScopeAssistantSendBlocked = !scopeAssistantReadiness\.ready \|\| isScopeAssistantReadinessPending/)
+assert.match(page, /disabled=\{isEstimateActionPending \|\| isScopeAssistantSendBlocked\}/)
+assert.match(page, /aria-describedby=\{isScopeAssistantSendBlocked && scopeAssistantReadinessMessage/)
+assert.match(page, /setScopeAssistantReadiness\(\{ ready: true, manual: false, reason: SCOPE_ASSISTANT_SEND_REASON.READY \}\)/)
 assert.match(page, /scopeAssistantActionGuardRef\.current/)
 assert.match(page, /if \(scopeAssistantActionGuardRef\.current \|\| estimateSaveGuardRef\.current\) return null/)
 assert.match(page, /persistEstimate\([\s\S]*scopeAssistantState/)
@@ -206,6 +244,11 @@ assert.match(panel, /approvalCurrent && !showApprovedEditor/)
 assert.match(panel, /scopeAssistantApprovedDescription/)
 assert.match(panel, /scopeAssistantViewApproved/)
 assert.match(panel, /setShowApprovedEditor\(true\)/)
+assert.match(panel, /isApprovedDisclosureOpen/)
+assert.match(panel, /setIsApprovedDisclosureOpen\(false\)/)
+assert.match(panel, /clientVersionAccepted/)
+assert.match(panel, /scopeAssistantClientVersionReadyHelp/)
+assert.match(panel, /translationCurrent && !clientVersionAccepted/)
 assert.match(panel, /ReviewNotices warnings=\{state\.reviewWarnings\} approved/)
 assert.match(panel, /function ReviewNotices\([\s\S]*if \(approved\)[\s\S]*scopeAssistantReviewItemOne/)
 assert.match(panel, /approvalCurrent && translationRequired/)
@@ -249,6 +292,8 @@ const translationKeys = [
   'scopeAssistantContractorVersion',
   'scopeAssistantClientVersion',
   'scopeAssistantReadyToReview',
+  'scopeAssistantClientVersionReady',
+  'scopeAssistantClientVersionReadyHelp',
   'scopeAssistantNotTranslated',
   'scopeAssistantClientLanguageNotice',
   'scopeAssistantUseClientVersion',

@@ -408,6 +408,9 @@ export function EstimateBuilderPage({ lead, clientRecord = null, t, appLanguage 
   const scopeAssistantReadinessMessage = scopeAssistantReadinessTranslationKeys[scopeAssistantReadiness.reason]
     ? t(scopeAssistantReadinessTranslationKeys[scopeAssistantReadiness.reason])
     : ''
+  const isScopeAssistantReadinessPending = !isEmptyScopeAssistantState(scopeAssistantState)
+    && scopeAssistantReadiness.manual
+  const isScopeAssistantSendBlocked = !scopeAssistantReadiness.ready || isScopeAssistantReadinessPending
 
   useEffect(() => {
     let cancelled = false
@@ -876,6 +879,7 @@ export function EstimateBuilderPage({ lead, clientRecord = null, t, appLanguage 
 
       setScopeAssistantState(acceptedState)
       setScope(scopeAssistantState.clientScope)
+      setScopeAssistantReadiness({ ready: true, manual: false, reason: SCOPE_ASSISTANT_SEND_REASON.READY })
       showToast(t('scopeAssistantClientVersionUsed'))
       return persistedAcceptance
     })
@@ -1341,8 +1345,8 @@ export function EstimateBuilderPage({ lead, clientRecord = null, t, appLanguage 
         </section>
 
         <aside className="min-w-0 space-y-4 lg:sticky lg:top-24 lg:self-start">
-          {!scopeAssistantReadiness.ready && scopeAssistantReadinessMessage ? (
-            <div role="status" className="rounded-2xl border border-amber-200 bg-amber-50 px-4 py-3 text-sm font-semibold leading-6 text-amber-900">
+          {isScopeAssistantSendBlocked && scopeAssistantReadinessMessage ? (
+            <div id="scope-assistant-send-readiness" role="status" className="rounded-2xl border border-amber-200 bg-amber-50 px-4 py-3 text-sm font-semibold leading-6 text-amber-900">
               {t('scopeAssistantPreviewWarning')} {scopeAssistantReadinessMessage}
             </div>
           ) : null}
@@ -1356,7 +1360,7 @@ export function EstimateBuilderPage({ lead, clientRecord = null, t, appLanguage 
           <button onClick={handlePrint} className="w-full rounded-2xl bg-slate-950 px-4 py-4 text-sm font-bold text-white hover:bg-slate-800">{t('print')}</button>
           <button onClick={() => setShowPreviewModal(true)} className="hidden w-full rounded-2xl border border-slate-200 bg-white px-4 py-4 text-sm font-bold text-slate-800 hover:bg-slate-50 sm:block">{t('previewPdf')}</button>
           <button onClick={handleDownloadPdf} className="w-full rounded-2xl border border-slate-200 bg-white px-4 py-4 text-sm font-bold text-slate-800 hover:bg-slate-50">{t('saveAsPdf')}</button>
-          {!isArchived && estimateCanBeSent ? <button disabled={isEstimateActionPending} onClick={handleOpenSendModal} className="w-full rounded-2xl border border-blue-200 bg-blue-50 px-4 py-4 text-sm font-bold text-blue-700 hover:bg-blue-100 disabled:cursor-not-allowed disabled:opacity-60">{t(['sent', 'rejected'].includes(estimateLifecycleStatus) ? 'resendEstimate' : 'sendEstimate')}</button> : null}
+          {!isArchived && estimateCanBeSent ? <button disabled={isEstimateActionPending || isScopeAssistantSendBlocked} aria-describedby={isScopeAssistantSendBlocked && scopeAssistantReadinessMessage ? 'scope-assistant-send-readiness' : undefined} onClick={handleOpenSendModal} className="w-full rounded-2xl border border-blue-200 bg-blue-50 px-4 py-4 text-sm font-bold text-blue-700 hover:bg-blue-100 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-blue-500 focus-visible:ring-offset-2 disabled:cursor-not-allowed disabled:opacity-60">{t(['sent', 'rejected'].includes(estimateLifecycleStatus) ? 'resendEstimate' : 'sendEstimate')}</button> : null}
           {!isArchived && projectAvailable && (estimateLifecycleStatus === 'converted' || hasLinkedContract) ? (
             <button disabled={isEstimateActionPending} onClick={onOpenContract} className="w-full rounded-2xl border border-slate-200 bg-white px-4 py-4 text-sm font-bold text-slate-800 hover:bg-slate-50 disabled:cursor-not-allowed disabled:opacity-60">{t('viewContract')}</button>
           ) : null}
