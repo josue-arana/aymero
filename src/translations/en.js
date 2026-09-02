@@ -235,6 +235,8 @@ export const en = {
   "scopeAssistantClientVersion": "Client Version",
   "scopeAssistantTranslated": "Translated",
   "scopeAssistantReadyToReview": "Ready to review",
+  "scopeAssistantClientVersionReady": "Client version is ready",
+  "scopeAssistantClientVersionReadyHelp": "This is the version that will appear on the estimate.",
   "scopeAssistantNotTranslated": "Not translated",
   "scopeAssistantManuallyEdited": "Manually edited",
   "scopeAssistantTranslationNeeded": "Translate the approved contractor version for this client language.",
