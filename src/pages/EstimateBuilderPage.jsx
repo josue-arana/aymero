@@ -1,9 +1,10 @@
 import { useEffect, useMemo, useRef, useState } from 'react'
 import { useLocation, useNavigate, useParams } from 'react-router-dom'
-import { Archive, CheckCircle2, ChevronDown, MapPin, Trash2, Undo2, UserRound, XCircle } from 'lucide-react'
+import { Archive, CheckCircle2, ChevronDown, FileDown, MapPin, MoreVertical, Printer, Trash2, Undo2, UserRound, XCircle } from 'lucide-react'
 import { SelectField } from '../components/ui/SelectField'
 import { AymeroLoader } from '../components/common/AymeroLoader'
 import { InfoCard } from '../components/ui/InfoCard'
+import ActionMenu from '../components/common/ActionMenu'
 import { EstimatePdfTemplate } from '../components/estimates/EstimatePdfTemplate'
 import { EstimateFormattedText } from '../components/estimates/EstimateFormattedText'
 import { LightweightFormattedTextarea } from '../components/estimates/LightweightFormattedTextarea'
@@ -12,7 +13,6 @@ import { PaginatedEstimatePreview } from '../components/estimates/PaginatedEstim
 import { currency, formatDisplayDate } from '../utils/formatters'
 import { getPortalData, resolvePublicEstimateShare, resolvePublicEstimateShareUrl } from '../utils/portal'
 import { ESTIMATE_SHARE_RESOLUTION } from '../utils/estimateShare'
-import { archivePanelButtonClasses } from '../utils/buttonStyles'
 import { ConfirmRecordModal } from '../components/common/ConfirmRecordModal'
 import { SendToCustomerModal } from '../components/common/SendToCustomerModal'
 import { ModalShell } from '../components/common/ModalShell'
@@ -290,6 +290,7 @@ export function EstimateBuilderPage({ lead, clientRecord = null, t, appLanguage 
   const [isEditing, setIsEditing] = useState(() => !isArchived && (!hasExistingEstimate || ['draft', 'saved'].includes(normalizeEstimateFinalizationStatus(savedEstimate.status))))
   const [showSentEditConfirmation, setShowSentEditConfirmation] = useState(false)
   const [isSavingEstimate, setIsSavingEstimate] = useState(false)
+  const [isDraftDirty, setIsDraftDirty] = useState(false)
   const estimateSaveGuardRef = useRef(false)
   const autoSendAttemptedRef = useRef(false)
   const [isConvertingEstimate, setIsConvertingEstimate] = useState(false)
@@ -334,6 +335,7 @@ export function EstimateBuilderPage({ lead, clientRecord = null, t, appLanguage 
 
   function markDraftDirty() {
     draftDirtyRef.current = true
+    setIsDraftDirty(true)
   }
 
   useEffect(() => {
@@ -373,6 +375,7 @@ export function EstimateBuilderPage({ lead, clientRecord = null, t, appLanguage 
     lastInitializedSourceKeyRef.current = draftSourceKey
     lastInitializedOwnerKeyRef.current = draftOwnerKey
     draftDirtyRef.current = false
+    setIsDraftDirty(false)
   }, [companySettings, draftEstimateT, draftOwnerKey, draftSourceKey, hasExistingEstimate, isArchived, lead, savedEstimate])
 
   useEffect(() => {
@@ -562,6 +565,8 @@ export function EstimateBuilderPage({ lead, clientRecord = null, t, appLanguage 
       }, { silent })
 
       if (result) {
+        draftDirtyRef.current = false
+        setIsDraftDirty(false)
         if (stopEditing) {
           setIsEditing(false)
         }
@@ -1056,7 +1061,7 @@ export function EstimateBuilderPage({ lead, clientRecord = null, t, appLanguage 
   }
 
   return (
-    <div className="mx-auto w-full max-w-6xl space-y-6 overflow-x-hidden">
+    <div className="mx-auto w-full max-w-7xl space-y-5 overflow-x-hidden lg:space-y-6">
       <RecordBackButton label={backLabel} onClick={onBack} />
       <section className="rounded-3xl bg-gradient-to-br from-slate-950 to-slate-800 p-5 text-white shadow-xl sm:p-7 lg:p-8">
         <div className="grid min-w-0 gap-6 lg:grid-cols-[minmax(0,1fr)_minmax(320px,0.72fr)] lg:items-end">
@@ -1122,8 +1127,8 @@ export function EstimateBuilderPage({ lead, clientRecord = null, t, appLanguage 
         </div>
       ) : null}
 
-      <div className="grid gap-5 lg:grid-cols-[1fr_360px]">
-        <section className="min-w-0 space-y-5">
+      <div className="grid gap-5 lg:grid-cols-[minmax(0,1fr)_minmax(320px,23rem)] lg:gap-6">
+        <section className="min-w-0 space-y-4 lg:space-y-5">
           <article className="min-w-0 overflow-hidden rounded-3xl border border-slate-200 bg-white shadow-sm">
             <button
               type="button"
@@ -1137,12 +1142,23 @@ export function EstimateBuilderPage({ lead, clientRecord = null, t, appLanguage 
             >
               <span>
                 <span className="block text-lg font-bold text-slate-950">{t('estimateSettings')}</span>
-                <span className="mt-1 block text-sm text-slate-500">{t('estimateSettingsHelp')}</span>
+                <span className="mt-1 block break-words text-sm text-slate-500 [overflow-wrap:anywhere]">
+                  {isSettingsOpen
+                    ? t('estimateSettingsHelp')
+                    : isDetailedPricing
+                      ? t('estimateSettingsSummaryDetailed', {
+                        language: estimateLanguage === 'es' ? t('spanish') : estimateLanguage === 'en' ? t('english') : t('matchAppLanguage'),
+                      })
+                      : t('estimateSettingsSummary', {
+                        language: estimateLanguage === 'es' ? t('spanish') : estimateLanguage === 'en' ? t('english') : t('matchAppLanguage'),
+                        materials: materialsIncluded ? t('yes') : t('no'),
+                      })}
+                </span>
               </span>
               <ChevronDown className={`h-5 w-5 shrink-0 text-slate-500 transition-transform ${isSettingsOpen ? 'rotate-180' : ''}`} />
             </button>
             {isSettingsOpen ? (
-              <div id="estimate-settings-panel" className="grid gap-5 border-t border-slate-200 px-5 py-5 sm:grid-cols-2">
+              <div id="estimate-settings-panel" className="grid gap-4 border-t border-slate-200 px-5 py-4 sm:grid-cols-2">
                 <div className="min-w-0 space-y-3">
                   <label className="block text-sm font-bold text-slate-800">{t('estimateLanguage')}</label>
                   <p className="text-sm leading-6 text-slate-500">{t('estimateLanguageHelp')}</p>
@@ -1166,20 +1182,6 @@ export function EstimateBuilderPage({ lead, clientRecord = null, t, appLanguage 
                     <div className="rounded-2xl bg-slate-50 p-4 text-sm leading-6 text-slate-700 whitespace-pre-line">{getPaymentTermLabel(paymentTerms, t)}</div>
                   )}
                 </div>
-                {!isDetailedPricing ? (
-                  <div className="min-w-0 space-y-3 sm:col-span-2">
-                    <p className="text-sm font-bold text-slate-800">{t('materialsIncluded')}</p>
-                    {isEditing ? (
-                      <button onClick={() => { markDraftDirty(); setMaterialsIncluded((current) => !current) }} className={`w-full rounded-2xl px-4 py-4 text-left text-sm font-bold ${materialsIncluded ? 'bg-emerald-50 text-emerald-700 ring-1 ring-emerald-100' : 'bg-slate-50 text-slate-700 ring-1 ring-slate-200'}`}>
-                        {materialsIncluded ? `${t('materialsIncluded')}: ${t('yes')}` : `${t('materialsIncluded')}: ${t('no')}`}
-                      </button>
-                    ) : (
-                      <div className={`w-full rounded-2xl px-4 py-4 text-left text-sm font-bold ${materialsIncluded ? 'bg-emerald-50 text-emerald-700 ring-1 ring-emerald-100' : 'bg-slate-50 text-slate-700 ring-1 ring-slate-200'}`}>
-                        {materialsIncluded ? `${t('materialsIncluded')}: ${t('yes')}` : `${t('materialsIncluded')}: ${t('no')}`}
-                      </div>
-                    )}
-                  </div>
-                ) : null}
               </div>
             ) : null}
           </article>
@@ -1317,8 +1319,23 @@ export function EstimateBuilderPage({ lead, clientRecord = null, t, appLanguage 
                 </>
               ) : (
                 <>
-                  <div className="inline-flex rounded-full bg-blue-50 px-3 py-1 text-xs font-bold uppercase tracking-[0.14em] text-blue-700 ring-1 ring-blue-100">
-                    {t('simpleTotal')}
+                  <div className="flex flex-wrap items-center justify-between gap-3">
+                    <div className="inline-flex rounded-full bg-blue-50 px-3 py-1 text-xs font-bold uppercase tracking-[0.14em] text-blue-700 ring-1 ring-blue-100">
+                      {t('simpleTotal')}
+                    </div>
+                    {isEditing ? (
+                      <button
+                        type="button"
+                        onClick={() => { markDraftDirty(); setMaterialsIncluded((current) => !current) }}
+                        className={`inline-flex min-h-11 items-center rounded-xl px-3 py-2 text-xs font-bold transition focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-blue-500 focus-visible:ring-offset-2 ${materialsIncluded ? 'bg-emerald-50 text-emerald-700 ring-1 ring-emerald-100 hover:bg-emerald-100' : 'bg-slate-100 text-slate-700 ring-1 ring-slate-200 hover:bg-slate-200'}`}
+                      >
+                        {materialsIncluded ? `${t('materialsIncluded')}: ${t('yes')}` : `${t('materialsIncluded')}: ${t('no')}`}
+                      </button>
+                    ) : (
+                      <span className={`inline-flex min-h-9 items-center rounded-xl px-3 py-2 text-xs font-bold ${materialsIncluded ? 'bg-emerald-50 text-emerald-700 ring-1 ring-emerald-100' : 'bg-slate-100 text-slate-700 ring-1 ring-slate-200'}`}>
+                        {materialsIncluded ? `${t('materialsIncluded')}: ${t('yes')}` : `${t('materialsIncluded')}: ${t('no')}`}
+                      </span>
+                    )}
                   </div>
                   {isEditing ? (
                     <div className="rounded-2xl border border-slate-200 bg-gradient-to-br from-slate-50 to-white p-4 shadow-sm sm:p-5">
@@ -1346,30 +1363,52 @@ export function EstimateBuilderPage({ lead, clientRecord = null, t, appLanguage 
 
         <aside className="min-w-0 space-y-4 lg:sticky lg:top-24 lg:self-start">
           {isScopeAssistantSendBlocked && scopeAssistantReadinessMessage ? (
-            <div id="scope-assistant-send-readiness" role="status" className="rounded-2xl border border-amber-200 bg-amber-50 px-4 py-3 text-sm font-semibold leading-6 text-amber-900">
+            <div id="scope-assistant-send-readiness" role="status" className="rounded-2xl border border-amber-200 bg-amber-50 px-3 py-2.5 text-sm font-semibold leading-6 text-amber-900">
               {t('scopeAssistantPreviewWarning')} {scopeAssistantReadinessMessage}
             </div>
           ) : null}
           <EstimatePreviewCard {...estimatePreviewProps} uiT={t} />
           {!isArchived && !isEditing && estimateCanBeEdited && (
-            <button disabled={isEstimateActionPending} onClick={handleRequestEdit} className="w-full rounded-2xl border border-slate-200 bg-white px-4 py-4 text-sm font-bold text-slate-800 hover:bg-slate-50 disabled:cursor-not-allowed disabled:opacity-60">{t('editEstimate')}</button>
+            <button disabled={isEstimateActionPending} onClick={handleRequestEdit} className="w-full min-h-12 rounded-2xl border border-slate-200 bg-white px-4 py-3 text-sm font-bold text-slate-800 hover:bg-slate-50 disabled:cursor-not-allowed disabled:opacity-60">{t('editEstimate')}</button>
           )}
           {!isArchived && isEditing && (
-            <button disabled={isSavingEstimate} onClick={saveEstimate} className="w-full rounded-2xl border border-slate-200 bg-white px-4 py-4 text-sm font-bold text-slate-800 hover:bg-slate-50 disabled:cursor-not-allowed disabled:opacity-60">{isSavingEstimate ? t('saving') : t('saveEstimate')}</button>
+            <div className="rounded-2xl border border-slate-200 bg-white p-2 shadow-sm">
+              <div className="flex items-center justify-between gap-3 px-2 pb-2">
+                <span role="status" aria-live="polite" className={`min-w-0 break-words text-xs font-semibold ${isDraftDirty ? 'text-amber-700' : 'text-slate-500'}`}>
+                  {isSavingEstimate ? t('saving') : isDraftDirty ? t('unsavedChanges') : hasExistingEstimate ? t('changesSaved') : t('estimateNotSavedYet')}
+                </span>
+                <span className="shrink-0 text-[0.68rem] font-bold uppercase tracking-[0.14em] text-slate-400">{t('estimate')}</span>
+              </div>
+              <button disabled={isSavingEstimate} onClick={saveEstimate} className="w-full min-h-12 rounded-xl border border-slate-200 bg-slate-50 px-4 py-3 text-sm font-bold text-slate-800 hover:bg-white disabled:cursor-not-allowed disabled:opacity-60">{isSavingEstimate ? t('saving') : t('saveEstimate')}</button>
+            </div>
           )}
-          <button onClick={handlePrint} className="w-full rounded-2xl bg-slate-950 px-4 py-4 text-sm font-bold text-white hover:bg-slate-800">{t('print')}</button>
-          <button onClick={() => setShowPreviewModal(true)} className="hidden w-full rounded-2xl border border-slate-200 bg-white px-4 py-4 text-sm font-bold text-slate-800 hover:bg-slate-50 sm:block">{t('previewPdf')}</button>
-          <button onClick={handleDownloadPdf} className="w-full rounded-2xl border border-slate-200 bg-white px-4 py-4 text-sm font-bold text-slate-800 hover:bg-slate-50">{t('saveAsPdf')}</button>
-          {!isArchived && estimateCanBeSent ? <button disabled={isEstimateActionPending || isScopeAssistantSendBlocked} aria-describedby={isScopeAssistantSendBlocked && scopeAssistantReadinessMessage ? 'scope-assistant-send-readiness' : undefined} onClick={handleOpenSendModal} className="w-full rounded-2xl border border-blue-200 bg-blue-50 px-4 py-4 text-sm font-bold text-blue-700 hover:bg-blue-100 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-blue-500 focus-visible:ring-offset-2 disabled:cursor-not-allowed disabled:opacity-60">{t(['sent', 'rejected'].includes(estimateLifecycleStatus) ? 'resendEstimate' : 'sendEstimate')}</button> : null}
+          <button onClick={() => setShowPreviewModal(true)} className="w-full min-h-12 rounded-2xl border border-slate-200 bg-white px-4 py-3 text-sm font-bold text-slate-800 hover:bg-slate-50 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-blue-500 focus-visible:ring-offset-2">{t('previewPdf')}</button>
+          {!isArchived && estimateCanBeSent ? <button disabled={isEstimateActionPending || isScopeAssistantSendBlocked} aria-describedby={isScopeAssistantSendBlocked && scopeAssistantReadinessMessage ? 'scope-assistant-send-readiness' : undefined} onClick={handleOpenSendModal} className="w-full min-h-12 rounded-2xl bg-blue-600 px-4 py-3 text-sm font-bold text-white shadow-sm hover:bg-blue-700 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-blue-500 focus-visible:ring-offset-2 disabled:cursor-not-allowed disabled:bg-blue-300 disabled:opacity-70">{t(['sent', 'rejected'].includes(estimateLifecycleStatus) ? 'resendEstimate' : 'sendEstimate')}</button> : null}
+          {!isArchived ? (
+            <ActionMenu
+              label={<><MoreVertical className="h-4 w-4" aria-hidden="true" /> {t('more')}</>}
+              ariaLabel={t('estimateActions')}
+              showChevron={false}
+              buttonDisabled={isEstimateActionPending}
+              containerClassName="w-full"
+              buttonClassName="inline-flex min-h-12 w-full items-center justify-center gap-2 rounded-2xl border border-slate-200 bg-white px-4 py-3 text-sm font-bold text-slate-700 transition hover:bg-slate-50 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-blue-500 focus-visible:ring-offset-2"
+              menuClassName="max-w-[calc(100vw-2rem)]"
+              items={[
+                { id: 'print', label: t('print'), icon: <Printer className="h-4 w-4 shrink-0" aria-hidden="true" />, onClick: handlePrint },
+                { id: 'save-as-pdf', label: t('saveAsPdf'), icon: <FileDown className="h-4 w-4 shrink-0" aria-hidden="true" />, onClick: handleDownloadPdf },
+                { id: 'archive', label: t('archive'), icon: <Archive className="h-4 w-4 shrink-0" aria-hidden="true" />, tone: 'destructive', className: 'text-red-700', separatorBefore: true, onClick: () => setConfirmAction({ mode: 'archive' }) },
+              ]}
+            />
+          ) : null}
           {!isArchived && projectAvailable && (estimateLifecycleStatus === 'converted' || hasLinkedContract) ? (
-            <button disabled={isEstimateActionPending} onClick={onOpenContract} className="w-full rounded-2xl border border-slate-200 bg-white px-4 py-4 text-sm font-bold text-slate-800 hover:bg-slate-50 disabled:cursor-not-allowed disabled:opacity-60">{t('viewContract')}</button>
+            <button disabled={isEstimateActionPending} onClick={onOpenContract} className="w-full min-h-12 rounded-2xl border border-slate-200 bg-white px-4 py-3 text-sm font-bold text-slate-800 hover:bg-slate-50 disabled:cursor-not-allowed disabled:opacity-60">{t('viewContract')}</button>
           ) : null}
           {!isArchived && projectAvailable && estimateCanCreateContract && !hasLinkedContract ? (
-            <button disabled={isEstimateActionPending} onClick={handleConvertToContract} className="w-full rounded-2xl bg-blue-600 px-4 py-4 text-sm font-bold text-white hover:bg-blue-700 disabled:cursor-not-allowed disabled:bg-blue-400">{isConvertingEstimate ? t('saving') : t('createContract')}</button>
+            <button disabled={isEstimateActionPending} onClick={handleConvertToContract} className="w-full min-h-12 rounded-2xl border border-slate-200 bg-white px-4 py-3 text-sm font-bold text-slate-800 hover:bg-slate-50 disabled:cursor-not-allowed disabled:opacity-60">{isConvertingEstimate ? t('saving') : t('createContract')}</button>
           ) : null}
           {!isArchived && projectAvailable && hasLinkedContract && estimateLifecycleStatus === 'approved' ? (
             <>
-              <button disabled={isEstimateActionPending} onClick={() => { if (linkedContractIsSigned) { setConfirmAction({ mode: 'sync-contract' }); return } handleSyncContract(false) }} className="w-full rounded-2xl bg-blue-600 px-4 py-4 text-sm font-bold text-white hover:bg-blue-700 disabled:cursor-not-allowed disabled:bg-blue-400">{isConvertingEstimate ? t('saving') : t('syncContractFromEstimate')}</button>
+              <button disabled={isEstimateActionPending} onClick={() => { if (linkedContractIsSigned) { setConfirmAction({ mode: 'sync-contract' }); return } handleSyncContract(false) }} className="w-full min-h-12 rounded-2xl border border-slate-200 bg-white px-4 py-3 text-sm font-bold text-slate-800 hover:bg-slate-50 disabled:cursor-not-allowed disabled:opacity-60">{isConvertingEstimate ? t('saving') : t('syncContractFromEstimate')}</button>
             </>
           ) : null}
           {isArchived ? (
@@ -1377,9 +1416,7 @@ export function EstimateBuilderPage({ lead, clientRecord = null, t, appLanguage 
               <button disabled={isEstimateActionPending} onClick={onRestoreEstimate} className="w-full rounded-2xl border border-emerald-200 bg-emerald-50 px-4 py-4 text-sm font-bold text-emerald-700 hover:bg-emerald-100 disabled:cursor-not-allowed disabled:opacity-60"><Undo2 className="mr-2 inline h-4 w-4" />{t(archiveSource === 'lead' ? 'restoreLeadAndEstimate' : 'restore')}</button>
               <button disabled={isEstimateActionPending} onClick={() => setConfirmAction({ mode: 'delete' })} className="w-full rounded-2xl border border-red-200 bg-red-50 px-4 py-4 text-sm font-bold text-red-700 hover:bg-red-100 disabled:cursor-not-allowed disabled:opacity-60"><Trash2 className="mr-2 inline h-4 w-4" />{t('deletePermanently')}</button>
             </>
-          ) : (
-            <button disabled={isEstimateActionPending} onClick={() => setConfirmAction({ mode: 'archive' })} className={`w-full ${archivePanelButtonClasses} ${isEstimateActionPending ? 'cursor-not-allowed opacity-60' : ''}`.trim()}><Archive className="mr-2 inline h-4 w-4" />{t('archive')}</button>
-          )}
+          ) : null}
         </aside>
       </div>
       <ConfirmRecordModal isOpen={Boolean(confirmAction)} mode={confirmAction?.mode === 'delete' ? 'delete' : 'archive'} title={confirmAction?.mode === 'delete' ? t('confirmPermanentDelete') : confirmAction?.mode === 'sync-contract' ? t('confirmSyncSignedContract') : t('confirmArchive')} message={confirmAction?.mode === 'delete' ? t('permanentDeleteHelp') : confirmAction?.mode === 'sync-contract' ? t('signedContractSyncWarning') : t('archiveHelp')} confirmLabel={confirmAction?.mode === 'delete' ? t('deletePermanently') : confirmAction?.mode === 'sync-contract' ? t('syncContractFromEstimate') : t('archive')} onCancel={() => setConfirmAction(null)} onConfirm={async () => { if (confirmAction?.mode === 'archive') { await onArchiveEstimate?.() } if (confirmAction?.mode === 'delete') { await onDeleteEstimate?.(); onBack?.() } if (confirmAction?.mode === 'sync-contract') { await handleSyncContract(true) } setConfirmAction(null) }} t={t} />

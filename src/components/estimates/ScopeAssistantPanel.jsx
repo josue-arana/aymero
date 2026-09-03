@@ -131,8 +131,8 @@ export function ScopeAssistantPanel({
           <LightweightFormattedTextarea
             value={canonicalScope}
             onChange={onManualScopeChange}
-            rows={8}
-            minHeight={192}
+            rows={6}
+            minHeight={152}
             maxHeight={560}
             ariaLabel={t('scopeOfWork')}
             t={t}
@@ -167,17 +167,17 @@ export function ScopeAssistantPanel({
         </div>
       ) : null}
 
-      <details className="rounded-2xl border border-slate-200 bg-slate-50 px-4 py-3">
+      <details className="rounded-2xl border border-slate-200 bg-slate-50 px-3 py-2.5">
         <summary className="cursor-pointer text-sm font-bold text-slate-700 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-blue-500">
           {t('scopeAssistantViewOriginal')}
         </summary>
-        <div className="mt-3 border-t border-slate-200 pt-3">
+        <div className="mt-2.5 border-t border-slate-200 pt-2.5">
           {!hasCandidate && isEditing ? (
             <LightweightFormattedTextarea
               value={state.rawContractorInput}
               onChange={onRawSourceChange}
-              rows={5}
-              minHeight={144}
+              rows={4}
+              minHeight={120}
               maxHeight={420}
               ariaLabel={t('scopeAssistantOriginalNotes')}
               t={t}
@@ -190,7 +190,7 @@ export function ScopeAssistantPanel({
       </details>
 
       {hasCandidate && approvalCurrent && !showApprovedEditor ? (
-        <section aria-labelledby="scope-assistant-approved-title" className="space-y-3 rounded-2xl border border-emerald-200 bg-emerald-50/50 p-4">
+        <section aria-labelledby="scope-assistant-approved-title" className="space-y-3 rounded-2xl border border-emerald-200 bg-emerald-50/50 p-3">
           <VersionLabel
             title={<span id="scope-assistant-approved-title">{t('scopeAssistantApprovedDescription')}</span>}
             language={state.contractorLanguage}
@@ -218,7 +218,7 @@ export function ScopeAssistantPanel({
           <ReviewNotices warnings={state.reviewWarnings} approved t={t} />
         </section>
       ) : hasCandidate ? (
-        <section aria-labelledby="scope-assistant-candidate-title" className="space-y-3 rounded-2xl border border-blue-100 bg-blue-50/40 p-4">
+        <section aria-labelledby="scope-assistant-candidate-title" className="space-y-3 rounded-2xl border border-blue-100 bg-blue-50/40 p-3">
           <VersionLabel
             title={<span id="scope-assistant-candidate-title">{t('scopeAssistantSuggestedScope')}</span>}
             language={state.contractorLanguage}
@@ -230,8 +230,8 @@ export function ScopeAssistantPanel({
               ref={candidateEditorRef}
               value={state.contractorDraft}
               onChange={onCandidateChange}
-              rows={8}
-              minHeight={192}
+              rows={6}
+              minHeight={152}
               maxHeight={560}
               ariaLabel={t('scopeAssistantSuggestedScope')}
               t={t}
