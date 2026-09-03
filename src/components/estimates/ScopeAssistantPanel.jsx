@@ -251,16 +251,16 @@ export function ScopeAssistantPanel({
           ) : null}
           {isEditing && isEnabled ? (
             <div className="flex flex-col gap-2 sm:flex-row sm:flex-wrap">
-              <button type="button" disabled={actionPending} onClick={onRegenerate} className={secondaryButtonClasses}>
-                <RotateCcw aria-hidden="true" className="h-4 w-4" />
-                {isRegenerating ? t('scopeAssistantImproving') : t('scopeAssistantRegenerate')}
-              </button>
               {!approvalCurrent ? (
                 <button type="button" disabled={actionPending || !state.contractorDraft.trim()} onClick={onApprove} className={primaryButtonClasses}>
                   <CheckCircle2 aria-hidden="true" className="h-4 w-4" />
                   {isApproving ? t('scopeAssistantApproving') : t('scopeAssistantApprove')}
                 </button>
               ) : null}
+              <button type="button" disabled={actionPending} onClick={onRegenerate} className={secondaryButtonClasses}>
+                <RotateCcw aria-hidden="true" className="h-4 w-4" />
+                {isRegenerating ? t('scopeAssistantImproving') : t('scopeAssistantRegenerate')}
+              </button>
             </div>
           ) : null}
         </section>

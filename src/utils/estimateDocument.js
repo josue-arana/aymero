@@ -365,6 +365,30 @@ export function resolveEstimateLineItemAmount(item = {}, fallback = 0) {
   return toFiniteNumber(fallback)
 }
 
+/**
+ * Quantity is an optional informational field. Amount remains the final line
+ * amount, so neither totals nor legacy price handling depend on quantity.
+ */
+export function resolveEstimateLineItemQuantity(item = {}) {
+  const quantity = Number(item?.quantity ?? item?.qty)
+  return Number.isFinite(quantity) && quantity > 0 ? quantity : null
+}
+
+export function hasMeaningfulEstimateLineItemContent(lineItems = []) {
+  if (!Array.isArray(lineItems)) return false
+
+  return lineItems.some((item) => hasMeaningfulEstimateFormattedText([
+    item?.name,
+    item?.title,
+    item?.description,
+  ].map(sanitizeEstimateFormattedText).join('\n')))
+}
+
+export function hasMeaningfulEstimateContent({ scope = '', lineItems = [] } = {}) {
+  return hasMeaningfulEstimateFormattedText(scope)
+    || hasMeaningfulEstimateLineItemContent(lineItems)
+}
+
 export function isValidExplicitEstimateItem(item = {}) {
   const itemText = [
     item?.name,
@@ -573,6 +597,7 @@ export function normalizeEstimateLineItemsForStorage(lineItems = [], {
         : [source.title, source.description].filter(Boolean).join('\n')
     )
     const materialsStatus = normalizeEstimateMaterialsStatus(source, fallbackMaterialsIncluded)
+    const quantity = resolveEstimateLineItemQuantity(source)
     const displayOrder = Number.isFinite(Number(source.displayOrder ?? source.display_order))
       ? Number(source.displayOrder ?? source.display_order)
       : index
@@ -581,6 +606,7 @@ export function normalizeEstimateLineItemsForStorage(lineItems = [], {
       ...(source.id ? { id: source.id } : {}),
       name,
       amount: resolveEstimateLineItemAmount(source),
+      ...(quantity ? { quantity } : {}),
       materialsIncluded: materialsStatus === ESTIMATE_MATERIALS_INCLUDED,
       materialsStatus,
       displayOrder,
@@ -599,6 +625,7 @@ function normalizeEstimateWorkItem(item = {}, {
       .join('\n')
   const textParts = splitLegacyEstimateItemText(sourceText)
   const amount = resolveEstimateLineItemAmount(item)
+  const quantity = resolveEstimateLineItemQuantity(item)
   const materialsStatus = normalizeEstimateMaterialsStatus(item, fallbackMaterialsIncluded)
 
   return {
@@ -611,6 +638,7 @@ function normalizeEstimateWorkItem(item = {}, {
     descriptionBlocks: normalizeEstimateRichText(textParts.description).blocks,
     detailLines: textParts.detailLines,
     amount,
+    ...(quantity ? { quantity } : {}),
     materialsIncluded: materialsStatus === ESTIMATE_MATERIALS_INCLUDED,
     materialsStatus,
     displayOrder,
@@ -744,6 +772,7 @@ export function ensureNormalizedEstimateDocument(documentModel, legacyInput = {}
         item,
         documentModel?.defaults?.materialsIncluded
       )
+      const quantity = resolveEstimateLineItemQuantity(item)
 
       return {
         id: item?.id || `estimate-item-${index + 1}`,
@@ -758,6 +787,7 @@ export function ensureNormalizedEstimateDocument(documentModel, legacyInput = {}
         descriptionBlocks: normalizeEstimateRichText(item?.description).blocks,
         detailLines: Array.isArray(item?.detailLines) ? item.detailLines : [],
         amount: resolveEstimateLineItemAmount(item),
+        ...(quantity ? { quantity } : {}),
         materialsIncluded: materialsStatus === ESTIMATE_MATERIALS_INCLUDED,
         materialsStatus,
         displayOrder: Number.isFinite(Number(item?.displayOrder))

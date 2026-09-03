@@ -291,11 +291,17 @@ export function EstimateRichTextBlocks({ blocks = [], flowTextAttribute = 'data-
   })
 }
 
-const workBreakdownGridColumns = '24px minmax(0,1fr) 88px'
 const workBreakdownColumnGap = '8px'
 
-function WorkBreakdownItem({ item, index, accentColor, accentTextColor, t }) {
+function getWorkBreakdownGridColumns(showQuantity) {
+  return showQuantity
+    ? '24px minmax(0,1fr) 48px 88px'
+    : '24px minmax(0,1fr) 88px'
+}
+
+function WorkBreakdownItem({ item, index, accentColor, accentTextColor, showQuantity, t }) {
   const descriptionBlocks = Array.isArray(item?.descriptionBlocks) ? item.descriptionBlocks : []
+  const workBreakdownGridColumns = getWorkBreakdownGridColumns(showQuantity)
 
   return (
     <div
@@ -360,6 +366,11 @@ function WorkBreakdownItem({ item, index, accentColor, accentTextColor, t }) {
           <MaterialTag materialsStatus={item?.materialsStatus} accentColor={accentColor} accentTextColor={accentTextColor} t={t} />
         </div>
       </div>
+      {showQuantity ? (
+        <div data-estimate-item-quantity="true" style={{ display: 'flex', minHeight: 0, alignItems: 'center', justifyContent: 'flex-end', textAlign: 'right', whiteSpace: 'nowrap', fontSize: '11.5px', lineHeight: 1.4, fontWeight: 650, color: colors.ink }}>
+          {Number(item?.quantity) > 0 ? item.quantity : ''}
+        </div>
+      ) : null}
       <div data-estimate-item-amount="true" style={{ display: 'flex', minHeight: 0, alignItems: 'center', justifyContent: 'flex-end', textAlign: 'right', whiteSpace: 'nowrap', fontSize: '11.5px', lineHeight: 1.4, fontWeight: 700, color: colors.ink }}>
         {currency.format(Number(item?.amount || 0))}
       </div>
@@ -466,6 +477,8 @@ export function EstimatePdfTemplate({
   const documentTax = normalizedDocument.totals.taxAmount
   const hasScope = normalizedDocument.sections.scope.visible
   const hasLineItems = normalizedDocument.sections.workBreakdown.visible
+  const hasQuantity = workItems.some((item) => Number(item?.quantity) > 0)
+  const workBreakdownGridColumns = getWorkBreakdownGridColumns(hasQuantity)
   const hasContractorMessage = normalizedDocument.sections.messageFromContractor.visible
   const { accentColor, accentTextColor } = resolveDocumentBrandTokens(company)
   const acceptedPaymentMethods = getAcceptedPaymentMethodLabels(company?.acceptedPaymentMethods, t)
@@ -674,6 +687,7 @@ export function EstimatePdfTemplate({
               }}
             >
               <span style={{ gridColumn: '1 / 3' }} aria-hidden="true" />
+              {hasQuantity ? <span data-estimate-quantity-column="true" style={{ textAlign: 'right', whiteSpace: 'nowrap' }}>{t('quantity')}</span> : null}
               <span style={{ textAlign: 'right', whiteSpace: 'nowrap' }}>{t('amount')}</span>
             </div>
           </div>
@@ -685,6 +699,7 @@ export function EstimatePdfTemplate({
                 index={index}
                 accentColor={accentColor}
                 accentTextColor={accentTextColor}
+                showQuantity={hasQuantity}
                 t={t}
               />
             ))}

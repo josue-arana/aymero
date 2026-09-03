@@ -113,6 +113,18 @@ assert.equal(contractorEditedAfterClientAcceptance.canonicalAcceptance, null)
 assert.equal((await getScopeAssistantSendReadiness(contractorEditedAfterClientAcceptance, translated.clientScope)).reason, SCOPE_ASSISTANT_SEND_REASON.APPROVAL_STALE)
 const reapprovedAfterClientAcceptance = await approveContractorDraft(contractorEditedAfterClientAcceptance, { memberId, approvedAt })
 assert.equal((await getScopeAssistantSendReadiness(reapprovedAfterClientAcceptance, translated.clientScope)).reason, SCOPE_ASSISTANT_SEND_REASON.TRANSLATION_STALE)
+const retranslatedAfterReapproval = await applyClientScope(reapprovedAfterClientAcceptance, {
+  scope: 'Pinte las paredes con dos manos y proteja los acabados cercanos.',
+  model: 'gpt-5.6-terra',
+  promptVersion: 'translate-v3',
+  generatedAt,
+})
+assert.equal((await getScopeAssistantSendReadiness(retranslatedAfterReapproval, translated.clientScope)).reason, SCOPE_ASSISTANT_SEND_REASON.CLIENT_VERSION_NOT_ACCEPTED)
+const acceptedRetranslatedClient = await acceptScopeAssistantCanonicalScope(retranslatedAfterReapproval, {
+  canonicalScope: retranslatedAfterReapproval.clientScope,
+  acceptedAt,
+})
+assert.equal((await getScopeAssistantSendReadiness(acceptedRetranslatedClient, acceptedRetranslatedClient.clientScope)).ready, true)
 const reloadedAcceptedClient = JSON.parse(JSON.stringify(acceptedTranslatedClient))
 assert.equal((await getScopeAssistantSendReadiness(reloadedAcceptedClient, translated.clientScope)).ready, true)
 
@@ -178,6 +190,15 @@ assert.equal(
   (await getScopeAssistantSendReadiness(sameLanguageAccepted, sameLanguageApproved.approvedContractorScope)).ready,
   true,
 )
+const sameLanguageEdited = editContractorDraft(sameLanguageAccepted, 'Repair the exterior door.')
+assert.equal((await getScopeAssistantSendReadiness(sameLanguageEdited, sameLanguageApproved.approvedContractorScope)).reason, SCOPE_ASSISTANT_SEND_REASON.APPROVAL_STALE)
+const sameLanguageReapproved = await approveContractorDraft(sameLanguageEdited, { memberId, approvedAt })
+const sameLanguageReaccepted = await acceptScopeAssistantCanonicalScope(sameLanguageReapproved, {
+  canonicalScope: sameLanguageReapproved.approvedContractorScope,
+  acceptedAt,
+})
+assert.equal(sameLanguageReapproved.approvedContractorScope, 'Repair the exterior door.')
+assert.equal((await getScopeAssistantSendReadiness(sameLanguageReaccepted, sameLanguageReapproved.approvedContractorScope)).ready, true)
 
 let requestCount = 0
 const persistenceFailure = await runPersistedScopeAssistantRequest({
@@ -261,6 +282,7 @@ assert.match(panel, /min-h-11/)
 assert.match(panel, /w-full[\s\S]{0,400}sm:w-auto/)
 assert.match(panel, /min-w-0/)
 assert.match(panel, /flex flex-col gap-2 sm:flex-row sm:flex-wrap/)
+assert.ok(panel.indexOf('onClick={onApprove}') < panel.indexOf('onClick={onRegenerate}'))
 assert.match(panel, /focus-visible:ring-2/)
 assert.match(panel, /role="status"/)
 assert.match(panel, /role="alert"/)

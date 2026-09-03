@@ -5,6 +5,7 @@ import {
   ESTIMATE_MATERIALS_INCLUDED,
   ESTIMATE_OWNER_SUPPLIED_MATERIALS,
   normalizeEstimateLineItemForDocument,
+  resolveEstimateLineItemQuantity,
 } from './estimateDocument'
 
 function toSafeNumber(value, fallback = 0) {
@@ -92,6 +93,7 @@ export function normalizeContractWorkBreakdown(items = [], fallbackMaterialsIncl
           ?? ''
       )
       const amount = toSafeNumber(item?.amount)
+      const quantity = resolveEstimateLineItemQuantity(item)
       const materialsIncluded = normalizeMaterialsIncluded(item?.materialsIncluded, fallbackMaterialsIncluded)
       const materialsStatus = normalizeMaterialsStatus(item, materialsIncluded)
       const normalizedRichItem = normalizeEstimateLineItemForDocument({
@@ -113,6 +115,7 @@ export function normalizeContractWorkBreakdown(items = [], fallbackMaterialsIncl
         contentBlocks: normalizedRichItem.contentBlocks,
         rawText,
         amount,
+        ...(quantity ? { quantity } : {}),
         materialsIncluded,
         materialsStatus,
       }
