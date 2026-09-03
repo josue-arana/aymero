@@ -38,6 +38,8 @@ const portalSummarySource = read('../src/components/portal/PortalSummary.jsx')
 const statusBadgeSource = read('../src/components/ui/StatusBadge.jsx')
 const appSource = read('../src/App.jsx')
 const notificationCenterSource = read('../src/components/layout/NotificationCenter.jsx')
+const estimateBuilderSource = read('../src/pages/EstimateBuilderPage.jsx')
+const scopeAssistantPanelSource = read('../src/components/estimates/ScopeAssistantPanel.jsx')
 
 assert.match(estimatesSource, /'Draft', 'Saved', 'Sent', 'Approved', 'Rejected', 'Converted to Contract'/)
 assert.match(estimatesSource, /const estimateFilters = \['All', 'Archived', 'Draft', 'Saved', 'Sent', 'Approved', 'Rejected', 'Converted to Contract'\]/)
@@ -73,6 +75,22 @@ assert.match(appSource, /const initialNotifications = \[\]/)
 assert.doesNotMatch(appSource, /estimateApprovedNotification|estimateDeclinedNotification/)
 assert.doesNotMatch(notificationCenterSource, /onNotificationClick|navigate\(/)
 
+// Estimate Builder polish keeps the established workflow while clarifying the
+// visual hierarchy: Send and Preview stay visible, lower-frequency document
+// actions use the shared accessible menu, and assistant state remains wired to
+// the existing readiness helpers.
+assert.match(estimateBuilderSource, /<ActionMenu/)
+assert.match(estimateBuilderSource, /id: 'print'/)
+assert.match(estimateBuilderSource, /id: 'save-as-pdf'/)
+assert.match(estimateBuilderSource, /id: 'archive'/)
+assert.match(estimateBuilderSource, /estimateSettingsSummary/)
+assert.match(estimateBuilderSource, /isDraftDirty/)
+assert.match(estimateBuilderSource, /isScopeAssistantSendBlocked/)
+assert.match(estimateBuilderSource, /resendEstimate.*sendEstimate/)
+assert.match(estimateBuilderSource, /materialsIncluded/)
+assert.match(scopeAssistantPanelSource, /minHeight=\{152\}/)
+assert.match(scopeAssistantPanelSource, /minHeight=\{120\}/)
+
 for (const key of [
   'portalEstimateAwaitingResponse',
   'portalEstimateApproved',
@@ -82,6 +100,12 @@ for (const key of [
   'publicEstimateDeclinedTitle',
   'publicEstimateDeclinedHelp',
 ]) {
+  assert.equal(typeof en[key], 'string', `Missing English translation: ${key}`)
+  assert.equal(typeof es[key], 'string', `Missing Spanish translation: ${key}`)
+  assert.notEqual(en[key], es[key], `Translation should be localized: ${key}`)
+}
+
+for (const key of ['estimateSettingsSummary', 'estimateSettingsSummaryDetailed', 'unsavedChanges', 'changesSaved', 'estimateNotSavedYet', 'estimateActions']) {
   assert.equal(typeof en[key], 'string', `Missing English translation: ${key}`)
   assert.equal(typeof es[key], 'string', `Missing Spanish translation: ${key}`)
   assert.notEqual(en[key], es[key], `Translation should be localized: ${key}`)
