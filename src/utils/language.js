@@ -113,6 +113,13 @@ export function resolveClientFacingLanguage({
   })
 }
 
+// Scope Assistant contractor review language belongs to the authenticated
+// contractor application. It must not inherit a client, lead, or document
+// language, which are all client-facing concerns.
+export function resolveScopeAssistantContractorLanguage({ appLanguage = 'en' } = {}) {
+  return normalizeSupportedLanguage(appLanguage, 'en')
+}
+
 export function normalizeLeadClientLanguageFields(lead = {}, fallback = 'en') {
   const explicitLanguage = normalizeSupportedLanguageOrEmpty(
     lead?.clientLanguage
@@ -169,6 +176,7 @@ export default {
   readRecordLanguage,
   resolveInitialSupportedLanguage,
   resolveClientFacingLanguage,
+  resolveScopeAssistantContractorLanguage,
   resolvePreferredClientLanguage,
   supportedLanguageCodes,
 }

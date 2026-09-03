@@ -45,7 +45,7 @@ import {
   resolveEstimatePricingMode,
   resolveEstimateValidUntil,
 } from '../utils/estimateDocument'
-import { normalizeDocumentLanguageOverride, normalizeSupportedLanguage, resolveClientFacingLanguage } from '../utils/language'
+import { normalizeDocumentLanguageOverride, normalizeSupportedLanguage, resolveClientFacingLanguage, resolveScopeAssistantContractorLanguage } from '../utils/language'
 import { getPaymentTermLabel, getPaymentTermOptions, isKnownPaymentTermValue } from '../utils/paymentTerms'
 import {
   buildEstimateResendTransition,
@@ -711,7 +711,7 @@ export function EstimateBuilderPage({ lead, clientRecord = null, t, appLanguage 
       const initializedState = isEmptyScopeAssistantState(scopeAssistantState)
         ? createScopeAssistantState({
             rawContractorInput: rawScope,
-            contractorLanguage: normalizeSupportedLanguage(scopeAssistantWorkingLanguage, appLanguage),
+            contractorLanguage: scopeAssistantWorkingLanguage,
             clientLanguage: estimateOutputLanguage,
           })
         : scopeAssistantState
@@ -1761,10 +1761,7 @@ export function EstimateBuilderRoute({ companySettings, leads, clients = [], pro
       companySettings={companySettings}
       scopeAssistantAccessToken={session?.access_token || ''}
       scopeAssistantMemberId={contractorAccess?.membership?.id || null}
-      scopeAssistantWorkingLanguage={normalizeSupportedLanguage(
-        contractorAccess?.membership?.preferred_language || companySettings?.appLanguage || appLanguage,
-        appLanguage,
-      )}
+      scopeAssistantWorkingLanguage={resolveScopeAssistantContractorLanguage({ appLanguage })}
       onBack={handleBack}
       backLabel={backLabel}
       isArchived={estimateArchiveState.isArchived}
