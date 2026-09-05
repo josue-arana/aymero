@@ -123,6 +123,7 @@ export function buildProjectWorkspaceViewModel({
     payments: paymentSummary.payments || [],
     events,
     isArchived: false,
+    now,
   })
 
   return {

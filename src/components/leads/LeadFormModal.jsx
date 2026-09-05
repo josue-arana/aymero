@@ -4,6 +4,7 @@ import { SelectField } from '../ui/SelectField'
 import { ModalShell } from '../common/ModalShell'
 import { tStatus } from '../../translations'
 import { buildLanguageOptions, normalizeSupportedLanguage, resolvePreferredClientLanguage } from '../../utils/language'
+import { isValidOptionalEmail, normalizeOptionalEmail } from '../../utils/email'
 
 const emptyLead = {
   client: '',
@@ -75,6 +76,7 @@ export function LeadFormModal({ isOpen, mode = 'create', lead, clients = [], def
       setForm({
         ...emptyLead,
         ...lead,
+        email: normalizeOptionalEmail(lead.email),
         clientLanguage: resolvePreferredClientLanguage({
           lead,
           userLanguage: defaultClientLanguage,
@@ -157,7 +159,7 @@ export function LeadFormModal({ isOpen, mode = 'create', lead, clients = [], def
 
     const trimmedName = form.client.trim()
     const trimmedPhone = form.phone.trim()
-    const trimmedEmail = form.email.trim()
+    const trimmedEmail = normalizeOptionalEmail(form.email)
     const projectTitle = form.projectTitle.trim()
     const projectType = form.projectType.trim()
 
@@ -168,6 +170,11 @@ export function LeadFormModal({ isOpen, mode = 'create', lead, clients = [], def
 
     if (!trimmedPhone && !trimmedEmail) {
       setValidationError(t('leadContactRequiredError'))
+      return
+    }
+
+    if (!isValidOptionalEmail(trimmedEmail)) {
+      setValidationError(t('invalidEmail'))
       return
     }
 
@@ -188,7 +195,7 @@ export function LeadFormModal({ isOpen, mode = 'create', lead, clients = [], def
       projectTitle,
       projectType,
       phone: trimmedPhone,
-      email: trimmedEmail,
+      email: normalizeOptionalEmail(trimmedEmail),
       value: normalizeValue(form.value),
       location: form.location || form.address,
       notes: form.notes.trim(),
@@ -220,7 +227,7 @@ export function LeadFormModal({ isOpen, mode = 'create', lead, clients = [], def
           </button>
         </div>
 
-        <form onSubmit={handleSubmit} className="space-y-5">
+        <form noValidate onSubmit={handleSubmit} className="space-y-5">
           {isCreateMode && sortedClients.length > 0 && (
             <section className="rounded-3xl border border-slate-200 bg-slate-50 p-4">
               <label className="mb-2 block text-sm font-bold text-slate-700">{t('client')}</label>

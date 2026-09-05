@@ -1,4 +1,5 @@
 export const PROJECT_LIFECYCLE_STATUS = Object.freeze({
+  SCHEDULED: 'Scheduled',
   CONTRACT_DRAFT: 'Contract Draft',
   SIGNED: 'Signed',
   IN_PROGRESS: 'In Progress',
@@ -16,6 +17,21 @@ function toList(value) {
 
 function isArchivedRecord(record = {}) {
   return Boolean(record?.isArchived || record?.archivedAt || record?.archived_at)
+}
+
+const storedProjectStatusLabels = {
+  lead: 'Lead',
+  estimate: 'Estimate',
+  contract: 'Signed',
+  signed: 'Signed',
+  scheduled: PROJECT_LIFECYCLE_STATUS.SCHEDULED,
+  in_progress: PROJECT_LIFECYCLE_STATUS.IN_PROGRESS,
+  waiting_on_client: 'Waiting on Client',
+  waiting_on_materials: 'Waiting on Materials',
+  ready_for_final_walkthrough: 'Ready for Final Walkthrough',
+  paid: 'Paid',
+  cancelled: 'Cancelled',
+  canceled: 'Canceled',
 }
 
 export function isProjectContractSigned(contract = {}) {
@@ -116,7 +132,12 @@ export function deriveProjectStatus({
     ...toList(project?.contracts),
     ...toList(project?.portal?.contract),
   ]
+  const hasContractRecord = contractCandidates.some((candidate) => !isArchivedRecord(candidate))
   const hasSignedContract = contractCandidates.some(isProjectContractSigned)
+
+  if (!hasContractRecord) {
+    return storedProjectStatusLabels[storedStatus] || PROJECT_LIFECYCLE_STATUS.SCHEDULED
+  }
 
   if (!hasSignedContract) {
     return PROJECT_LIFECYCLE_STATUS.CONTRACT_DRAFT

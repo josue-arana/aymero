@@ -1,4 +1,5 @@
 import { normalizeClientPreferredLanguageFields, readRecordLanguage } from './language.js'
+import { normalizeOptionalEmail, normalizeOptionalEmailForPersistence } from './email.js'
 
 export function getClientSlug(name = '') {
   return String(name)
@@ -36,7 +37,9 @@ function hasOwnField(record, fieldName) {
 export function mapOptionalClientUpdatesToPersistence(updates = {}) {
   return ['phone', 'email', 'address', 'notes'].reduce((payload, fieldName) => {
     if (hasOwnField(updates, fieldName)) {
-      payload[fieldName] = updates[fieldName] || null
+      payload[fieldName] = fieldName === 'email'
+        ? normalizeOptionalEmailForPersistence(updates[fieldName]) || null
+        : updates[fieldName] || null
     }
     return payload
   }, {})
@@ -84,7 +87,7 @@ export function buildClientProfiles(leads = [], customClients = [], projects = [
       firstName: client.firstName || client.first_name || '',
       lastName: client.lastName || client.last_name || '',
       phone: client.phone || '',
-      email: client.email || '',
+      email: normalizeOptionalEmail(client.email),
       address: client.address || '',
       preferredLanguage: normalizedClient.preferredLanguage,
       latestProjectStatus: client.latestProjectStatus || 'Lead',
@@ -135,7 +138,7 @@ export function buildClientProfiles(leads = [], customClients = [], projects = [
       existing.latestProjectStatus = projectRecord.latestStatus || existing.latestProjectStatus
       if (!existing.manualClient) {
         if (!existing.phone && lead.phone) existing.phone = lead.phone
-        if (!existing.email && lead.email) existing.email = lead.email
+        if (!existing.email && lead.email) existing.email = normalizeOptionalEmail(lead.email)
         if (!existing.address && lead.address) existing.address = lead.address
         if (lead.nextStep) existing.notes = [...new Set([...(existing.notes || []), lead.nextStep])]
       }
@@ -148,7 +151,7 @@ export function buildClientProfiles(leads = [], customClients = [], projects = [
         id: clientKey,
         name,
         phone: lead.phone || '(410) 555-0100',
-        email: lead.email || '',
+        email: normalizeOptionalEmail(lead.email),
         address: lead.address || lead.location || 'Address not added',
         preferredLanguage,
         preferred_language: preferredLanguage,
@@ -222,7 +225,7 @@ export function buildClientProfiles(leads = [], customClients = [], projects = [
       name: resolvedClientName,
       displayName: resolvedClientName,
       phone: project?.phone || '',
-      email: project?.email || '',
+      email: normalizeOptionalEmail(project?.email),
       address: project?.address || project?.location || 'Address not added',
       preferredLanguage,
       preferred_language: preferredLanguage,

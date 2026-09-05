@@ -85,6 +85,10 @@ function readSingleRow(data) {
   return Array.isArray(data) ? data[0] ?? null : data ?? null
 }
 
+function hasOwnField(record, fieldName) {
+  return Boolean(record) && Object.prototype.hasOwnProperty.call(record, fieldName)
+}
+
 function toNumber(value) {
   const parsed = Number(value)
   return Number.isFinite(parsed) ? parsed : 0
@@ -203,6 +207,8 @@ export function mapProjectRowToUiProject(row) {
 }
 
 export function mapUiProjectToProjectRow(contractorId, project = {}) {
+  const normalizedNotes = typeof project.notes === 'string' ? project.notes.trim() : project.notes
+
   return {
     contractor_id: contractorId,
     client_id: normalizeOptionalUuid(project.clientId || project.client_id, 'client_id'),
@@ -217,7 +223,7 @@ export function mapUiProjectToProjectRow(contractorId, project = {}) {
     start_date: project.startDate || project.start_date || null,
     target_end_date: project.targetCompletion || project.target_end_date || null,
     completed_at: project.completedAt || project.completed_at || null,
-    notes: project.notes || project.nextStep || null,
+    notes: normalizedNotes || null,
     sample_data_key: project.sampleDataKey || project.sample_data_key || null,
   }
 }
@@ -373,6 +379,8 @@ export async function update(id, updates, { contractorId } = {}) {
       ...mapUiProjectToProjectRow(contractorId, updates),
       updated_at: new Date().toISOString(),
     }
+
+    if (!hasOwnField(updates, 'notes')) delete payload.notes
 
     delete payload.contractor_id
 

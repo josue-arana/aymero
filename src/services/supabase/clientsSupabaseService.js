@@ -2,6 +2,7 @@ import { USE_SUPABASE, USE_SUPABASE_CLIENTS } from '../../config/backendConfig'
 import { supabaseClient } from '../../lib/supabaseClient'
 import { normalizeSupportedLanguage, normalizeSupportedLanguageOrEmpty } from '../../utils/language'
 import { mapOptionalClientUpdatesToPersistence } from '../../utils/clients'
+import { normalizeOptionalEmail, normalizeOptionalEmailForPersistence } from '../../utils/email'
 
 const TABLE_NAME = 'clients'
 
@@ -140,7 +141,7 @@ export function mapClientRowToUiClient(row) {
     firstName: row?.first_name || '',
     lastName: row?.last_name || '',
     phone: row?.phone || '',
-    email: row?.email || '',
+    email: normalizeOptionalEmail(row?.email),
     address: row?.address || '',
     preferredLanguage,
     preferred_language: preferredLanguage,
@@ -165,7 +166,7 @@ export function mapUiClientToClientRow(contractorId, client = {}) {
     last_name: lastName,
     display_name: displayName,
     phone: client.phone || null,
-    email: client.email || null,
+    email: normalizeOptionalEmailForPersistence(client.email) || null,
     address: client.address || null,
     preferred_language: normalizeSupportedLanguage(
       client.preferredLanguage || client.preferred_language || client.language,
