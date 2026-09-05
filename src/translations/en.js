@@ -974,6 +974,7 @@ export const en = {
   "phoneOrEmailRequiredHelp": "Add at least one way to reach this prospect.",
   "leadRequiredFieldsError": "Complete the required fields before saving this lead.",
   "leadContactRequiredError": "Add a phone number or email address before saving this lead.",
+  "invalidEmail": "Enter a valid email address or leave the field blank.",
   "leadList": "Lead List",
   "leadListHelp": "Search, filter, and open leads without leaving the contractor workflow.",
   "leadActions": "Lead Actions",

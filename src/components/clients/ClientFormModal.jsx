@@ -3,6 +3,7 @@ import { X } from 'lucide-react'
 import { ModalShell } from '../common/ModalShell'
 import { buildLanguageOptions, normalizeSupportedLanguage, resolvePreferredClientLanguage } from '../../utils/language'
 import { readClientNotesForForm } from '../../utils/clients'
+import { isValidOptionalEmail, normalizeOptionalEmail } from '../../utils/email'
 
 const emptyClient = {
   name: '',
@@ -16,17 +17,20 @@ const emptyClient = {
 export function ClientFormModal({ isOpen, mode = 'create', client, defaultPreferredLanguage = 'en', onClose, onSave, t }) {
   const [form, setForm] = useState(emptyClient)
   const [isSubmitting, setIsSubmitting] = useState(false)
+  const [validationError, setValidationError] = useState('')
   const submitGuardRef = useRef(false)
   const languageOptions = buildLanguageOptions(t)
 
   useEffect(() => {
     if (!isOpen) return
     setIsSubmitting(false)
+    setValidationError('')
     submitGuardRef.current = false
     setForm(client
       ? {
           ...emptyClient,
           ...client,
+          email: normalizeOptionalEmail(client.email),
           notes: readClientNotesForForm(client.notes),
           preferredLanguage: resolvePreferredClientLanguage({
             client,
@@ -42,6 +46,7 @@ export function ClientFormModal({ isOpen, mode = 'create', client, defaultPrefer
   if (!isOpen) return null
 
   function updateField(field, value) {
+    setValidationError('')
     setForm((current) => ({ ...current, [field]: value }))
   }
 
@@ -52,12 +57,19 @@ export function ClientFormModal({ isOpen, mode = 'create', client, defaultPrefer
       return
     }
 
+    const normalizedEmail = normalizeOptionalEmail(form.email)
+    if (!isValidOptionalEmail(normalizedEmail)) {
+      setValidationError(t('invalidEmail'))
+      return
+    }
+
     submitGuardRef.current = true
     setIsSubmitting(true)
 
     try {
       await onSave?.({
         ...form,
+        email: normalizedEmail,
         name: form.name.trim() || t('newClientFallback'),
         preferredLanguage: normalizeSupportedLanguage(form.preferredLanguage, defaultPreferredLanguage),
       })
@@ -80,7 +92,7 @@ export function ClientFormModal({ isOpen, mode = 'create', client, defaultPrefer
           </button>
         </div>
 
-        <form onSubmit={handleSubmit} className="space-y-5">
+        <form noValidate onSubmit={handleSubmit} className="space-y-5">
           <section className="grid gap-4 sm:grid-cols-2">
             <TextField label={t('customerName')} value={form.name} onChange={(value) => updateField('name', value)} required />
             <TextField label={t('phone')} value={form.phone} onChange={(value) => updateField('phone', value)} />
@@ -108,6 +120,7 @@ export function ClientFormModal({ isOpen, mode = 'create', client, defaultPrefer
               placeholder={t('clientNotesPlaceholder')}
             />
           </div>
+          {validationError ? <p className="text-sm font-medium text-red-600" role="alert">{validationError}</p> : null}
           <div className="flex flex-col-reverse gap-3 sm:flex-row sm:justify-end">
             <button type="button" disabled={isSubmitting} onClick={onClose} className="rounded-2xl border border-slate-200 px-5 py-3 text-sm font-bold text-slate-700 hover:bg-slate-50 disabled:cursor-not-allowed disabled:opacity-60">{t('cancel')}</button>
             <button type="submit" disabled={isSubmitting} className="rounded-2xl bg-blue-600 px-5 py-3 text-sm font-bold text-white hover:bg-blue-700 disabled:cursor-not-allowed disabled:bg-blue-400">{isSubmitting ? t('saving') : mode === 'edit' ? t('saveChanges') : t('saveClient')}</button>

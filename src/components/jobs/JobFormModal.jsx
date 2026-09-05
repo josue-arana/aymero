@@ -93,7 +93,7 @@ export function JobFormModal({ isOpen, mode = 'create', project = null, clients 
       projectStatus: editingProject.projectStatus || editingProject.status || emptyJob.projectStatus,
       startDate: editingProject.startDate || editingProject.start_date || '',
       value: editingProject.value ?? editingProject.estimatedValue ?? editingProject.contractValue ?? '',
-      notes: editingProject.notes || editingProject.nextStep || '',
+      notes: editingProject.notes || '',
     } : {
       ...emptyJob,
       client: matchedClient?.name || '',

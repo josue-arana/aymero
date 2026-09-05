@@ -32,6 +32,7 @@
     "verify:estimate-polish": "node scripts/verify-estimate-polish.mjs",
     "verify:invoice-creation": "node scripts/verify-invoice-creation.mjs",
     "verify:project-completion": "node scripts/verify-project-completion.mjs",
+    "verify:project-data-integrity": "node scripts/verify-project-data-integrity.mjs",
     "verify:saas-billing": "node scripts/verify-saas-billing-foundation.mjs",
     "verify:billing-settings": "node scripts/verify-billing-settings-sync.mjs",
     "verify:subscription-hub": "node scripts/verify-subscription-hub.mjs",

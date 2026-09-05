@@ -3,6 +3,7 @@ import { supabaseClient } from '../../lib/supabaseClient'
 import { readLeadPipelineStage } from '../local/leadPipelineStorage'
 import { getLeadPipelineStage } from '../../utils/leadPipeline'
 import { normalizeSupportedLanguage, normalizeSupportedLanguageOrEmpty } from '../../utils/language'
+import { normalizeOptionalEmail, normalizeOptionalEmailForPersistence } from '../../utils/email'
 
 const TABLE_NAME = 'leads'
 
@@ -194,7 +195,7 @@ export function mapLeadRowToUiLead(row) {
     clientName,
     customerName: clientName,
     phone: row?.phone || '',
-    email: row?.email || '',
+    email: normalizeOptionalEmail(row?.email),
     address: row?.address || '',
     location: row?.address || '',
     title: projectTitle,
@@ -234,7 +235,7 @@ export function mapUiLeadToLeadRow(contractorId, lead = {}) {
     project_id: normalizeOptionalUuid(lead.projectId || lead.project_id, 'project_id'),
     name: lead.client || lead.name || 'Unknown Client',
     phone: lead.phone || null,
-    email: lead.email || null,
+    email: normalizeOptionalEmailForPersistence(lead.email) || null,
     address: lead.address || lead.location || null,
     service_type: projectTitle,
     source: lead.source || null,
@@ -275,7 +276,7 @@ function mapUiLeadUpdatesToLeadRow(updates = {}) {
   }
 
   if (hasOwnField(updates, 'email')) {
-    payload.email = updates.email || null
+    payload.email = normalizeOptionalEmailForPersistence(updates.email) || null
   }
 
   if (hasOwnField(updates, 'address') || hasOwnField(updates, 'location')) {

@@ -974,6 +974,7 @@ export const es = {
   "phoneOrEmailRequiredHelp": "Agrega al menos una forma de contactar a este prospecto.",
   "leadRequiredFieldsError": "Completa los campos obligatorios antes de guardar este cliente potencial.",
   "leadContactRequiredError": "Agrega un teléfono o un correo antes de guardar este cliente potencial.",
+  "invalidEmail": "Ingresa un correo electrónico válido o deja el campo en blanco.",
   "leadList": "Lista de clientes potenciales",
   "leadListHelp": "Busca, filtra y abre clientes potenciales sin salir del flujo del contratista.",
   "leadActions": "Acciones del cliente potencial",

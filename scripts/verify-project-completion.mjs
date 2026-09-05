@@ -37,22 +37,27 @@ const preservedProject = {
   invoices: [{ id: 'invoice-one' }],
   payments: [{ id: 'payment-one', amount: 100 }],
   photos: [{ id: 'photo-one' }],
-  events: [{ id: 'event-one', date: '2026-08-30', status: 'Scheduled' }],
+  events: [
+    { id: 'event-past', date: '2026-08-20', status: 'Scheduled' },
+    { id: 'event-upcoming', date: '2026-08-30', status: 'Scheduled' },
+  ],
   ...completionUpdate,
 }
 assert.equal(preservedProject.invoices.length, 1)
 assert.equal(preservedProject.payments.length, 1)
 assert.equal(preservedProject.photos.length, 1)
-assert.equal(preservedProject.events.length, 1)
+assert.equal(preservedProject.events.length, 2)
 
 const workspace = buildProjectWorkspaceViewModel({
   project: preservedProject,
   invoices: [{ id: 'invoice-one', amount: 1000, amountPaid: 0, status: 'Sent' }],
   events: preservedProject.events,
+  now: new Date('2026-08-25T12:00:00.000Z'),
 })
 assert.equal(workspace.projectStatus, PROJECT_LIFECYCLE_STATUS.COMPLETED)
 assert.equal(workspace.nextAction, null)
-assert.equal(workspace.upcomingEvents.length, 1)
+assert.deepEqual(workspace.upcomingEvents.map((event) => event.id), ['event-upcoming'])
+assert.deepEqual(workspace.historyEvents.map((event) => event.id), ['event-past'])
 
 const dashboardOptions = { projects: [preservedProject], leads: [] }
 assert.equal(selectDashboardProjectRecords(dashboardOptions).length, 1)

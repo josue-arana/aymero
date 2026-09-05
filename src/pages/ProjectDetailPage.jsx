@@ -1118,6 +1118,7 @@ function ProjectDetailPageContent({ lead, companySettings, clients = [], invoice
         { label: t('uploadPhotos'), icon: Camera, action: () => setShowPhotoModal(true) },
         { label: t('edit'), icon: Edit3, action: () => setIsEditOpen(true) },
       ].filter(Boolean)
+  const moreActionSpansMobileRow = !projectIsArchived && (actionButtons.length - 1) % 2 === 0
   const moreMenuItems = [
     hasEstimate
       ? {
@@ -1643,8 +1644,8 @@ function ProjectDetailPageContent({ lead, companySettings, clients = [], invoice
           </div>
         </div>
 
-        <div data-project-workspace-hero-actions="true" className="relative mt-7 grid grid-cols-1 gap-2 border-t border-white/10 pt-5 min-[380px]:grid-cols-2 sm:flex sm:flex-wrap sm:items-center">
-          {actionButtons.map((button) => {
+        <div data-project-workspace-hero-actions="true" className="relative mt-7 grid min-w-0 grid-cols-2 gap-2 border-t border-white/10 pt-5 lg:flex lg:flex-nowrap lg:items-center">
+          {actionButtons.map((button, index) => {
             const Icon = button.icon
             return (
               <button
@@ -1652,9 +1653,9 @@ function ProjectDetailPageContent({ lead, companySettings, clients = [], invoice
                 type="button"
                 onClick={button.action}
                 disabled={button.disabled}
-                className={`inline-flex min-h-12 w-full items-center justify-center gap-2 rounded-2xl px-4 py-3 text-sm font-bold transition focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-blue-200 focus-visible:ring-offset-2 focus-visible:ring-offset-slate-950 disabled:cursor-not-allowed disabled:opacity-60 sm:w-auto ${button.primary ? 'bg-blue-500 text-white shadow-lg shadow-blue-950/25 hover:bg-blue-400 disabled:bg-blue-400' : 'border border-white/15 bg-white/10 text-white hover:bg-white/15'}`}
+                className={`inline-flex min-h-12 min-w-0 w-full items-center justify-center gap-2 rounded-2xl px-4 py-3 text-sm font-bold transition focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-blue-200 focus-visible:ring-offset-2 focus-visible:ring-offset-slate-950 lg:w-auto ${index === 0 ? 'col-span-2 lg:col-span-1' : ''} ${button.primary ? 'bg-blue-500 text-white shadow-lg shadow-blue-950/25 hover:bg-blue-400 disabled:bg-blue-400' : 'border border-white/15 bg-white/10 text-white hover:bg-white/15'}`}
               >
-                <Icon className="h-4 w-4" aria-hidden="true" /> {button.label}
+                <Icon className="h-4 w-4 shrink-0" aria-hidden="true" /> <span className="break-words">{button.label}</span>
               </button>
             )
           })}
@@ -1662,14 +1663,14 @@ function ProjectDetailPageContent({ lead, companySettings, clients = [], invoice
             <ActionMenu
               label={<><MoreVertical className="h-4 w-4" aria-hidden="true" /> {t('more')}</>}
               ariaLabel={t('more')}
-              containerClassName="w-full sm:w-auto"
-              buttonClassName="inline-flex min-h-12 w-full items-center justify-center gap-2 rounded-2xl border border-white/15 bg-white/10 px-4 py-3 text-sm font-bold text-white transition hover:bg-white/15 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-blue-200 focus-visible:ring-offset-2 focus-visible:ring-offset-slate-950 sm:w-auto"
+              containerClassName={`min-w-0 w-full lg:w-auto ${moreActionSpansMobileRow ? 'col-span-2' : ''}`}
+              buttonClassName="inline-flex min-h-12 min-w-0 w-full items-center justify-center gap-2 rounded-2xl border border-white/15 bg-white/10 px-4 py-3 text-sm font-bold text-white transition hover:bg-white/15 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-blue-200 focus-visible:ring-offset-2 focus-visible:ring-offset-slate-950 lg:w-auto"
               menuClassName="max-w-[calc(100vw-3rem)]"
               items={moreMenuItems}
             />
           ) : null}
           {projectIsArchived ? (
-            <button type="button" onClick={() => setConfirmAction({ mode: 'delete' })} className="inline-flex min-h-12 w-full items-center justify-center gap-2 rounded-2xl border border-red-300/30 bg-red-400/10 px-4 py-3 text-sm font-bold text-red-100 transition hover:bg-red-400/20 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-red-200 focus-visible:ring-offset-2 focus-visible:ring-offset-slate-950 sm:w-auto">
+            <button type="button" onClick={() => setConfirmAction({ mode: 'delete' })} className="inline-flex min-h-12 min-w-0 w-full items-center justify-center gap-2 rounded-2xl border border-red-300/30 bg-red-400/10 px-4 py-3 text-sm font-bold text-red-100 transition hover:bg-red-400/20 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-red-200 focus-visible:ring-offset-2 focus-visible:ring-offset-slate-950 lg:w-auto">
               <Trash2 className="h-4 w-4" aria-hidden="true" /> {t('deletePermanently')}
             </button>
           ) : null}

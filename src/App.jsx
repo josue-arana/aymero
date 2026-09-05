@@ -42,6 +42,7 @@ import { CalendarPage } from './pages/CalendarPage'
 import { AuthSetupPage } from './pages/AuthSetupPage'
 import { PublicEstimatePage } from './pages/PublicEstimatePage'
 import { buildClientProfiles, getClientSlug, mergeClientUpdatesIntoRelatedRecord } from './utils/clients'
+import { normalizeOptionalEmail } from './utils/email'
 import { appRoutes } from './config/appRoutes'
 import { AuthProvider } from './contexts/AuthContext'
 import { useAuth } from './contexts/AuthContext'
@@ -215,7 +216,7 @@ function buildProjectFromLead(lead, projectId = '', linkedEstimate = null) {
     clientName,
     customerName: clientName,
     phone: lead?.phone || '',
-    email: lead?.email || '',
+    email: normalizeOptionalEmail(lead?.email),
     clientLanguage: lead?.clientLanguage || '',
     title: projectTitle,
     projectTitle,
@@ -1974,7 +1975,7 @@ function buildWorkspaceJobRecord(job, clientRecord = null) {
       name: clientName,
       displayName: clientName,
       phone: leadRecord?.phone || '',
-      email: leadRecord?.email || '',
+      email: normalizeOptionalEmail(leadRecord?.email),
       address: leadRecord?.address || leadRecord?.location || '',
       preferredLanguage: resolvedClientLanguage,
     }
