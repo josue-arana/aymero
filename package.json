@@ -16,6 +16,7 @@
     "verify:aymero-loader": "node scripts/verify-aymero-loader.mjs",
     "verify:archive-workflow": "node scripts/verify-archive-workflow.mjs",
     "verify:lead-lifecycle": "node scripts/verify-lead-lifecycle.mjs",
+    "verify:lead-detail-layout": "node scripts/verify-lead-detail-layout.mjs",
     "verify:client-detail-workspace": "node scripts/verify-client-detail-workspace.mjs",
     "verify:document-branding": "node scripts/verify-document-branding.mjs",
     "verify:action-menus": "node scripts/verify-action-menus.mjs",
