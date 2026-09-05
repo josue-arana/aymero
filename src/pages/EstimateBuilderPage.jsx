@@ -38,6 +38,7 @@ import {
   ESTIMATE_PRICING_DETAILED,
   ESTIMATE_PRICING_SIMPLE,
   getValidExplicitEstimateItems,
+  hasMeaningfulEstimateContent,
   hasMeaningfulEstimateFormattedText,
   normalizeEstimateDocument,
   normalizeEstimateFormattedTextForStorage,
@@ -82,8 +83,10 @@ import { runPersistedScopeAssistantRequest } from '../utils/scopeAssistantWorkfl
 const simplePricingMode = ESTIMATE_PRICING_SIMPLE
 const detailedPricingMode = ESTIMATE_PRICING_DETAILED
 const estimatePreviewPageWidth = ESTIMATE_DOCUMENT_SOURCE_WIDTH
+const ESTIMATE_SEND_REASON_CONTENT_REQUIRED = 'estimate_content_required'
 
 const scopeAssistantReadinessTranslationKeys = {
+  [ESTIMATE_SEND_REASON_CONTENT_REQUIRED]: 'estimateContentRequired',
   [SCOPE_ASSISTANT_SEND_REASON.APPROVAL_REQUIRED]: 'scopeAssistantApprovalRequiredNotice',
   [SCOPE_ASSISTANT_SEND_REASON.APPROVAL_STALE]: 'scopeAssistantApprovalStaleNotice',
   [SCOPE_ASSISTANT_SEND_REASON.TRANSLATION_REQUIRED]: 'scopeAssistantTranslationRequiredNotice',
@@ -186,13 +189,6 @@ function isArchivedProject(project = {}) {
   )
 }
 
-function buildDefaultLineItems(leadValue, materialsIncluded, t) {
-  return [
-    { name: t('laborAndProjectSetup'), amount: Math.round(Number(leadValue || 0) * 0.35), materialsIncluded },
-    { name: t('materialsAndFinishWork'), amount: Math.round(Number(leadValue || 0) * 0.65), materialsIncluded },
-  ]
-}
-
 function logEstimateShareResolution(resolution, estimate = {}, { usedResolvedFallback = false } = {}) {
   if (!import.meta.env.DEV) return
 
@@ -224,7 +220,6 @@ function buildEstimateDraftState({ savedEstimate = {}, lead, companySettings, t 
   const savedLineItems = normalizeLineItems(savedEstimate.lineItems, defaultMaterialsIncluded)
   const explicitSavedLineItems = getValidExplicitEstimateItems(savedLineItems)
   const hasSavedLineItems = explicitSavedLineItems.length > 0
-  const defaultLineItems = buildDefaultLineItems(lead?.value, defaultMaterialsIncluded, t)
   const savedPricingMode = resolveEstimatePricingMode(
     savedEstimate.pricingMode || savedEstimate.pricing_mode,
     explicitSavedLineItems
@@ -239,8 +234,8 @@ function buildEstimateDraftState({ savedEstimate = {}, lead, companySettings, t 
     paymentTerms: savedEstimate.paymentTerms || companySettings?.defaults?.paymentTerms || t('defaultPaymentTerms'),
     estimateLanguage: normalizeDocumentLanguageOverride(savedEstimate.estimateLanguage),
     pricingMode: savedPricingMode,
-    lineItems: hasSavedLineItems ? explicitSavedLineItems : defaultLineItems,
-    lineItemAmountInputs: (hasSavedLineItems ? explicitSavedLineItems : defaultLineItems).map((item) => formatAmountInputValue(item.amount)),
+    lineItems: hasSavedLineItems ? explicitSavedLineItems : [],
+    lineItemAmountInputs: (hasSavedLineItems ? explicitSavedLineItems : []).map((item) => formatAmountInputValue(item.amount)),
   }
 }
 
@@ -415,15 +410,33 @@ export function EstimateBuilderPage({ lead, clientRecord = null, t, appLanguage 
     && scopeAssistantReadiness.manual
   const isScopeAssistantSendBlocked = !scopeAssistantReadiness.ready || isScopeAssistantReadinessPending
 
+  async function getEstimateSendReadiness() {
+    const assistantReadiness = await getScopeAssistantSendReadiness(scopeAssistantState, scope)
+    const contentReady = hasMeaningfulEstimateContent({
+      scope,
+      lineItems: isDetailedPricing ? lineItems : [],
+    })
+
+    if (!contentReady) {
+      return {
+        ...assistantReadiness,
+        ready: false,
+        reason: ESTIMATE_SEND_REASON_CONTENT_REQUIRED,
+      }
+    }
+
+    return assistantReadiness
+  }
+
   useEffect(() => {
     let cancelled = false
-    void getScopeAssistantSendReadiness(scopeAssistantState, scope).then((readiness) => {
+    void getEstimateSendReadiness().then((readiness) => {
       if (!cancelled) setScopeAssistantReadiness(readiness)
     })
     return () => {
       cancelled = true
     }
-  }, [scope, scopeAssistantState])
+  }, [isDetailedPricing, lineItems, scope, scopeAssistantState])
 
   useEffect(() => {
     if (isEmptyScopeAssistantState(scopeAssistantState) || !estimateOutputLanguage) return
@@ -593,7 +606,7 @@ export function EstimateBuilderPage({ lead, clientRecord = null, t, appLanguage 
   async function handleOpenSendModal() {
     if (isEstimateActionPending || estimateSaveGuardRef.current) return
 
-    const readiness = await getScopeAssistantSendReadiness(scopeAssistantState, scope)
+    const readiness = await getEstimateSendReadiness()
     setScopeAssistantReadiness(readiness)
     if (!readiness.ready) {
       const messageKey = scopeAssistantReadinessTranslationKeys[readiness.reason]
@@ -998,6 +1011,11 @@ export function EstimateBuilderPage({ lead, clientRecord = null, t, appLanguage 
     setLineItemAmountInputs((items) => items.map((item, itemIndex) => itemIndex === index ? formatAmountInputValue(numericValue) : item))
   }
 
+  function handleLineItemQuantityInput(index, rawValue) {
+    const quantity = Number(rawValue)
+    updateLineItem(index, 'quantity', Number.isFinite(quantity) && quantity > 0 ? quantity : undefined)
+  }
+
   function handleSimpleTotalInput(rawValue) {
     const sanitizedValue = sanitizeAmountInput(rawValue)
     markDraftDirty()
@@ -1022,10 +1040,13 @@ export function EstimateBuilderPage({ lead, clientRecord = null, t, appLanguage 
 
   function useDetailedPricing() {
     markDraftDirty()
-    setLineItems((items) => items.map((item) => ({
-      ...item,
-      materialsIncluded: item?.materialsIncluded ?? materialsIncluded,
-    })))
+    setLineItems((items) => items.length
+      ? items.map((item) => ({
+          ...item,
+          materialsIncluded: item?.materialsIncluded ?? materialsIncluded,
+        }))
+      : [createEmptyLineItem(materialsIncluded)])
+    setLineItemAmountInputs((items) => items.length ? items : [''])
     setPricingMode(detailedPricingMode)
   }
 
@@ -1231,7 +1252,7 @@ export function EstimateBuilderPage({ lead, clientRecord = null, t, appLanguage 
                     {lineItems.map((item, index) => (
                       <div key={index} className="min-w-0 rounded-2xl border border-slate-200 p-3">
                         {isEditing ? (
-                          <div className="grid gap-3 sm:grid-cols-[minmax(0,1fr)_168px] sm:items-start">
+                          <div className="grid gap-3 sm:grid-cols-[minmax(0,1fr)_184px] sm:items-start">
                             <div className="min-w-0 space-y-2">
                               <label className="block text-xs font-bold uppercase tracking-[0.14em] text-slate-400">
                                 {t('lineItemDetails')}
@@ -1249,22 +1270,39 @@ export function EstimateBuilderPage({ lead, clientRecord = null, t, appLanguage 
                               />
                             </div>
                             <div className="min-w-0 flex flex-col gap-2 sm:pt-6">
-                              <div className="space-y-1">
-                                <label className="block text-[11px] font-bold uppercase tracking-[0.14em] text-slate-400">
-                                  {t('lineItemAmount')}
-                                </label>
-                                <div className="flex h-11 items-center rounded-xl border border-slate-200 bg-white pl-3 pr-2 focus-within:border-blue-500 focus-within:ring-4 focus-within:ring-blue-100">
-                                  <span className="mr-2 text-sm font-semibold text-slate-400">$</span>
+                              <div className="grid grid-cols-[78px_minmax(0,1fr)] gap-2">
+                                <div className="space-y-1">
+                                  <label className="block text-[11px] font-bold uppercase tracking-[0.14em] text-slate-400">
+                                    {t('quantity')}
+                                  </label>
                                   <input
-                                    type="text"
+                                    type="number"
+                                    min="0"
+                                    step="any"
                                     inputMode="decimal"
-                                    value={lineItemAmountInputs[index] ?? ''}
-                                    onChange={(event) => handleLineItemAmountInput(index, event.target.value)}
-                                    onBlur={() => handleLineItemAmountBlur(index)}
-                                    placeholder={t('amount')}
-                                    aria-label={t('lineItemAmount')}
-                                    className="h-full w-full bg-transparent text-sm font-semibold text-slate-900 outline-none placeholder:text-slate-300 sm:text-right"
+                                    value={item.quantity ?? ''}
+                                    onChange={(event) => handleLineItemQuantityInput(index, event.target.value)}
+                                    aria-label={t('quantity')}
+                                    className="h-11 w-full rounded-xl border border-slate-200 bg-white px-3 text-sm font-semibold text-slate-900 outline-none placeholder:text-slate-300 focus:border-blue-500 focus:ring-4 focus:ring-blue-100"
                                   />
+                                </div>
+                                <div className="min-w-0 space-y-1">
+                                  <label className="block text-[11px] font-bold uppercase tracking-[0.14em] text-slate-400">
+                                    {t('lineItemAmount')}
+                                  </label>
+                                  <div className="flex h-11 items-center rounded-xl border border-slate-200 bg-white pl-3 pr-2 focus-within:border-blue-500 focus-within:ring-4 focus-within:ring-blue-100">
+                                    <span className="mr-2 text-sm font-semibold text-slate-400">$</span>
+                                    <input
+                                      type="text"
+                                      inputMode="decimal"
+                                      value={lineItemAmountInputs[index] ?? ''}
+                                      onChange={(event) => handleLineItemAmountInput(index, event.target.value)}
+                                      onBlur={() => handleLineItemAmountBlur(index)}
+                                      placeholder={t('amount')}
+                                      aria-label={t('lineItemAmount')}
+                                      className="h-full w-full bg-transparent text-sm font-semibold text-slate-900 outline-none placeholder:text-slate-300 sm:text-right"
+                                    />
+                                  </div>
                                 </div>
                               </div>
                               <div className="space-y-1">
@@ -1294,9 +1332,10 @@ export function EstimateBuilderPage({ lead, clientRecord = null, t, appLanguage 
                             </div>
                           </div>
                         ) : (
-                          <div className="grid gap-3 sm:grid-cols-[minmax(0,1fr)_168px] sm:items-start">
+                          <div className="grid gap-3 sm:grid-cols-[minmax(0,1fr)_184px] sm:items-start">
                             <EstimateFormattedText value={item.name || t('item')} className="rounded-xl bg-slate-50 px-3 py-3 text-sm leading-6 text-slate-700" />
                             <div className="space-y-2">
+                              {Number(item.quantity) > 0 ? <div className="rounded-xl bg-slate-50 px-3 py-2 text-right text-xs font-bold text-slate-700">{t('quantity')}: {item.quantity}</div> : null}
                               <div className="rounded-xl bg-slate-50 px-3 py-3 text-right text-sm font-bold text-slate-900">{currency.format(Number(item.amount || 0))}</div>
                               <div className={`rounded-xl px-3 py-2 text-xs font-bold ${item.materialsIncluded ? 'bg-emerald-50 text-emerald-700 ring-1 ring-emerald-100' : 'bg-slate-50 text-slate-700 ring-1 ring-slate-200'}`}>
                                 {item.materialsIncluded ? `${t('materialsIncluded')}: ${t('yes')}` : `${t('materialsIncluded')}: ${t('no')}`}

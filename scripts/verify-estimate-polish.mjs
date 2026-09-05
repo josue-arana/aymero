@@ -6,6 +6,12 @@ import {
   getEstimatePortalStatusPresentation,
 } from '../src/utils/estimateClientResponse.js'
 import { canEditEstimate } from '../src/utils/estimateFinalization.js'
+import {
+  hasMeaningfulEstimateContent,
+  hasMeaningfulEstimateLineItemContent,
+  normalizeEstimateDocument,
+  normalizeEstimateLineItemsForStorage,
+} from '../src/utils/estimateDocument.js'
 import { en } from '../src/translations/en.js'
 import { es } from '../src/translations/es.js'
 
@@ -40,6 +46,35 @@ const appSource = read('../src/App.jsx')
 const notificationCenterSource = read('../src/components/layout/NotificationCenter.jsx')
 const estimateBuilderSource = read('../src/pages/EstimateBuilderPage.jsx')
 const scopeAssistantPanelSource = read('../src/components/estimates/ScopeAssistantPanel.jsx')
+const estimatePdfSource = read('../src/components/estimates/EstimatePdfTemplate.jsx')
+const contractDocumentSource = read('../src/utils/contractDocument.js')
+
+assert.equal(hasMeaningfulEstimateContent({}), false)
+assert.equal(hasMeaningfulEstimateContent({ scope: '   ' }), false)
+assert.equal(hasMeaningfulEstimateLineItemContent([{ name: '', amount: 0 }]), false)
+assert.equal(hasMeaningfulEstimateContent({ lineItems: [{ name: 'Install exterior door.', amount: 0 }] }), true)
+assert.equal(hasMeaningfulEstimateContent({ lineItems: [{ name: '', amount: 500 }] }), false)
+
+const normalizedBlankQuantityItems = normalizeEstimateLineItemsForStorage([
+  { name: 'Install exterior door.', amount: 500, quantity: '' },
+  { name: 'Paint trim.', amount: 200, quantity: 0 },
+])
+assert.deepEqual(normalizedBlankQuantityItems.map((item) => item.quantity), [undefined, undefined])
+const normalizedQuantityItems = normalizeEstimateLineItemsForStorage([
+  { name: 'Install exterior door.', amount: 500, quantity: 3 },
+  { name: 'Paint trim.', amount: 200 },
+])
+assert.equal(normalizedQuantityItems[0].quantity, 3)
+assert.equal(normalizedQuantityItems[0].amount, 500)
+assert.equal(normalizedQuantityItems[1].quantity, undefined)
+
+const quantityDocument = normalizeEstimateDocument({
+  pricingMode: 'detailed',
+  lineItems: normalizedQuantityItems,
+})
+assert.equal(quantityDocument.workItems[0].quantity, 3)
+assert.equal(quantityDocument.workItems[1].quantity, undefined)
+assert.equal(quantityDocument.totals.total, 700)
 
 assert.match(estimatesSource, /'Draft', 'Saved', 'Sent', 'Approved', 'Rejected', 'Converted to Contract'/)
 assert.match(estimatesSource, /const estimateFilters = \['All', 'Archived', 'Draft', 'Saved', 'Sent', 'Approved', 'Rejected', 'Converted to Contract'\]/)
@@ -88,8 +123,22 @@ assert.match(estimateBuilderSource, /isDraftDirty/)
 assert.match(estimateBuilderSource, /isScopeAssistantSendBlocked/)
 assert.match(estimateBuilderSource, /resendEstimate.*sendEstimate/)
 assert.match(estimateBuilderSource, /materialsIncluded/)
+assert.match(estimateBuilderSource, /ESTIMATE_SEND_REASON_CONTENT_REQUIRED/)
+assert.match(estimateBuilderSource, /getEstimateSendReadiness/)
+assert.match(estimateBuilderSource, /hasMeaningfulEstimateContent\(\{/)
+assert.match(estimateBuilderSource, /type="number"/)
+assert.match(estimateBuilderSource, /inputMode="decimal"/)
+assert.match(estimateBuilderSource, /\[createEmptyLineItem\(materialsIncluded\)\]/)
+assert.doesNotMatch(estimateBuilderSource, /function buildDefaultLineItems/)
 assert.match(scopeAssistantPanelSource, /minHeight=\{152\}/)
 assert.match(scopeAssistantPanelSource, /minHeight=\{120\}/)
+assert.ok(scopeAssistantPanelSource.indexOf('onClick={onApprove}') < scopeAssistantPanelSource.indexOf('onClick={onRegenerate}'))
+assert.match(estimatePdfSource, /function getWorkBreakdownGridColumns\(showQuantity\)/)
+assert.match(estimatePdfSource, /workItems\.some\(\(item\) => Number\(item\?\.quantity\) > 0\)/)
+assert.match(estimatePdfSource, /data-estimate-quantity-column="true"/)
+assert.match(estimatePdfSource, /showQuantity=\{hasQuantity\}/)
+assert.match(contractDocumentSource, /resolveEstimateLineItemQuantity/)
+assert.match(contractDocumentSource, /\{ quantity \}/)
 
 for (const key of [
   'portalEstimateAwaitingResponse',
@@ -105,11 +154,14 @@ for (const key of [
   assert.notEqual(en[key], es[key], `Translation should be localized: ${key}`)
 }
 
-for (const key of ['estimateSettingsSummary', 'estimateSettingsSummaryDetailed', 'unsavedChanges', 'changesSaved', 'estimateNotSavedYet', 'estimateActions']) {
+for (const key of ['estimateSettingsSummary', 'estimateSettingsSummaryDetailed', 'unsavedChanges', 'changesSaved', 'estimateNotSavedYet', 'estimateActions', 'quantity', 'estimateContentRequired']) {
   assert.equal(typeof en[key], 'string', `Missing English translation: ${key}`)
   assert.equal(typeof es[key], 'string', `Missing Spanish translation: ${key}`)
   assert.notEqual(en[key], es[key], `Translation should be localized: ${key}`)
 }
+
+assert.equal(en.addItem, 'Add Line Item')
+assert.equal(es.addItem, 'Agregar partida')
 
 assert.doesNotMatch(en.sendClientLinkHelp, /secure/i)
 assert.doesNotMatch(es.sendClientLinkHelp, /segur/i)

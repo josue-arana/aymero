@@ -116,7 +116,10 @@ assert.match(actionMenuSource, /window\.visualViewport/)
 assert.match(actionMenuSource, /overflow-x-hidden/)
 assert.doesNotMatch(projectSource, /openPaymentMenuId|openScheduleMenuId/)
 assert.equal((`${projectSource}\n${projectScheduleSource}`.match(/<ActionMenu/g) || []).length >= 4, true)
-assert.match(clientSource, /mobileHeroActionGridClasses/)
+assert.match(clientSource, /data-client-detail-hero="consolidated"/)
+assert.match(clientSource, /grid min-w-0 grid-cols-2 gap-2\.5/)
+assert.match(clientSource, /heroContactActions\.map\(\(action\) => renderHeroContactAction\(action\)\)/)
+assert.equal((clientSource.match(/<ActionMenu/g) || []).length, 1)
 
 for (const consumer of sharedConsumers) {
   assert.match(read(consumer), /ActionMenu/)

@@ -19,7 +19,7 @@ import { currency, formatDisplayDate } from '../utils/formatters'
 import { archiveMenuItemClasses } from '../utils/buttonStyles'
 import { getLeadPipelineStage, leadPipelineStages } from '../utils/leadPipeline'
 import { resolveLeadLifecycle, selectPrimaryLeadEstimate } from '../utils/leadLifecycle'
-import { getLanguageLocale } from '../utils/language'
+import { getLanguageLocale, normalizeSupportedLanguageOrEmpty } from '../utils/language'
 
 function logLeadDetailDevError(message, error, meta) {
   if (!import.meta.env.DEV) return
@@ -280,6 +280,8 @@ export function LeadDetailPage({
   const leadDisplayName = currentLead?.client || currentLead?.name || t('lead')
   const projectDisplayTitle = currentLead?.projectTitle || currentLead?.projectType || t('unknownProject')
   const createdDateDisplay = formatDisplayDate(currentLead?.createdAt || currentLead?.created_at)
+  const clientLanguage = normalizeSupportedLanguageOrEmpty(currentLead?.clientLanguage)
+  const clientLanguageDisplay = clientLanguage ? t(clientLanguage === 'es' ? 'spanish' : 'english') : ''
   const jobLocationDisplay = String(currentLead?.address || currentLead?.location || '')
     .split(',')
     .map((part) => part.trim())
@@ -288,6 +290,7 @@ export function LeadDetailPage({
   const leadInformation = [
     currentLead?.source ? { id: 'source', label: t('leadSource'), value: currentLead.source } : null,
     createdDateDisplay ? { id: 'created', label: t('dateCreated'), value: createdDateDisplay } : null,
+    clientLanguageDisplay ? { id: 'language', label: t('preferredLanguage'), value: clientLanguageDisplay } : null,
   ].filter(Boolean)
   const leadActivityEvents = buildLeadActivityEvents({
     lead: currentLead,
@@ -788,62 +791,81 @@ export function LeadDetailPage({
 
       <LeadProgress currentStage={currentStage} t={t} />
 
-      <section className="grid min-w-0 gap-5 lg:grid-cols-[minmax(0,2fr)_minmax(280px,1fr)] lg:items-start lg:gap-6">
-        <section className={`min-w-0 rounded-3xl border p-4 shadow-md shadow-slate-200/50 sm:p-5 lg:col-start-1 lg:row-start-1 ${isConvertedToJob ? 'border-emerald-200 bg-gradient-to-br from-white to-emerald-50/60' : 'border-blue-100 bg-gradient-to-br from-white via-white to-blue-50/60'}`}>
-          <h2 className="text-lg font-bold text-slate-950 sm:text-xl">{t('nextRecommendedAction')}</h2>
-          <div className="mt-3 grid min-w-0 gap-3 sm:grid-cols-2 xl:grid-cols-[minmax(150px,0.65fr)_minmax(220px,1.2fr)_minmax(180px,auto)] xl:items-center">
-            <div className={`min-w-0 rounded-2xl px-3.5 py-3 ${isConvertedToJob ? 'bg-emerald-50 ring-1 ring-emerald-100' : 'bg-slate-50'}`}>
-              <p className="text-[11px] font-bold uppercase tracking-[0.16em] text-slate-500">{t('currentStage')}</p>
-              <p className="mt-1 flex items-center gap-2 text-sm font-bold text-slate-950">
-                {isConvertedToJob && <CheckCircle2 className="h-4 w-4 shrink-0 text-emerald-600" aria-hidden="true" />}
-                <span className="break-words">{currentStageDisplay}</span>
-              </p>
-            </div>
-            <div className={`min-w-0 rounded-2xl px-3.5 py-3 ${isConvertedToJob ? 'bg-emerald-50 ring-1 ring-emerald-100' : 'bg-blue-50'}`}>
-              <p className={`text-[11px] font-bold uppercase tracking-[0.16em] ${isConvertedToJob ? 'text-emerald-700' : 'text-blue-600'}`}>{t('nextStep')}</p>
-              <p className="mt-1 text-sm leading-5 text-slate-700">{nextStepDisplay}</p>
-            </div>
-            <div className={`grid min-w-0 gap-2 sm:col-span-2 xl:col-span-1 ${lifecycle.actions.length > 1 ? 'sm:grid-cols-2' : ''}`}>
-              {lifecycle.actions.map((action) => (
-                <button
-                  key={action.actionType}
-                  type="button"
-                  disabled={isLeadActionSubmitting}
-                  onClick={() => handleLifecycleAction(action.actionType)}
-                  className={`flex min-h-12 w-full items-center justify-center gap-2 rounded-2xl px-4 py-3 text-sm font-bold transition focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-blue-500 focus-visible:ring-offset-2 disabled:cursor-not-allowed disabled:opacity-60 ${action.variant === 'secondary' ? 'border border-slate-200 bg-white text-slate-800 hover:bg-slate-50' : 'bg-blue-600 text-white shadow-sm shadow-blue-600/20 hover:bg-blue-700'}`}
-                >
-                  {getLifecycleActionIcon(action.actionType)}
-                  <span className="break-words">{isLeadActionSubmitting ? t('saving') : t(action.labelKey)}</span>
-                </button>
-              ))}
-            </div>
-          </div>
-          <div className="mt-4 flex flex-col gap-3 border-t border-slate-100 pt-3 sm:flex-row sm:items-center">
-            <button disabled={isLeadActionSubmitting} onClick={() => setIsEditOpen(true)} className="flex min-h-10 items-center justify-center gap-2 rounded-xl border border-slate-200 bg-slate-50 px-3.5 py-2 text-sm font-bold text-slate-800 transition hover:bg-white hover:shadow-sm focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-blue-500 focus-visible:ring-offset-2 disabled:cursor-not-allowed disabled:opacity-60">
-              <Edit3 className="h-4 w-4" /> {t('editLead')}
-            </button>
-            <ActionMenu
-              label={t('more')}
-              ariaLabel={t('more')}
-              items={moreMenuItems}
-              buttonDisabled={isLeadActionSubmitting}
-              containerClassName="w-full sm:w-auto"
-              buttonClassName="inline-flex min-h-10 w-full items-center justify-center gap-2 rounded-xl border border-slate-200 bg-white px-3.5 py-2 text-sm font-bold text-slate-800 transition hover:bg-slate-50 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-blue-500 focus-visible:ring-offset-2 sm:w-auto"
-              menuClassName="max-w-[calc(100vw-2rem)]"
-            />
-          </div>
-          {isArchived && (
-            <button disabled={isLeadActionSubmitting} onClick={() => setConfirmAction({ mode: 'delete' })} className="mt-3 inline-flex w-full items-center justify-center gap-2 rounded-2xl border border-red-200 bg-red-50 px-4 py-3 text-sm font-bold text-red-700 hover:bg-red-100 disabled:cursor-not-allowed disabled:opacity-60 sm:w-auto">
-              <Trash2 className="h-4 w-4" /> {t('deletePermanently')}
-            </button>
-          )}
-        </section>
-
+      <section className="grid min-w-0 gap-5 xl:hidden" data-lead-detail-layout="stacked">
+        <LeadRecommendedActionCard
+          currentStageDisplay={currentStageDisplay}
+          getLifecycleActionIcon={getLifecycleActionIcon}
+          isArchived={isArchived}
+          isConvertedToJob={isConvertedToJob}
+          isLeadActionSubmitting={isLeadActionSubmitting}
+          lifecycle={lifecycle}
+          moreMenuItems={moreMenuItems}
+          nextStepDisplay={nextStepDisplay}
+          onDelete={() => setConfirmAction({ mode: 'delete' })}
+          onEdit={() => setIsEditOpen(true)}
+          onLifecycleAction={handleLifecycleAction}
+          t={t}
+        />
         {(leadHasEstimate || relatedProject) ? (
-          <div className="min-w-0 lg:col-start-2 lg:row-start-1">
+          <RelatedLeadRecordsCard
+            estimate={leadHasEstimate ? lifecycle.relatedEstimate : null}
+            estimateTotal={leadHasEstimate ? Number(currentLead?.value || 0) : null}
+            idSuffix="stacked"
+            project={lifecycle.relatedProject}
+            estimateIsArchived={lifecycle.estimateArchiveState.isArchived}
+            projectIsArchived={lifecycle.projectArchived}
+            onOpenEstimate={leadHasEstimate ? openRelatedEstimate : null}
+            onOpenProject={relatedProjectId ? openJobWorkspace : null}
+            t={t}
+          />
+        ) : null}
+        <LeadDetailsCard
+          currentLead={currentLead}
+          idSuffix="stacked"
+          jobLocationDisplay={jobLocationDisplay}
+          leadDisplayName={leadDisplayName}
+          leadInformation={leadInformation}
+          t={t}
+        />
+        <LeadActivityCard events={leadActivityEvents} idSuffix="stacked" t={t} />
+      </section>
+
+      <section
+        className="hidden min-w-0 grid-cols-[minmax(0,2fr)_minmax(300px,1fr)] items-start gap-6 xl:grid"
+        data-lead-detail-breakpoint="xl"
+        data-lead-detail-layout="columns"
+        data-lead-detail-ratio="2:1"
+      >
+        <div className="grid min-w-0 gap-6" data-lead-detail-column="primary">
+          <LeadRecommendedActionCard
+            currentStageDisplay={currentStageDisplay}
+            getLifecycleActionIcon={getLifecycleActionIcon}
+            isArchived={isArchived}
+            isConvertedToJob={isConvertedToJob}
+            isLeadActionSubmitting={isLeadActionSubmitting}
+            lifecycle={lifecycle}
+            moreMenuItems={moreMenuItems}
+            nextStepDisplay={nextStepDisplay}
+            onDelete={() => setConfirmAction({ mode: 'delete' })}
+            onEdit={() => setIsEditOpen(true)}
+            onLifecycleAction={handleLifecycleAction}
+            t={t}
+          />
+          <LeadDetailsCard
+            currentLead={currentLead}
+            idSuffix="columns"
+            jobLocationDisplay={jobLocationDisplay}
+            leadDisplayName={leadDisplayName}
+            leadInformation={leadInformation}
+            t={t}
+          />
+        </div>
+        <div className="grid min-w-0 gap-6" data-lead-detail-column="secondary">
+          {(leadHasEstimate || relatedProject) ? (
             <RelatedLeadRecordsCard
               estimate={leadHasEstimate ? lifecycle.relatedEstimate : null}
               estimateTotal={leadHasEstimate ? Number(currentLead?.value || 0) : null}
+              idSuffix="columns"
               project={lifecycle.relatedProject}
               estimateIsArchived={lifecycle.estimateArchiveState.isArchived}
               projectIsArchived={lifecycle.projectArchived}
@@ -851,71 +873,8 @@ export function LeadDetailPage({
               onOpenProject={relatedProjectId ? openJobWorkspace : null}
               t={t}
             />
-          </div>
-        ) : null}
-
-      <section className="min-w-0 rounded-3xl border border-slate-200 bg-white p-4 shadow-sm sm:p-5 lg:col-start-1 lg:row-start-2">
-        <h2 className="text-lg font-bold text-slate-950 sm:text-xl">{t('leadDetails')}</h2>
-
-        <div className={`mt-5 grid gap-6 ${jobLocationDisplay ? 'md:grid-cols-2' : ''}`}>
-          <section aria-labelledby="lead-contact-title">
-            <h3 id="lead-contact-title" className="text-xs font-bold uppercase tracking-[0.16em] text-slate-500">{t('contact')}</h3>
-            <dl className="mt-3 space-y-2.5">
-              <div className="grid min-w-0 gap-0.5 sm:grid-cols-[80px_minmax(0,1fr)] sm:gap-3">
-                <dt className="text-xs font-semibold text-slate-500">{t('name')}</dt>
-                <dd className="break-words text-sm font-semibold text-slate-900">{leadDisplayName}</dd>
-              </div>
-              {currentLead.phone && (
-                <div className="grid min-w-0 gap-0.5 sm:grid-cols-[80px_minmax(0,1fr)] sm:gap-3">
-                  <dt className="text-xs font-semibold text-slate-500">{t('phone')}</dt>
-                  <dd className="min-w-0 text-sm font-semibold">
-                    <a href={`tel:${String(currentLead.phone).replace(/[^\d+]/g, '')}`} className="break-words text-blue-700 underline-offset-4 hover:underline focus-visible:rounded focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-blue-500">{currentLead.phone}</a>
-                  </dd>
-                </div>
-              )}
-              {currentLead.email && (
-                <div className="grid min-w-0 gap-0.5 sm:grid-cols-[80px_minmax(0,1fr)] sm:gap-3">
-                  <dt className="text-xs font-semibold text-slate-500">{t('email')}</dt>
-                  <dd className="min-w-0 text-sm font-semibold">
-                    <a href={`mailto:${currentLead.email}`} className="break-all text-blue-700 underline-offset-4 hover:underline focus-visible:rounded focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-blue-500">{currentLead.email}</a>
-                  </dd>
-                </div>
-              )}
-            </dl>
-          </section>
-
-          {jobLocationDisplay && (
-            <section aria-labelledby="lead-location-title">
-              <h3 id="lead-location-title" className="text-xs font-bold uppercase tracking-[0.16em] text-slate-500">{t('jobLocation')}</h3>
-              <address className="mt-3 whitespace-pre-line break-words text-sm font-semibold not-italic leading-6 text-slate-900">{jobLocationDisplay}</address>
-            </section>
-          )}
-
-          {leadInformation.length ? (
-            <section className={`border-t border-slate-100 pt-5 ${jobLocationDisplay ? 'md:col-span-2' : ''}`} aria-labelledby="lead-information-title">
-              <h3 id="lead-information-title" className="text-xs font-bold uppercase tracking-[0.16em] text-slate-500">{t('leadInformation')}</h3>
-              <dl className="mt-3 grid gap-4 sm:grid-cols-2">
-                {leadInformation.map((item) => (
-                  <div key={item.id} className="min-w-0 rounded-2xl bg-slate-50 px-4 py-3">
-                    <dt className="text-[11px] font-bold uppercase tracking-[0.14em] text-slate-500">{item.label}</dt>
-                    <dd className="mt-1 break-words text-sm font-bold leading-5 text-slate-900">{item.value}</dd>
-                  </div>
-                ))}
-              </dl>
-            </section>
           ) : null}
-        </div>
-
-        <section className="mt-5 border-t border-slate-100 pt-4" aria-labelledby="lead-notes-title">
-          <h3 id="lead-notes-title" className="text-xs font-bold uppercase tracking-[0.16em] text-slate-500">{t('notes')}</h3>
-          <p className={`mt-2 whitespace-pre-wrap break-words text-sm leading-6 ${currentLead.notes ? 'text-slate-700' : 'text-slate-500'}`}>
-            {currentLead.notes || t('noNotesAdded')}
-          </p>
-        </section>
-      </section>
-
-        <div className="min-w-0 lg:col-start-2 lg:row-start-2">
-          <LeadActivityCard events={leadActivityEvents} t={t} />
+          <LeadActivityCard events={leadActivityEvents} idSuffix="columns" t={t} />
         </div>
       </section>
 
@@ -940,6 +899,142 @@ export function LeadDetailPage({
         t={t}
       />
     </div>
+  )
+}
+
+function LeadRecommendedActionCard({
+  currentStageDisplay,
+  getLifecycleActionIcon,
+  isArchived,
+  isConvertedToJob,
+  isLeadActionSubmitting,
+  lifecycle,
+  moreMenuItems,
+  nextStepDisplay,
+  onDelete,
+  onEdit,
+  onLifecycleAction,
+  t,
+}) {
+  return (
+    <section className={`min-w-0 rounded-3xl border p-4 shadow-md shadow-slate-200/50 sm:p-5 ${isConvertedToJob ? 'border-emerald-200 bg-gradient-to-br from-white to-emerald-50/60' : 'border-blue-100 bg-gradient-to-br from-white via-white to-blue-50/60'}`}>
+      <h2 className="text-lg font-bold text-slate-950 sm:text-xl">{t('nextRecommendedAction')}</h2>
+      <div className="mt-3 grid min-w-0 gap-3 sm:grid-cols-2 2xl:grid-cols-[minmax(150px,0.65fr)_minmax(220px,1.2fr)_minmax(180px,auto)] 2xl:items-center">
+        <div className={`min-w-0 rounded-2xl px-3.5 py-3 ${isConvertedToJob ? 'bg-emerald-50 ring-1 ring-emerald-100' : 'bg-slate-50'}`}>
+          <p className="text-[11px] font-bold uppercase tracking-[0.16em] text-slate-500">{t('currentStage')}</p>
+          <p className="mt-1 flex items-center gap-2 text-sm font-bold text-slate-950">
+            {isConvertedToJob && <CheckCircle2 className="h-4 w-4 shrink-0 text-emerald-600" aria-hidden="true" />}
+            <span className="break-words">{currentStageDisplay}</span>
+          </p>
+        </div>
+        <div className={`min-w-0 rounded-2xl px-3.5 py-3 ${isConvertedToJob ? 'bg-emerald-50 ring-1 ring-emerald-100' : 'bg-blue-50'}`}>
+          <p className={`text-[11px] font-bold uppercase tracking-[0.16em] ${isConvertedToJob ? 'text-emerald-700' : 'text-blue-600'}`}>{t('nextStep')}</p>
+          <p className="mt-1 text-sm leading-5 text-slate-700">{nextStepDisplay}</p>
+        </div>
+        <div className={`grid min-w-0 gap-2 sm:col-span-2 2xl:col-span-1 ${lifecycle.actions.length > 1 ? 'sm:grid-cols-2' : ''}`}>
+          {lifecycle.actions.map((action) => (
+            <button
+              key={action.actionType}
+              type="button"
+              disabled={isLeadActionSubmitting}
+              onClick={() => onLifecycleAction(action.actionType)}
+              className={`flex min-h-12 w-full items-center justify-center gap-2 rounded-2xl px-4 py-3 text-sm font-bold transition focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-blue-500 focus-visible:ring-offset-2 disabled:cursor-not-allowed disabled:opacity-60 ${action.variant === 'secondary' ? 'border border-slate-200 bg-white text-slate-800 hover:bg-slate-50' : 'bg-blue-600 text-white shadow-sm shadow-blue-600/20 hover:bg-blue-700'}`}
+            >
+              {getLifecycleActionIcon(action.actionType)}
+              <span className="break-words">{isLeadActionSubmitting ? t('saving') : t(action.labelKey)}</span>
+            </button>
+          ))}
+        </div>
+      </div>
+      <div className="mt-4 flex flex-col gap-3 border-t border-slate-100 pt-3 sm:flex-row sm:items-center">
+        <button disabled={isLeadActionSubmitting} onClick={onEdit} className="flex min-h-10 items-center justify-center gap-2 rounded-xl border border-slate-200 bg-slate-50 px-3.5 py-2 text-sm font-bold text-slate-800 transition hover:bg-white hover:shadow-sm focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-blue-500 focus-visible:ring-offset-2 disabled:cursor-not-allowed disabled:opacity-60">
+          <Edit3 className="h-4 w-4" /> {t('editLead')}
+        </button>
+        <ActionMenu
+          label={t('more')}
+          ariaLabel={t('more')}
+          items={moreMenuItems}
+          buttonDisabled={isLeadActionSubmitting}
+          containerClassName="w-full sm:w-auto"
+          buttonClassName="inline-flex min-h-10 w-full items-center justify-center gap-2 rounded-xl border border-slate-200 bg-white px-3.5 py-2 text-sm font-bold text-slate-800 transition hover:bg-slate-50 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-blue-500 focus-visible:ring-offset-2 sm:w-auto"
+          menuClassName="max-w-[calc(100vw-2rem)]"
+        />
+      </div>
+      {isArchived && (
+        <button disabled={isLeadActionSubmitting} onClick={onDelete} className="mt-3 inline-flex w-full items-center justify-center gap-2 rounded-2xl border border-red-200 bg-red-50 px-4 py-3 text-sm font-bold text-red-700 hover:bg-red-100 disabled:cursor-not-allowed disabled:opacity-60 sm:w-auto">
+          <Trash2 className="h-4 w-4" /> {t('deletePermanently')}
+        </button>
+      )}
+    </section>
+  )
+}
+
+function LeadDetailsCard({ currentLead, idSuffix, jobLocationDisplay, leadDisplayName, leadInformation, t }) {
+  const contactTitleId = `lead-contact-title-${idSuffix}`
+  const locationTitleId = `lead-location-title-${idSuffix}`
+  const informationTitleId = `lead-information-title-${idSuffix}`
+  const notesTitleId = `lead-notes-title-${idSuffix}`
+
+  return (
+    <section className="min-w-0 rounded-3xl border border-slate-200 bg-white p-4 shadow-sm sm:p-5">
+      <h2 className="text-lg font-bold text-slate-950 sm:text-xl">{t('leadDetails')}</h2>
+
+      <div className={`mt-5 grid gap-6 ${jobLocationDisplay ? 'md:grid-cols-2' : ''}`}>
+        <section aria-labelledby={contactTitleId}>
+          <h3 id={contactTitleId} className="text-xs font-bold uppercase tracking-[0.16em] text-slate-500">{t('contact')}</h3>
+          <dl className="mt-3 space-y-2.5">
+            <div className="grid min-w-0 gap-0.5 sm:grid-cols-[80px_minmax(0,1fr)] sm:gap-3">
+              <dt className="text-xs font-semibold text-slate-500">{t('name')}</dt>
+              <dd className="break-words text-sm font-semibold text-slate-900">{leadDisplayName}</dd>
+            </div>
+            {currentLead.phone && (
+              <div className="grid min-w-0 gap-0.5 sm:grid-cols-[80px_minmax(0,1fr)] sm:gap-3">
+                <dt className="text-xs font-semibold text-slate-500">{t('phone')}</dt>
+                <dd className="min-w-0 text-sm font-semibold">
+                  <a href={`tel:${String(currentLead.phone).replace(/[^\d+]/g, '')}`} className="break-words text-blue-700 underline-offset-4 hover:underline focus-visible:rounded focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-blue-500">{currentLead.phone}</a>
+                </dd>
+              </div>
+            )}
+            {currentLead.email && (
+              <div className="grid min-w-0 gap-0.5 sm:grid-cols-[80px_minmax(0,1fr)] sm:gap-3">
+                <dt className="text-xs font-semibold text-slate-500">{t('email')}</dt>
+                <dd className="min-w-0 text-sm font-semibold">
+                  <a href={`mailto:${currentLead.email}`} className="break-all text-blue-700 underline-offset-4 hover:underline focus-visible:rounded focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-blue-500">{currentLead.email}</a>
+                </dd>
+              </div>
+            )}
+          </dl>
+        </section>
+
+        {jobLocationDisplay && (
+          <section aria-labelledby={locationTitleId}>
+            <h3 id={locationTitleId} className="text-xs font-bold uppercase tracking-[0.16em] text-slate-500">{t('jobLocation')}</h3>
+            <address className="mt-3 whitespace-pre-line break-words text-sm font-semibold not-italic leading-6 text-slate-900">{jobLocationDisplay}</address>
+          </section>
+        )}
+
+        {leadInformation.length ? (
+          <section className={`border-t border-slate-100 pt-5 ${jobLocationDisplay ? 'md:col-span-2' : ''}`} aria-labelledby={informationTitleId}>
+            <h3 id={informationTitleId} className="text-xs font-bold uppercase tracking-[0.16em] text-slate-500">{t('leadInformation')}</h3>
+            <dl className="mt-3 grid gap-4 sm:grid-cols-2 xl:gap-3">
+              {leadInformation.map((item) => (
+                <div key={item.id} className="min-w-0 rounded-2xl bg-slate-50 px-4 py-3 xl:px-3.5 xl:py-2.5">
+                  <dt className="text-[11px] font-bold uppercase tracking-[0.14em] text-slate-500">{item.label}</dt>
+                  <dd className="mt-1 break-words text-sm font-bold leading-5 text-slate-900">{item.value}</dd>
+                </div>
+              ))}
+            </dl>
+          </section>
+        ) : null}
+      </div>
+
+      <section className="mt-5 border-t border-slate-100 pt-4" aria-labelledby={notesTitleId}>
+        <h3 id={notesTitleId} className="text-xs font-bold uppercase tracking-[0.16em] text-slate-500">{t('notes')}</h3>
+        <p className={`mt-2 whitespace-pre-wrap break-words text-sm leading-6 ${currentLead.notes ? 'text-slate-700' : 'text-slate-500'}`}>
+          {currentLead.notes || t('noNotesAdded')}
+        </p>
+      </section>
+    </section>
   )
 }
 
@@ -984,10 +1079,12 @@ function LeadActivityEvent({ event, isLast }) {
   )
 }
 
-function LeadActivityCard({ events, t }) {
+function LeadActivityCard({ events, idSuffix, t }) {
+  const titleId = `lead-activity-title-${idSuffix}`
+
   return (
-    <section className="min-w-0 rounded-3xl border border-slate-200 bg-white p-5 shadow-sm" aria-labelledby="lead-activity-title">
-      <h2 id="lead-activity-title" className="text-lg font-bold text-slate-950 sm:text-xl">{t('leadActivity')}</h2>
+    <section className="min-w-0 rounded-3xl border border-slate-200 bg-white p-5 shadow-sm" aria-labelledby={titleId}>
+      <h2 id={titleId} className="text-lg font-bold text-slate-950 sm:text-xl">{t('leadActivity')}</h2>
       {events.length ? (
         <ol className="mt-5">
           {events.map((event, index) => (
@@ -1034,17 +1131,18 @@ function RelatedRecordSection({ eyebrow, title, amount = '', status = '', isArch
   )
 }
 
-function RelatedLeadRecordsCard({ estimate, estimateTotal, project, estimateIsArchived = false, projectIsArchived = false, onOpenEstimate, onOpenProject, t }) {
+function RelatedLeadRecordsCard({ estimate, estimateTotal, idSuffix, project, estimateIsArchived = false, projectIsArchived = false, onOpenEstimate, onOpenProject, t }) {
   if (!estimate && !project) return null
 
+  const titleId = `related-lead-records-title-${idSuffix}`
   const estimateTitle = estimate?.number || estimate?.estimateNumber || estimate?.title || t('relatedEstimate')
   const estimateStatus = estimate?.status || ''
   const projectTitle = project?.projectTitle || project?.title || t('relatedProject')
   const projectStatus = project?.projectStatus || project?.status
 
   return (
-    <section className="min-w-0 rounded-3xl border border-slate-200 bg-white p-5 shadow-sm" aria-labelledby="related-lead-records-title">
-      <h2 id="related-lead-records-title" className="text-lg font-bold text-slate-950">{t('relatedRecords')}</h2>
+    <section className="min-w-0 rounded-3xl border border-slate-200 bg-white p-5 shadow-sm" aria-labelledby={titleId}>
+      <h2 id={titleId} className="text-lg font-bold text-slate-950">{t('relatedRecords')}</h2>
       <div className="mt-4 space-y-4">
         {estimate ? (
           <RelatedRecordSection
