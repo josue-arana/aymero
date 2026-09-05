@@ -18,6 +18,7 @@
     "verify:lead-lifecycle": "node scripts/verify-lead-lifecycle.mjs",
     "verify:lead-detail-layout": "node scripts/verify-lead-detail-layout.mjs",
     "verify:client-detail-workspace": "node scripts/verify-client-detail-workspace.mjs",
+    "verify:client-detail-layout": "node scripts/verify-client-detail-layout.mjs",
     "verify:document-branding": "node scripts/verify-document-branding.mjs",
     "verify:action-menus": "node scripts/verify-action-menus.mjs",
     "verify:estimate-share-resolution": "node scripts/verify-estimate-share-resolution.mjs",
