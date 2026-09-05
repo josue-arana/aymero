@@ -90,6 +90,13 @@ export function ScopeAssistantPanel({
       SCOPE_ASSISTANT_SEND_REASON.APPROVAL_STALE,
     ].includes(readiness?.reason)
   const approvalStale = state?.approvalStatus === SCOPE_ASSISTANT_STATUS.STALE
+  const showApprovalAction = Boolean(
+    hasCandidate
+    && isEditing
+    && isEnabled
+    && (approvalStale || !approvalCurrent)
+  )
+  const showRegenerateAction = Boolean(hasCandidate && isEditing && isEnabled)
   const translationRequired = Boolean(
     state?.contractorLanguage
     && state?.clientLanguage
@@ -249,9 +256,9 @@ export function ScopeAssistantPanel({
               <EstimateFormattedText value={state.approvedContractorScope} className="mt-3 border-t border-slate-200 pt-3 text-sm leading-6 text-slate-700" />
             </details>
           ) : null}
-          {isEditing && isEnabled ? (
+          {showRegenerateAction ? (
             <div className="flex flex-col gap-2 sm:flex-row sm:flex-wrap">
-              {!approvalCurrent ? (
+              {showApprovalAction ? (
                 <button type="button" disabled={actionPending || !state.contractorDraft.trim()} onClick={onApprove} className={primaryButtonClasses}>
                   <CheckCircle2 aria-hidden="true" className="h-4 w-4" />
                   {isApproving ? t('scopeAssistantApproving') : t('scopeAssistantApprove')}
