@@ -2,6 +2,7 @@ import { useEffect, useRef, useState } from 'react'
 import { X } from 'lucide-react'
 import { ModalShell } from '../common/ModalShell'
 import { buildLanguageOptions, normalizeSupportedLanguage, resolvePreferredClientLanguage } from '../../utils/language'
+import { readClientNotesForForm } from '../../utils/clients'
 
 const emptyClient = {
   name: '',
@@ -26,6 +27,7 @@ export function ClientFormModal({ isOpen, mode = 'create', client, defaultPrefer
       ? {
           ...emptyClient,
           ...client,
+          notes: readClientNotesForForm(client.notes),
           preferredLanguage: resolvePreferredClientLanguage({
             client,
             userLanguage: defaultPreferredLanguage,

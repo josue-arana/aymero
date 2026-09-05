@@ -41,7 +41,7 @@ import { InvoiceCreationModal } from './components/invoices/InvoiceCreationModal
 import { CalendarPage } from './pages/CalendarPage'
 import { AuthSetupPage } from './pages/AuthSetupPage'
 import { PublicEstimatePage } from './pages/PublicEstimatePage'
-import { buildClientProfiles, getClientSlug } from './utils/clients'
+import { buildClientProfiles, getClientSlug, mergeClientUpdatesIntoRelatedRecord } from './utils/clients'
 import { appRoutes } from './config/appRoutes'
 import { AuthProvider } from './contexts/AuthContext'
 import { useAuth } from './contexts/AuthContext'
@@ -2478,14 +2478,7 @@ function buildWorkspaceJobRecord(job, clientRecord = null) {
     setLeads((current) => current.map((lead) => {
       const leadClientId = lead.clientId || lead.client_id || getClientSlug(lead.client)
       if (leadClientId !== clientId) return lead
-      return {
-        ...lead,
-        client: updates.name || lead.client,
-        phone: updates.phone || lead.phone,
-        email: updates.email || lead.email,
-        address: updates.address || lead.address,
-        location: updates.address || lead.location,
-      }
+      return mergeClientUpdatesIntoRelatedRecord(lead, updates)
     }))
     showToast(t('clientUpdated'))
     addNotification('notificationClientUpdatedTitle', 'notificationClientUpdatedMessage')
