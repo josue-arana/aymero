@@ -813,7 +813,7 @@ export const en = {
   "clientProjectQuickActionsHelp": "Use the action buttons on each project card below to open that exact project, estimate, contract, or payment flow.",
   "callClient": 'Call Client',
   "textClient": 'Text Client',
-  "createNewProject": 'Create New Project',
+  "createNewProject": 'Create New Job',
   "createJob": "Create Job",
   "loadingJobs": "Loading jobs from Supabase...",
   "viewProjects": 'View Projects',

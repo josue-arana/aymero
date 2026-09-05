@@ -29,6 +29,43 @@ export function findRelatedClient(clients = [], record = {}) {
   }) || null
 }
 
+function hasOwnField(record, fieldName) {
+  return Boolean(record) && Object.prototype.hasOwnProperty.call(record, fieldName)
+}
+
+export function mapOptionalClientUpdatesToPersistence(updates = {}) {
+  return ['phone', 'email', 'address', 'notes'].reduce((payload, fieldName) => {
+    if (hasOwnField(updates, fieldName)) {
+      payload[fieldName] = updates[fieldName] || null
+    }
+    return payload
+  }, {})
+}
+
+export function readClientNotesForForm(notes) {
+  if (Array.isArray(notes)) {
+    return notes
+      .filter((note) => typeof note === 'string' && note.trim())
+      .join('\n')
+  }
+
+  return typeof notes === 'string' ? notes : ''
+}
+
+export function mergeClientUpdatesIntoRelatedRecord(record = {}, updates = {}) {
+  const nextRecord = { ...record }
+
+  if (hasOwnField(updates, 'name')) nextRecord.client = updates.name
+  if (hasOwnField(updates, 'phone')) nextRecord.phone = updates.phone
+  if (hasOwnField(updates, 'email')) nextRecord.email = updates.email
+  if (hasOwnField(updates, 'address')) {
+    nextRecord.address = updates.address
+    nextRecord.location = updates.address
+  }
+
+  return nextRecord
+}
+
 export function buildClientProfiles(leads = [], customClients = [], projects = []) {
   const clientMap = new Map()
   const slugToClientId = new Map()
@@ -46,9 +83,9 @@ export function buildClientProfiles(leads = [], customClients = [], projects = [
       displayName: client.displayName || client.name || 'Unknown Client',
       firstName: client.firstName || client.first_name || '',
       lastName: client.lastName || client.last_name || '',
-      phone: client.phone || '(410) 555-0100',
+      phone: client.phone || '',
       email: client.email || '',
-      address: client.address || 'Address not added',
+      address: client.address || '',
       preferredLanguage: normalizedClient.preferredLanguage,
       latestProjectStatus: client.latestProjectStatus || 'Lead',
       projectCount: 0,
@@ -56,7 +93,7 @@ export function buildClientProfiles(leads = [], customClients = [], projects = [
       outstandingBalance: 0,
       repeatClient: Boolean(client.repeatClient),
       projects: [],
-      notes: client.notes ? [client.notes] : ['Client added manually.'],
+      notes: typeof client.notes === 'string' ? client.notes : '',
       status: client.status || 'active',
       archivedAt,
       archived_at: archivedAt,
@@ -96,13 +133,15 @@ export function buildClientProfiles(leads = [], customClients = [], projects = [
       existing.outstandingBalance += balance
       existing.repeatClient = existing.repeatClient || existing.projectCount > 1 || lead.source === 'Repeat Client'
       existing.latestProjectStatus = projectRecord.latestStatus || existing.latestProjectStatus
-      if (!existing.phone && lead.phone) existing.phone = lead.phone
-      if (!existing.email && lead.email) existing.email = lead.email
-      if (!existing.address && lead.address) existing.address = lead.address
+      if (!existing.manualClient) {
+        if (!existing.phone && lead.phone) existing.phone = lead.phone
+        if (!existing.email && lead.email) existing.email = lead.email
+        if (!existing.address && lead.address) existing.address = lead.address
+        if (lead.nextStep) existing.notes = [...new Set([...(existing.notes || []), lead.nextStep])]
+      }
       if (!existing.preferredLanguage && lead.clientLanguage) {
         existing.preferredLanguage = readRecordLanguage(lead)
       }
-      if (lead.nextStep) existing.notes = [...new Set([...(existing.notes || []), lead.nextStep])]
     } else {
       const preferredLanguage = readRecordLanguage(lead)
       clientMap.set(clientKey, {

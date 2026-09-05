@@ -359,7 +359,9 @@ export function ClientProfilePage({ leads, customClients = [], projects = [], ar
   const clientNotes = useMemo(() => (
     Array.isArray(client?.notes)
       ? client.notes.filter((note) => typeof note === 'string' && note.trim())
-      : []
+      : typeof client?.notes === 'string' && client.notes.trim()
+        ? [client.notes.trim()]
+        : []
   ), [client?.notes])
   const estimateCards = useMemo(() => {
     const estimatesByKey = new Map()
@@ -425,14 +427,9 @@ export function ClientProfilePage({ leads, customClients = [], projects = [], ar
       </section>
     )
   }
-  const preferredLanguage = String(
-    client.preferredLanguage || client.preferred_language || client.language || ''
-  ).trim().toLowerCase()
-  const preferredLanguageLabel = preferredLanguage === 'es'
-    ? t('spanish')
-    : preferredLanguage === 'en'
-      ? t('english')
-      : ''
+  const projectsHeading = projectCards.length
+    ? `${t('jobs')} (${projectCards.length})`
+    : t('jobs')
   const moreMenuItems = isArchived
     ? [
         {
@@ -481,9 +478,10 @@ export function ClientProfilePage({ leads, customClients = [], projects = [], ar
     smsHref ? { id: 'text', href: smsHref, label: t('text'), icon: MessageSquare } : null,
     emailHref ? { id: 'email', href: emailHref, label: t('email'), icon: Mail } : null,
   ].filter(Boolean)
+  const moreActionSpansMobileRow = heroContactActions.length % 2 === 0
 
   function renderHeroContactAction({ id, href = '', label, icon: Icon, external = false }) {
-    const sharedClassName = 'inline-flex min-h-12 min-w-0 items-center justify-center gap-2 rounded-2xl border border-white/15 bg-white/10 px-3 py-3 text-sm font-semibold text-white transition hover:bg-white/15 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-blue-200 focus-visible:ring-offset-2 focus-visible:ring-offset-slate-950'
+    const sharedClassName = 'inline-flex min-h-12 w-full min-w-0 items-center justify-center gap-2 rounded-2xl border border-white/15 bg-white/10 px-3 py-3 text-sm font-semibold text-white transition hover:bg-white/15 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-blue-200 focus-visible:ring-offset-2 focus-visible:ring-offset-slate-950 lg:w-auto'
     const content = (
       <>
         <Icon className="h-4 w-4" aria-hidden="true" />
@@ -600,7 +598,7 @@ export function ClientProfilePage({ leads, customClients = [], projects = [], ar
         <div className="pointer-events-none absolute inset-0 bg-[linear-gradient(110deg,rgba(2,6,23,0.94)_0%,rgba(15,23,42,0.84)_58%,rgba(15,23,42,0.56)_100%)]" aria-hidden="true" />
 
         <div className="relative min-w-0 p-5 sm:p-7 lg:p-8">
-          <div className="grid min-w-0 gap-6 lg:grid-cols-[minmax(0,1.55fr)_minmax(240px,0.75fr)] lg:items-start">
+          <div className={`grid min-w-0 gap-6 lg:items-start ${showAnalyticsSections ? 'lg:grid-cols-[minmax(0,1.55fr)_minmax(240px,0.75fr)]' : ''}`}>
             <div className="min-w-0">
               <p className="text-xs font-bold uppercase tracking-[0.24em] text-blue-200 sm:text-sm">{t('client')}</p>
               <h1 id="client-profile-title" className="mt-2 break-words text-[2rem] font-bold leading-tight tracking-tight text-white sm:text-4xl lg:text-5xl">{client.name}</h1>
@@ -615,28 +613,24 @@ export function ClientProfilePage({ leads, customClients = [], projects = [], ar
               </div>
             </div>
 
-            <dl className={`grid min-w-0 gap-2.5 ${showAnalyticsSections ? 'grid-cols-2' : 'grid-cols-1'}`} aria-label={t('accountSummary')}>
-              <div className="min-w-0 rounded-2xl border border-white/10 bg-white/10 p-3 backdrop-blur-sm">
-                <dt className="text-[0.68rem] font-bold uppercase tracking-[0.14em] text-slate-300">{t('projects')}</dt>
-                <dd className="mt-1 text-xl font-bold text-white">{client.projectCount}</dd>
-              </div>
-              {showAnalyticsSections ? (
+            {showAnalyticsSections ? (
+              <dl className="grid min-w-0 gap-2.5" aria-label={t('accountSummary')}>
                 <div className="min-w-0 rounded-2xl border border-white/10 bg-white/10 p-3 backdrop-blur-sm">
                   <dt className="text-[0.68rem] font-bold uppercase tracking-[0.14em] text-slate-300">{t('outstandingBalance')}</dt>
                   <dd className="mt-1 break-words text-base font-bold text-white sm:text-lg">{currency.format(totalOutstandingBalance)}</dd>
                 </div>
-              ) : null}
-              {showAnalyticsSections && lastActivity ? (
-                <div className="col-span-2 min-w-0 rounded-2xl border border-white/10 bg-white/10 p-3 backdrop-blur-sm">
+                {lastActivity ? (
+                <div className="min-w-0 rounded-2xl border border-white/10 bg-white/10 p-3 backdrop-blur-sm">
                   <dt className="flex items-center gap-2 text-[0.68rem] font-bold uppercase tracking-[0.14em] text-slate-300"><CalendarDays className="h-3.5 w-3.5" aria-hidden="true" />{t('lastActivity')}</dt>
                   <dd className="mt-1 break-words text-sm font-semibold text-white">{lastActivityLabel || formatDisplayDate(new Date(lastActivity.timestamp))}</dd>
                 </div>
-              ) : null}
-            </dl>
+                ) : null}
+              </dl>
+            ) : null}
           </div>
 
-          {(hasClientContactInformation || preferredLanguageLabel) ? (
-            <dl className="mt-6 grid min-w-0 gap-4 border-t border-white/10 pt-5 sm:grid-cols-2 lg:grid-cols-4">
+          {hasClientContactInformation ? (
+            <dl className="mt-6 grid min-w-0 gap-4 border-t border-white/10 pt-5 sm:grid-cols-2 lg:grid-cols-3">
               {clientPhone ? (
                 <div className="min-w-0">
                   <dt className="text-[0.68rem] font-bold uppercase tracking-[0.16em] text-slate-400">{t('phone')}</dt>
@@ -649,12 +643,6 @@ export function ClientProfilePage({ leads, customClients = [], projects = [], ar
                   <dd className="mt-1.5 min-w-0"><a href={emailHref} aria-label={`${t('email')}: ${clientEmail}`} className="break-all text-sm font-semibold text-white hover:text-blue-200 focus-visible:rounded focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-blue-200">{clientEmail}</a></dd>
                 </div>
               ) : null}
-              {preferredLanguageLabel ? (
-                <div className="min-w-0">
-                  <dt className="text-[0.68rem] font-bold uppercase tracking-[0.16em] text-slate-400">{t('preferredLanguage')}</dt>
-                  <dd className="mt-1.5 break-words text-sm font-semibold text-white">{preferredLanguageLabel}</dd>
-                </div>
-              ) : null}
               {clientAddress ? (
                 <div className="min-w-0 sm:col-span-2 lg:col-span-1">
                   <dt className="text-[0.68rem] font-bold uppercase tracking-[0.16em] text-slate-400">{t('address')}</dt>
@@ -664,12 +652,12 @@ export function ClientProfilePage({ leads, customClients = [], projects = [], ar
             </dl>
           ) : null}
 
-          <div className="mt-6 grid min-w-0 grid-cols-2 gap-2.5 border-t border-white/10 pt-5 sm:flex sm:flex-wrap">
+          <div className="mt-6 grid min-w-0 grid-cols-2 gap-2.5 border-t border-white/10 pt-5 lg:flex lg:flex-nowrap">
             {!isArchived ? (
               <button
                 type="button"
                 onClick={() => onCreateJob?.(client)}
-                className="col-span-2 inline-flex min-h-12 min-w-0 items-center justify-center gap-2 rounded-2xl border border-blue-500 bg-blue-500 px-4 py-3 text-sm font-bold text-white shadow-lg shadow-blue-950/25 transition hover:bg-blue-400 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-blue-200 focus-visible:ring-offset-2 focus-visible:ring-offset-slate-950 sm:col-span-1"
+                className="col-span-2 inline-flex min-h-12 w-full min-w-0 items-center justify-center gap-2 rounded-2xl border border-blue-500 bg-blue-500 px-4 py-3 text-sm font-bold text-white shadow-lg shadow-blue-950/25 transition hover:bg-blue-400 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-blue-200 focus-visible:ring-offset-2 focus-visible:ring-offset-slate-950 lg:col-span-1 lg:w-auto"
               >
                 <Plus className="h-4 w-4" aria-hidden="true" />
                 <span className="break-words">{t('createNewProject')}</span>
@@ -680,8 +668,8 @@ export function ClientProfilePage({ leads, customClients = [], projects = [], ar
               label={<><MoreVertical className="h-4 w-4" aria-hidden="true" /> {t('more')}</>}
               ariaLabel={t('more')}
               showChevron={false}
-              containerClassName="min-w-0"
-              buttonClassName="inline-flex min-h-12 w-full items-center justify-center gap-2 rounded-2xl border border-white/15 bg-white/10 px-3 py-3 text-sm font-semibold text-white transition hover:bg-white/15 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-blue-200 focus-visible:ring-offset-2 focus-visible:ring-offset-slate-950 sm:w-auto"
+              containerClassName={`min-w-0 w-full lg:w-auto ${moreActionSpansMobileRow ? 'col-span-2' : ''}`}
+              buttonClassName="inline-flex min-h-12 w-full items-center justify-center gap-2 rounded-2xl border border-white/15 bg-white/10 px-3 py-3 text-sm font-semibold text-white transition hover:bg-white/15 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-blue-200 focus-visible:ring-offset-2 focus-visible:ring-offset-slate-950 lg:w-auto"
               menuClassName="max-w-[calc(100vw-3rem)]"
               items={moreMenuItems}
             />
@@ -700,7 +688,7 @@ export function ClientProfilePage({ leads, customClients = [], projects = [], ar
             title={
               <span className="inline-flex items-center gap-3">
                 <span className="inline-flex h-10 w-10 items-center justify-center rounded-2xl bg-teal-50 text-teal-700"><BriefcaseBusiness className="h-5 w-5" aria-hidden="true" /></span>
-                {t('projects')}
+                {projectsHeading}
               </span>
             }
             bodyClassName="space-y-3"

@@ -1,6 +1,7 @@
 import { USE_SUPABASE, USE_SUPABASE_CLIENTS } from '../../config/backendConfig'
 import { supabaseClient } from '../../lib/supabaseClient'
 import { normalizeSupportedLanguage, normalizeSupportedLanguageOrEmpty } from '../../utils/language'
+import { mapOptionalClientUpdatesToPersistence } from '../../utils/clients'
 
 const TABLE_NAME = 'clients'
 
@@ -199,17 +200,7 @@ function mapUiClientUpdatesToClientRow(updates = {}) {
     payload.display_name = displayName
   }
 
-  if (hasOwnField(updates, 'phone')) {
-    payload.phone = updates.phone || null
-  }
-
-  if (hasOwnField(updates, 'email')) {
-    payload.email = updates.email || null
-  }
-
-  if (hasOwnField(updates, 'address')) {
-    payload.address = updates.address || null
-  }
+  Object.assign(payload, mapOptionalClientUpdatesToPersistence(updates))
 
   if (
     hasOwnField(updates, 'preferredLanguage')
@@ -221,10 +212,6 @@ function mapUiClientUpdatesToClientRow(updates = {}) {
       updates.preferredLanguage || updates.preferred_language || updates.language || updates.clientLanguage,
       'en'
     )
-  }
-
-  if (hasOwnField(updates, 'notes')) {
-    payload.notes = updates.notes || null
   }
 
   if (hasOwnField(updates, 'status')) {
