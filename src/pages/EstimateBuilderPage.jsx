@@ -31,7 +31,7 @@ import { readLinkedEstimateDraft, writeLinkedEstimateDrafts } from '../utils/est
 import { formatEstimateDisplayNumber, generateEstimateNumber } from '../utils/estimateNumber'
 import { isPrintWindowBlockedError, printDocumentElement } from '../utils/printDocument'
 import { createTranslator, tStatus } from '../translations'
-import { findLeadByProjectLookup, findProjectByLookup } from '../utils/projectIdentity'
+import { findLeadByProjectLookup, findProjectByLookup, getEstimatesForProject, getSelectedEstimateForProject } from '../utils/projectIdentity'
 import { findRelatedClient } from '../utils/clients'
 import { resolveEstimateArchiveState } from '../utils/archiveLifecycle'
 import {
@@ -1670,8 +1670,15 @@ export function EstimateBuilderRoute({ companySettings, leads, clients = [], pro
 
       try {
         if (!USE_SUPABASE && !USE_SUPABASE_ESTIMATES) {
+          const localEstimateRows = getEstimatesForProject(routeProject || routeLead || { id: relatedProjectId }, estimates)
+          const localSelectedEstimate = getSelectedEstimateForProject(routeProject || routeLead || { id: relatedProjectId }, localEstimateRows)
+          if (!localSelectedEstimate && localEstimateRows.length > 1) {
+            setLoadedEstimate(null)
+            setDirectLoadState({ loading: false, error: t('estimateSelectionRequired') })
+            return
+          }
           if (!isCancelled) {
-            setLoadedEstimate(cachedEstimate)
+            setLoadedEstimate(localSelectedEstimate || cachedEstimate)
           }
           return
         }
@@ -1710,7 +1717,16 @@ export function EstimateBuilderRoute({ companySettings, leads, clients = [], pro
           return
         }
 
-        const persistedEstimate = response?.data?.[0] || null
+        const estimateRows = response?.data || []
+        const persistedEstimate = getSelectedEstimateForProject(
+          routeProject || routeLead || { id: relatedProjectId },
+          estimateRows,
+        )
+        if (!persistedEstimate && estimateRows.filter((estimate) => !estimate?.archivedAt && !estimate?.archived_at).length > 1) {
+          setLoadedEstimate(null)
+          setDirectLoadState({ loading: false, error: t('estimateSelectionRequired') })
+          return
+        }
         const nextEstimate = persistedEstimate
           ? { ...(cachedEstimate || {}), ...persistedEstimate }
           : cachedEstimate
@@ -1802,6 +1818,18 @@ export function EstimateBuilderRoute({ companySettings, leads, clients = [], pro
         <p className="mx-auto mt-3 max-w-xl text-sm leading-6 text-slate-500">{directLoadState.error || t(isDirectEstimateRoute ? 'estimateNotFoundHelp' : 'projectNotFoundHelp')}</p>
         <button onClick={() => navigate(isDirectEstimateRoute ? '/estimates' : '/dashboard')} className="mt-6 rounded-2xl bg-slate-950 px-5 py-3 text-sm font-bold text-white hover:bg-slate-800">
           {t(isDirectEstimateRoute ? 'backToEstimates' : 'backToDashboardAction')}
+        </button>
+      </section>
+    )
+  }
+
+  if (!isDirectEstimateRoute && directLoadState.error && !resolvedEstimate && !loadedEstimate) {
+    return (
+      <section className="rounded-3xl border border-slate-200 bg-white p-8 text-center shadow-sm">
+        <h1 className="text-2xl font-bold text-slate-950">{t('estimateSelectionRequired')}</h1>
+        <p className="mx-auto mt-3 max-w-xl text-sm leading-6 text-slate-500">{t('estimateSelectionRequiredHelp')}</p>
+        <button onClick={handleBack} className="mt-6 rounded-2xl bg-slate-950 px-5 py-3 text-sm font-bold text-white hover:bg-slate-800">
+          {t('backToProjectWorkspace')}
         </button>
       </section>
     )

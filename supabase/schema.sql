@@ -224,6 +224,7 @@ create table projects (
   notes text,
   sample_data_key text,
   public_portal_token text not null default replace(gen_random_uuid()::text, '-', ''),
+  selected_estimate_id uuid,
   created_at timestamptz not null default now(),
   updated_at timestamptz not null default now(),
   archived_at timestamptz
@@ -253,6 +254,7 @@ create table estimates (
   materials_included boolean not null default true,
   payment_terms text,
   sample_data_key text,
+  option_name text,
   public_share_token text not null default replace(gen_random_uuid()::text, '-', ''),
   status estimate_status not null default 'draft',
   sent_at timestamptz,
@@ -263,6 +265,10 @@ create table estimates (
   updated_at timestamptz not null default now(),
   archived_at timestamptz
 );
+
+alter table projects
+  add constraint projects_selected_estimate_id_fkey
+  foreign key (selected_estimate_id) references estimates(id) on delete set null;
 
 create table contracts (
   id uuid primary key default gen_random_uuid(),

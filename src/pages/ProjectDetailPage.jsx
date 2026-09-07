@@ -17,7 +17,7 @@ import { RecordPaymentModal } from '../components/common/RecordPaymentModal'
 import { PhotoUploadModal } from '../components/common/PhotoUploadModal'
 import { ProjectScheduleCard } from '../components/projects/ProjectScheduleCard'
 import { useToast } from '../components/common/ToastProvider'
-import { USE_SUPABASE, USE_SUPABASE_EVENTS, USE_SUPABASE_PAYMENTS, USE_SUPABASE_PROJECTS } from '../config/backendConfig'
+import { USE_SUPABASE, USE_SUPABASE_ESTIMATES, USE_SUPABASE_EVENTS, USE_SUPABASE_PAYMENTS, USE_SUPABASE_PROJECTS } from '../config/backendConfig'
 import { useAuth } from '../contexts/AuthContext'
 import { useAnalyticsMode } from '../contexts/SimpleModeContext'
 import dataProvider from '../services/dataProvider'
@@ -29,7 +29,7 @@ import { formatContractDisplayNumber } from '../utils/contractNumber'
 import { formatEstimateDisplayNumber } from '../utils/estimateNumber'
 import { PROJECT_PHOTO_MAX_FILE_SIZE_BYTES, revokeProjectPhotoPreviewUrl, validateProjectPhotoFile } from '../services/photosService'
 import { calculateProjectPaymentSummary, collectProjectInvoiceIds, dedupePayments, mergeProjectTimeline, normalizePaymentRecord } from '../utils/projectPayments'
-import { dedupeById, resolveLinkedProjectId } from '../utils/projectIdentity'
+import { dedupeById, getSelectedEstimateForProject, resolveLinkedProjectId } from '../utils/projectIdentity'
 import { getRecordDetailsTitleKey } from '../utils/recordDetailsTitle'
 import { sortScheduleEvents } from '../utils/scheduleEvents'
 import { getInvoiceRemainingBalance } from '../utils/invoiceRecords'
@@ -407,7 +407,7 @@ class ProjectDetailErrorBoundary extends Component {
   }
 }
 
-function ProjectDetailPageContent({ lead, companySettings, clients = [], invoices = [], scheduleEvents = [], archivedScheduleEventIds = [], isArchived = false, onBack, onOpenPortal, onOpenContract, onConvertEstimate, onCreateInvoice, onMarkProjectComplete, onUpdateLead, onRecordPayment, onUpdatePayment, onDeletePayment, onUploadPhotos, onScheduleEvent, onEditScheduleEvent, onExportEvent, onArchiveScheduleEvent, onRestoreScheduleEvent, onDeleteScheduleEvent, onArchiveProject, onRestoreProject, onDeleteProject, language = 'en', t }) {
+function ProjectDetailPageContent({ lead, companySettings, clients = [], estimates = [], invoices = [], scheduleEvents = [], archivedScheduleEventIds = [], isArchived = false, onBack, onOpenPortal, onOpenContract, onConvertEstimate, onCreateInvoice, onMarkProjectComplete, onUpdateLead, onRecordPayment, onUpdatePayment, onDeletePayment, onUploadPhotos, onScheduleEvent, onEditScheduleEvent, onExportEvent, onArchiveScheduleEvent, onRestoreScheduleEvent, onDeleteScheduleEvent, onArchiveProject, onRestoreProject, onDeleteProject, language = 'en', t }) {
   const { id, leadId } = useParams()
   const location = useLocation()
   const navigate = useNavigate()
@@ -721,7 +721,13 @@ function ProjectDetailPageContent({ lead, companySettings, clients = [], invoice
 
     async function loadEstimate() {
       const draftEstimate = readLinkedEstimateDraft(baseProject || projectId, [projectId, relatedLeadId, lead?.id])
-      const knownEstimateId = baseProject?.estimateId || baseProject?.estimate_id || lead?.estimateId || draftEstimate?.id || null
+      const knownEstimateId = baseProject?.selectedEstimateId
+        || baseProject?.selected_estimate_id
+        || baseProject?.estimateId
+        || baseProject?.estimate_id
+        || lead?.estimateId
+        || draftEstimate?.id
+        || null
 
       if (!linkedProjectId) {
         if (!isCancelled) {
@@ -732,6 +738,11 @@ function ProjectDetailPageContent({ lead, companySettings, clients = [], invoice
 
       try {
         let resolvedEstimateRecord = null
+        let estimateList = Array.isArray(estimates) ? estimates : []
+
+        if (!knownEstimateId && estimateList.length > 0) {
+          resolvedEstimateRecord = getSelectedEstimateForProject(baseProject || { id: linkedProjectId }, estimateList)
+        }
 
         if (knownEstimateId) {
           const estimateByIdResponse = await dataProvider.estimates.getById?.(knownEstimateId, { contractorId })
@@ -741,7 +752,7 @@ function ProjectDetailPageContent({ lead, companySettings, clients = [], invoice
           }
         }
 
-        if (!resolvedEstimateRecord) {
+        if (!resolvedEstimateRecord && (USE_SUPABASE || USE_SUPABASE_ESTIMATES)) {
           const response = await dataProvider.estimates.list({
             contractorId,
             projectId: linkedProjectId,
@@ -751,11 +762,18 @@ function ProjectDetailPageContent({ lead, companySettings, clients = [], invoice
           if (isCancelled) return
 
           if (!response?.error) {
-            resolvedEstimateRecord = response?.data?.[0] || null
+            estimateList = response?.data || []
+            resolvedEstimateRecord = getSelectedEstimateForProject(baseProject || { id: linkedProjectId }, estimateList)
           }
         }
 
-        const nextEstimate = resolvedEstimateRecord || draftEstimate || lead?.portal?.estimate || null
+        const responseHasAmbiguousEstimates = !resolvedEstimateRecord && !knownEstimateId
+          ? (() => {
+              const activeEstimates = estimateList.filter((estimate) => !estimate?.archivedAt && !estimate?.archived_at)
+              return activeEstimates.length > 1
+            })()
+          : false
+        const nextEstimate = resolvedEstimateRecord || (responseHasAmbiguousEstimates ? null : draftEstimate || lead?.portal?.estimate || null)
 
         if (!isCancelled) {
           setEstimateRecord(nextEstimate)
@@ -776,7 +794,7 @@ function ProjectDetailPageContent({ lead, companySettings, clients = [], invoice
     return () => {
       isCancelled = true
     }
-  }, [baseProject, contractorId, lead, linkedProjectId, projectId, relatedLeadId])
+  }, [baseProject, contractorId, estimates, lead, linkedProjectId, projectId, relatedLeadId])
 
   useEffect(() => {
     let isCancelled = false

@@ -473,6 +473,8 @@ export const en = {
   "noContractAvailableYet": "No contract available yet.",
   "estimateNotFound": "Estimate Not Found",
   "estimateNotFoundHelp": "We could not find that estimate. Return to the Estimate list and choose another estimate.",
+  "estimateSelectionRequired": "Choose an estimate option",
+  "estimateSelectionRequiredHelp": "This project has multiple estimate options. Open a specific estimate before editing it.",
   "loadingEstimate": "Loading Estimate",
   "loadingEstimateHelp": "Loading the latest estimate information...",
   "publicEstimateNotFound": "Estimate Not Found",

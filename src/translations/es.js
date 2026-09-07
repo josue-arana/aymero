@@ -473,6 +473,8 @@ export const es = {
   "noContractAvailableYet": "Todavía no hay contrato disponible.",
   "estimateNotFound": "Estimado no encontrado",
   "estimateNotFoundHelp": "No encontramos ese estimado. Regresa a la lista de estimados y elige otro.",
+  "estimateSelectionRequired": "Elige una opción de estimado",
+  "estimateSelectionRequiredHelp": "Este proyecto tiene varias opciones de estimado. Abre un estimado específico antes de editarlo.",
   "loadingEstimate": "Cargando estimado",
   "loadingEstimateHelp": "Cargando la información más reciente del estimado...",
   "publicEstimateNotFound": "Estimado no encontrado",

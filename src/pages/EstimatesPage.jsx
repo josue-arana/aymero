@@ -17,6 +17,7 @@ import estimatesHeroBackground from '../assets/page-heroes/estimates-bg.png'
 import { buildHeroBackgroundStyle } from '../utils/heroBackground'
 import { resolveEstimateArchiveState } from '../utils/archiveLifecycle'
 import { canCreateContractFromEstimate, canEditEstimate, normalizeEstimateFinalizationStatus } from '../utils/estimateFinalization'
+import { sumUnambiguousEstimateValues } from '../utils/estimateAlternatives'
 
 const estimateFilters = ['All', 'Archived', 'Draft', 'Saved', 'Sent', 'Approved', 'Rejected', 'Converted to Contract']
 
@@ -132,7 +133,7 @@ export function EstimatesPage({ leads, estimates = [], contracts = [], archivedI
   const draftCount = activeEstimates.filter((estimate) => ['Draft', 'Saved'].includes(estimate.status)).length
   const sentCount = activeEstimates.filter((estimate) => estimate.status === 'Sent').length
   const approvedCount = activeEstimates.filter((estimate) => estimate.status === 'Approved' || estimate.status === 'Converted to Contract').length
-  const totalValue = activeEstimates.reduce((sum, estimate) => sum + estimate.amount, 0)
+  const totalValue = sumUnambiguousEstimateValues(activeEstimates)
 
   const summaryCards = [
     { label: t('draftEstimates'), value: draftCount, helper: t('draftEstimatesHelper'), icon: FileText },
