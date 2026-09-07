@@ -17,7 +17,7 @@ import dataProvider from '../services/dataProvider'
 import { useAuth } from '../contexts/AuthContext'
 import { getInvoicesContractorId } from '../services/system/invoicesRuntimeService'
 import { getPaymentsContractorId } from '../services/system/paymentsRuntimeService'
-import { findRelatedLeadForInvoice, getInvoiceRemainingBalance, normalizeInvoiceStatus } from '../utils/invoiceRecords'
+import { findRelatedLeadForInvoice, getInvoiceRemainingBalance, normalizeInvoiceStatus, roundMoney } from '../utils/invoiceRecords'
 import { createTranslator } from '../translations'
 import { findRelatedClient } from '../utils/clients'
 import { getLanguageLocale, resolveClientFacingLanguage } from '../utils/language'
@@ -594,7 +594,7 @@ export function InvoiceDetailRoute({ companySettings, leads, clients = [], invoi
       }
 
       const nextPaymentHistory = [paymentEntry, ...(currentInvoice.paymentHistory || [])]
-      const nextAmountPaid = Math.min(Number(currentInvoice.amount || 0), Number(currentInvoice.amountPaid || 0) + Number(payment.amount || 0))
+      const nextAmountPaid = roundMoney(Math.min(Number(currentInvoice.amount || 0), Number(currentInvoice.amountPaid || 0) + Number(payment.amount || 0)))
       const invoiceResponse = await dataProvider.invoices.update(currentInvoice.id, { amountPaid: nextAmountPaid, paymentHistory: nextPaymentHistory }, { contractorId: invoicesContractorId })
 
       if (invoiceResponse?.error) {

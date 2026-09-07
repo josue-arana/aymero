@@ -1,6 +1,7 @@
 import { USE_SUPABASE, USE_SUPABASE_INVOICES } from '../../config/backendConfig'
 import { supabaseClient } from '../../lib/supabaseClient'
 import { generateInvoiceNumber, getInvoiceDisplayNumber } from '../../utils/invoiceNumber'
+import { roundMoney, sumMoney } from '../../utils/invoiceRecords'
 
 const TABLE_NAME = 'invoices'
 const INVOICE_TABLE_COLUMNS = new Set([
@@ -148,12 +149,12 @@ function normalizeLineItems(lineItems) {
       : typeof item?.name === 'string'
         ? item.name
         : '',
-    amount: toNumber(item?.amount),
+    amount: roundMoney(item?.amount),
   }))
 }
 
 function sumLineItems(lineItems) {
-  return normalizeLineItems(lineItems).reduce((sum, item) => sum + toNumber(item.amount), 0)
+  return sumMoney(normalizeLineItems(lineItems).map((item) => item.amount))
 }
 
 function normalizePaymentHistory(paymentHistory) {
@@ -355,11 +356,11 @@ function applyStatusDates(payload, invoice = {}) {
 function toAppInvoice(row) {
   const lineItems = normalizeLineItems(row?.line_items)
   const parsedDescription = parseDescription(row?.description)
-  const totalAmount = toNumber(row?.total_amount)
-  const amountPaid = toNumber(row?.amount_paid)
+  const totalAmount = roundMoney(row?.total_amount)
+  const amountPaid = roundMoney(row?.amount_paid)
   const remainingBalance = row?.amount_due === null || row?.amount_due === undefined
-    ? Math.max(totalAmount - amountPaid, 0)
-    : Math.max(toNumber(row?.amount_due), 0)
+    ? roundMoney(Math.max(totalAmount - amountPaid, 0))
+    : roundMoney(Math.max(toNumber(row?.amount_due), 0))
 
   return {
     id: row?.id || undefined,

@@ -1,4 +1,4 @@
-export const currency = new Intl.NumberFormat('en-US', {
+const currencyWhole = new Intl.NumberFormat('en-US', {
   style: 'currency',
   currency: 'USD',
   maximumFractionDigits: 0,
@@ -10,6 +10,20 @@ export const currencyWithCents = new Intl.NumberFormat('en-US', {
   minimumFractionDigits: 2,
   maximumFractionDigits: 2,
 })
+
+function hasNonZeroCents(value) {
+  const numericValue = Number(value)
+  if (!Number.isFinite(numericValue)) return false
+
+  const cents = Math.round(Math.abs(numericValue) * 100) % 100
+  return cents !== 0
+}
+
+export const currency = {
+  format(value) {
+    return (hasNonZeroCents(value) ? currencyWithCents : currencyWhole).format(Number(value) || 0)
+  },
+}
 
 export function formatDisplayDate(value, fallback = '', locale) {
   if (!value) return fallback

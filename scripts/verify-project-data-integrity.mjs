@@ -73,7 +73,7 @@ assert.match(leadServiceSource, /normalizeOptionalEmail\(row\?\.email\)/)
 assert.match(appSource, /email: normalizeOptionalEmail\(leadRecord\?\.email\)/)
 assert.match(jobModalSource, /notes: editingProject\.notes \|\| ''/)
 assert.match(projectSource, /grid min-w-0 grid-cols-2/)
-assert.match(projectSource, /index === 0 \? 'col-span-2 lg:col-span-1'/)
+assert.match(projectSource, /button\.primary \? 'col-span-2 lg:col-span-1 bg-blue-500/)
 assert.match(projectSource, /moreActionSpansMobileRow/)
 assert.match(scheduleModalSource, /flex flex-col-reverse gap-3 sm:flex-row sm:justify-end/)
 

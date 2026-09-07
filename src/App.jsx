@@ -63,7 +63,7 @@ import { hasContractData, readLinkedContractDraft, writeLinkedContractDrafts } f
 import { buildEstimateLookupIds, hasEstimateData, readLinkedEstimateDraft, resolveEstimateTotal, toSafeNumber, writeLinkedEstimateDrafts } from './utils/estimateLinks'
 import { generateContractNumber } from './utils/contractNumber'
 import { generateEstimateNumber } from './utils/estimateNumber'
-import { dedupeInvoiceRecords, hydrateInvoiceRecord } from './utils/invoiceRecords'
+import { dedupeInvoiceRecords, hydrateInvoiceRecord, roundMoney } from './utils/invoiceRecords'
 import { buildProjectCompletionUpdate } from './utils/projectCompletion'
 import { normalizeClientPreferredLanguageFields, normalizeDocumentLanguageOverride, normalizeLeadClientLanguageFields, normalizeSupportedLanguage, normalizeSupportedLanguageOrEmpty, readStoredSupportedLanguage, resolveInitialSupportedLanguage, resolvePreferredClientLanguage } from './utils/language'
 import { buildLeadPipelineTransition, getLeadPipelineStage, leadPipelineStageOrder, leadPipelineStages, normalizeLeadPipelineStage } from './utils/leadPipeline'
@@ -4144,8 +4144,8 @@ function buildWorkspaceJobRecord(job, clientRecord = null) {
         const next = {
           ...updates,
           id: invoiceId,
-          amount: Number(updates.amount || 0),
-          amountPaid: Number(updates.amountPaid || 0),
+          amount: roundMoney(updates.amount),
+          amountPaid: roundMoney(updates.amountPaid),
           paymentHistory: updates.paymentHistory || [],
         }
 
@@ -4158,12 +4158,12 @@ function buildWorkspaceJobRecord(job, clientRecord = null) {
       return current.map((invoice) => {
         if (invoice.id !== invoiceId) return invoice
         const nextLineItems = updates.lineItems || invoice.lineItems || []
-        const nextAmount = updates.amount !== undefined ? Number(updates.amount || 0) : nextLineItems.reduce((sum, item) => sum + Number(item.amount || 0), 0) || invoice.amount
+        const nextAmount = updates.amount !== undefined ? roundMoney(updates.amount) : roundMoney(nextLineItems.reduce((sum, item) => sum + Number(item.amount || 0), 0)) || invoice.amount
         const next = {
           ...invoice,
           ...updates,
           amount: nextAmount,
-          amountPaid: Number(updates.amountPaid ?? invoice.amountPaid ?? 0),
+          amountPaid: roundMoney(updates.amountPaid ?? invoice.amountPaid ?? 0),
           paymentHistory: updates.paymentHistory || invoice.paymentHistory || [],
         }
         return { ...next, status: getInvoiceStatus(next) }
@@ -4268,13 +4268,13 @@ function buildWorkspaceJobRecord(job, clientRecord = null) {
     setInvoiceRecords((current) => current.map((invoice) => {
       if (invoice.id !== invoiceId) return invoice
       invoiceMatch = invoice
-      const amount = Number(payment.amount || 0)
+      const amount = roundMoney(payment.amount)
       const paymentEntry = {
         id: payment.id || `payment-${Date.now()}`,
         ...payment,
         amount,
       }
-      const amountPaid = Math.min(Number(invoice.amount || 0), Number(invoice.amountPaid || 0) + amount)
+      const amountPaid = roundMoney(Math.min(Number(invoice.amount || 0), Number(invoice.amountPaid || 0) + amount))
       const next = {
         ...invoice,
         amountPaid,
@@ -4790,8 +4790,8 @@ function buildWorkspaceJobRecord(job, clientRecord = null) {
             contracts={persistedContracts}
             initialProjectId={invoiceModalState.initialProjectId}
             lockProject={invoiceModalState.lockProject}
-            defaultPaymentTerms={companySettings?.defaults?.paymentTerms || ''}
             invoiceDueDays={companySettings?.defaults?.invoiceDueDays ?? 7}
+            language={language}
             onClose={closeInvoiceModal}
             onSave={createInvoiceRecord}
             t={t}

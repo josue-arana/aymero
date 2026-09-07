@@ -6,6 +6,7 @@ import {
   groupProjectWorkspaceEvents,
   selectProjectWorkspaceInvoices,
 } from '../src/utils/projectWorkspaceViewModel.js'
+import { resolveProjectHeroActionIds } from '../src/utils/projectHeroActions.js'
 
 function read(relativePath) {
   return readFileSync(fileURLToPath(new URL(relativePath, import.meta.url)), 'utf8')
@@ -46,6 +47,14 @@ const draftContractView = buildProjectWorkspaceViewModel({
 assert.equal(draftContractView.projectStatus, 'Contract Draft')
 assert.equal(draftContractView.nextAction.id, 'review-contract')
 
+const manualProjectView = buildProjectWorkspaceViewModel({
+  ...baseInput,
+  contract: null,
+  photoCount: 0,
+})
+assert.equal(manualProjectView.projectStatus, 'Scheduled')
+assert.equal(manualProjectView.nextAction.id, 'upload-photos')
+
 const invoiceView = buildProjectWorkspaceViewModel({
   ...baseInput,
   contract: { id: 'contract-1', status: 'Signed', signed: true },
@@ -67,6 +76,32 @@ const scheduleView = buildProjectWorkspaceViewModel({
 })
 assert.equal(scheduleView.nextAction.id, 'schedule-job')
 
+const inProgressView = buildProjectWorkspaceViewModel({
+  ...baseInput,
+  contract: { id: 'contract-1', status: 'Signed', signed: true },
+  paymentSummary: { payments: [{ id: 'payment-1', amount: 250 }], projectValue: 1000, totalPaid: 250, outstandingBalance: 750 },
+})
+assert.equal(inProgressView.projectStatus, 'In Progress')
+assert.equal(inProgressView.nextAction.id, 'schedule-job')
+
+const completedView = buildProjectWorkspaceViewModel({
+  ...baseInput,
+  project: { ...baseInput.project, status: 'Completed', completedAt: '2026-08-17T12:00:00.000Z' },
+  contract: { id: 'contract-1', status: 'Signed', signed: true },
+  invoices: [{ id: 'invoice-1', amount: 1000, amountPaid: 250, status: 'Sent' }],
+})
+assert.equal(completedView.projectStatus, 'Completed')
+assert.equal(completedView.nextAction, null)
+
+const fullyPaidActiveView = buildProjectWorkspaceViewModel({
+  ...baseInput,
+  contract: { id: 'contract-1', status: 'Signed', signed: true },
+  paymentSummary: { payments: [{ id: 'payment-1', amount: 1000 }], projectValue: 1000, totalPaid: 1000, outstandingBalance: 0 },
+  invoices: [{ id: 'invoice-1', amount: 1000, amountPaid: 1000, status: 'Paid' }],
+})
+assert.equal(fullyPaidActiveView.projectStatus, 'In Progress')
+assert.equal(fullyPaidActiveView.nextAction.id, 'schedule-job')
+
 const archivedView = buildProjectWorkspaceViewModel({
   ...baseInput,
   contract: { id: 'contract-1', status: 'Signed', signed: true },
@@ -74,6 +109,18 @@ const archivedView = buildProjectWorkspaceViewModel({
 })
 assert.equal(archivedView.projectStatus, 'Signed')
 assert.equal(archivedView.nextAction, null)
+
+assert.deepEqual(resolveProjectHeroActionIds({ nextActionId: 'upload-photos' }).slice(0, 2), [
+  { id: 'upload-photos', primary: true },
+  { id: 'record-payment', primary: false },
+])
+assert.equal(resolveProjectHeroActionIds({ nextActionId: 'review-contract' })[0].id, 'review-contract')
+assert.equal(resolveProjectHeroActionIds({ nextActionId: 'view-invoice' })[0].id, 'view-invoice')
+assert.equal(resolveProjectHeroActionIds({ nextActionId: 'schedule-job' })[0].id, 'schedule-job')
+assert.equal(resolveProjectHeroActionIds({ nextActionId: 'view-schedule' })[0].id, 'view-schedule')
+assert.equal(resolveProjectHeroActionIds({ projectIsCompleted: true })[0].primary, false)
+assert.doesNotMatch(JSON.stringify(resolveProjectHeroActionIds({ nextActionId: 'schedule-job', isPaidInFull: true })), /record-payment/)
+assert.deepEqual(resolveProjectHeroActionIds({ projectIsArchived: true }), [{ id: 'edit', primary: false }])
 
 const projectSource = read('../src/pages/ProjectDetailPage.jsx')
 const appSource = read('../src/App.jsx')
@@ -84,7 +131,7 @@ assert.match(projectSource, /calculateProjectPaymentSummary/)
 assert.match(viewModelSource, /deriveProjectStatus/)
 assert.match(viewModelSource, /calculateOutstandingInvoiceBalance/)
 assert.doesNotMatch(viewModelSource, /dataProvider|supabase|fetch\(/i)
-assert.match(projectSource, /isAnalyticsMode && hasProjectValue/)
+assert.match(projectSource, /isAnalyticsMode && hasFinancialSummary/)
 assert.match(projectSource, /<StatusBadge status=\{projectStatus\}/)
 assert.match(projectSource, /projectIsArchived \? <StatusBadge status="Archived"/)
 assert.match(projectSource, /label: t\('recordPayment'\)/)
@@ -92,6 +139,11 @@ assert.match(projectSource, /label: t\('scheduleJob'\)/)
 assert.match(projectSource, /label: t\('uploadPhotos'\)/)
 assert.match(projectSource, /label: t\('edit'\)/)
 assert.match(projectSource, /min-h-12 min-w-0 w-full/)
+assert.match(projectSource, /resolveProjectHeroActionIds/)
+assert.match(projectSource, /moreActionSpansMobileRow/)
+assert.match(projectSource, /showScheduleWorkspace/)
+assert.match(projectSource, /showDocumentWorkspace/)
+assert.match(projectSource, /showPaymentWorkspace/)
 assert.match(projectSource, /navigate\(`\/invoices\/\$\{invoice\.id\}`\)/)
 assert.match(appSource, /invoices=\{activeInvoices\}/)
 assert.match(scheduleCardSource, /upcomingEvents/)

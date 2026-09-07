@@ -34,6 +34,7 @@ import { getRecordDetailsTitleKey } from '../utils/recordDetailsTitle'
 import { sortScheduleEvents } from '../utils/scheduleEvents'
 import { getInvoiceRemainingBalance } from '../utils/invoiceRecords'
 import { buildProjectWorkspaceViewModel, selectProjectWorkspaceInvoices } from '../utils/projectWorkspaceViewModel'
+import { resolveProjectHeroActionIds } from '../utils/projectHeroActions'
 import projectWorkspaceHeroBackground from '../assets/page-heroes/jobs-bg.png'
 
 function logProjectDetailDevError(message, error, meta) {
@@ -624,7 +625,6 @@ function ProjectDetailPageContent({ lead, companySettings, clients = [], invoice
   const relatedInvoiceById = useMemo(() => new Map(
     relatedProjectInvoices.map((invoice) => [invoice.id, invoice])
   ), [relatedProjectInvoices])
-
   useEffect(() => {
     if (!import.meta.env.DEV) return
 
@@ -1079,6 +1079,17 @@ function ProjectDetailPageContent({ lead, companySettings, clients = [], invoice
     photoCount: galleryPhotos.length,
     isArchived: projectIsArchived,
   }), [activeScheduleEvents, currentLead, galleryPhotos.length, paymentSummary, projectIsArchived, relatedProjectInvoices, resolvedContract])
+  const hasScheduleRecords = workspaceViewModel.upcomingEvents.length > 0
+    || workspaceViewModel.historyEvents.length > 0
+    || archivedScheduleEvents.length > 0
+  const showScheduleWorkspace = !projectIsArchived || hasScheduleRecords
+  const showDocumentWorkspace = !projectIsArchived
+    || hasEstimate
+    || hasContract
+    || relatedProjectInvoices.length > 0
+  const showPaymentWorkspace = paymentSummary.payments.length > 0 || canRecordPayment
+  const showPhotoWorkspace = !projectIsArchived || galleryPhotos.length > 0
+  const showClientWorkspace = Boolean(currentLead.phone || currentLead.email || hasClientLink)
 
   useEffect(() => {
     if (new URLSearchParams(location.search).get('sampleGuide') !== 'event' || activeScheduleEvents.length === 0) return
@@ -1110,15 +1121,26 @@ function ProjectDetailPageContent({ lead, companySettings, clients = [], invoice
   }
 
   const projectIsCompleted = workspaceViewModel.projectStatus === 'Completed'
-  const actionButtons = projectIsArchived
-    ? [{ label: t('edit'), icon: Edit3, action: () => setIsEditOpen(true) }]
-    : [
-        { label: t('recordPayment'), icon: DollarSign, action: () => { setEditingPayment(null); setShowPaymentModal(true) }, primary: true, disabled: !canRecordPayment },
-        !projectIsCompleted ? { label: t('scheduleJob'), icon: CalendarDays, action: onScheduleEvent } : null,
-        { label: t('uploadPhotos'), icon: Camera, action: () => setShowPhotoModal(true) },
-        { label: t('edit'), icon: Edit3, action: () => setIsEditOpen(true) },
-      ].filter(Boolean)
-  const moreActionSpansMobileRow = !projectIsArchived && (actionButtons.length - 1) % 2 === 0
+  const paymentIsPaidInFull = Number(paymentSummary.projectValue) > 0
+    && Number(paymentSummary.totalPaid) > 0
+    && Number(paymentSummary.outstandingBalance) <= 0
+  const heroActionHandlers = {
+    'record-payment': { label: t('recordPayment'), icon: DollarSign, action: () => { setEditingPayment(null); setShowPaymentModal(true) }, disabled: !canRecordPayment },
+    'schedule-job': { label: t('scheduleJob'), icon: CalendarDays, action: onScheduleEvent },
+    'upload-photos': { label: t('uploadPhotos'), icon: Camera, action: () => setShowPhotoModal(true) },
+    'edit': { label: t('edit'), icon: Edit3, action: () => setIsEditOpen(true) },
+    'review-contract': { label: t('openContract'), icon: FileText, action: () => onOpenContract?.(currentLead.id) },
+    'view-invoice': { label: t('viewInvoice'), icon: FileText, action: () => workspaceViewModel.nextAction?.invoiceId && navigate(`/invoices/${workspaceViewModel.nextAction.invoiceId}`) },
+    'view-schedule': { label: t('viewSchedule'), icon: CalendarDays, action: () => document.getElementById('project-schedule')?.scrollIntoView({ behavior: 'smooth', block: 'start' }) },
+  }
+  const actionButtons = resolveProjectHeroActionIds({
+    nextActionId: workspaceViewModel.nextAction?.id,
+    projectIsArchived,
+    projectIsCompleted,
+    isPaidInFull: paymentIsPaidInFull,
+  }).map(({ id, primary }) => ({ id, primary, ...heroActionHandlers[id] }))
+  const secondaryHeroActionCount = actionButtons.filter((button) => !button.primary).length
+  const moreActionSpansMobileRow = secondaryHeroActionCount % 2 === 0
   const moreMenuItems = [
     hasEstimate
       ? {
@@ -1199,16 +1221,10 @@ function ProjectDetailPageContent({ lead, companySettings, clients = [], invoice
       ? t('projectCompletionOutstandingBalanceWarning', { amount: currency.format(workspaceViewModel.outstandingInvoiceBalance) })
       : '',
   ].filter(Boolean).join(' ')
-  const rawProjectValue = baseProject?.value
-    ?? baseProject?.estimatedValue
-    ?? baseProject?.contractValue
-    ?? resolvedEstimate?.total
   const projectValue = Number(paymentSummary.projectValue)
   const portalShareUrl = normalizePortalShareUrl(portal.shareUrl)
-  const hasProjectValue = rawProjectValue !== null
-    && rawProjectValue !== undefined
-    && rawProjectValue !== ''
-    && Number.isFinite(projectValue)
+  const hasFinancialSummary = Number.isFinite(projectValue)
+    && [projectValue, Number(paymentSummary.totalPaid), Number(paymentSummary.outstandingBalance)].some((value) => value > 0)
 
   function closePaymentModal() {
     setShowPaymentModal(false)
@@ -1519,17 +1535,6 @@ function ProjectDetailPageContent({ lead, companySettings, clients = [], invoice
     }
   }
 
-  function runRecommendedAction() {
-    const nextAction = workspaceViewModel.nextAction
-
-    if (!nextAction) return
-    if (nextAction.id === 'review-contract') onOpenContract?.(currentLead.id)
-    if (nextAction.id === 'view-invoice' && nextAction.invoiceId) navigate(`/invoices/${nextAction.invoiceId}`)
-    if (nextAction.id === 'view-schedule') document.getElementById('project-schedule')?.scrollIntoView({ behavior: 'smooth', block: 'start' })
-    if (nextAction.id === 'schedule-job') onScheduleEvent?.()
-    if (nextAction.id === 'upload-photos') setShowPhotoModal(true)
-  }
-
   async function restoreArchivedProjectEvent(event) {
     try {
       const response = await dataProvider.events.restore?.(event.id, { contractorId })
@@ -1608,7 +1613,7 @@ function ProjectDetailPageContent({ lead, companySettings, clients = [], invoice
               </div>
             </dl>
 
-            {isAnalyticsMode && hasProjectValue ? (
+            {isAnalyticsMode && hasFinancialSummary ? (
               <dl className="grid min-w-0 grid-cols-1 gap-px border-t border-white/10 bg-white/10 min-[380px]:grid-cols-3">
                 <div className="min-w-0 bg-slate-950/45 p-4">
                   <dt className="text-[0.68rem] font-bold uppercase tracking-[0.14em] text-slate-400">{t('projectValue')}</dt>
@@ -1620,7 +1625,7 @@ function ProjectDetailPageContent({ lead, companySettings, clients = [], invoice
                 </div>
                 <div className="min-w-0 bg-slate-950/45 p-4">
                   <dt className="text-[0.68rem] font-bold uppercase tracking-[0.14em] text-slate-400">{t('remainingBalance')}</dt>
-                  <dd className="mt-2 break-words text-lg font-bold tracking-tight text-white">{currency.format(paymentSummary.outstandingBalance)}</dd>
+                  <dd className="mt-2 break-words text-lg font-bold tracking-tight text-white">{paymentIsPaidInFull ? t('paidInFull') : currency.format(paymentSummary.outstandingBalance)}</dd>
                 </div>
               </dl>
             ) : null}
@@ -1645,15 +1650,15 @@ function ProjectDetailPageContent({ lead, companySettings, clients = [], invoice
         </div>
 
         <div data-project-workspace-hero-actions="true" className="relative mt-7 grid min-w-0 grid-cols-2 gap-2 border-t border-white/10 pt-5 lg:flex lg:flex-nowrap lg:items-center">
-          {actionButtons.map((button, index) => {
+          {actionButtons.map((button) => {
             const Icon = button.icon
             return (
               <button
-                key={button.label}
+                key={button.id}
                 type="button"
                 onClick={button.action}
                 disabled={button.disabled}
-                className={`inline-flex min-h-12 min-w-0 w-full items-center justify-center gap-2 rounded-2xl px-4 py-3 text-sm font-bold transition focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-blue-200 focus-visible:ring-offset-2 focus-visible:ring-offset-slate-950 lg:w-auto ${index === 0 ? 'col-span-2 lg:col-span-1' : ''} ${button.primary ? 'bg-blue-500 text-white shadow-lg shadow-blue-950/25 hover:bg-blue-400 disabled:bg-blue-400' : 'border border-white/15 bg-white/10 text-white hover:bg-white/15'}`}
+                className={`inline-flex min-h-12 min-w-0 w-full items-center justify-center gap-2 rounded-2xl px-4 py-3 text-sm font-bold transition focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-blue-200 focus-visible:ring-offset-2 focus-visible:ring-offset-slate-950 lg:w-auto ${button.primary ? 'col-span-2 lg:col-span-1 bg-blue-500 text-white shadow-lg shadow-blue-950/25 hover:bg-blue-400 disabled:bg-blue-400' : 'border border-white/15 bg-white/10 text-white hover:bg-white/15'}`}
               >
                 <Icon className="h-4 w-4 shrink-0" aria-hidden="true" /> <span className="break-words">{button.label}</span>
               </button>
@@ -1691,14 +1696,14 @@ function ProjectDetailPageContent({ lead, companySettings, clients = [], invoice
               <p className="mt-1 break-words text-sm leading-6 text-slate-700 [overflow-wrap:anywhere]">{recommendedActionMessage}</p>
             </div>
           </div>
-          <button type="button" onClick={runRecommendedAction} className="inline-flex min-h-11 w-full shrink-0 items-center justify-center rounded-2xl bg-blue-600 px-5 py-3 text-sm font-bold text-white transition hover:bg-blue-700 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-blue-500 focus-visible:ring-offset-2 sm:w-auto">
+          <span className="text-sm font-bold text-blue-700 sm:text-right">
             {t(workspaceViewModel.nextAction.actionLabelKey)}
-          </button>
+          </span>
         </section>
       ) : null}
 
-      <div data-project-workspace-layout="true" className="grid min-w-0 grid-cols-1 gap-4 md:grid-cols-2 xl:grid-cols-6">
-      <div className="min-w-0 md:col-span-2 xl:col-span-6">
+      <div data-project-workspace-layout="true" className="grid min-w-0 grid-cols-1 items-start gap-4 md:grid-cols-2 xl:grid-cols-2">
+      {showScheduleWorkspace ? <div className="min-w-0 md:col-span-2 xl:col-span-2">
         <ProjectScheduleCard
           upcomingEvents={workspaceViewModel.upcomingEvents}
           historyEvents={workspaceViewModel.historyEvents}
@@ -1712,9 +1717,9 @@ function ProjectDetailPageContent({ lead, companySettings, clients = [], invoice
           onDeleteEvent={(event) => setScheduleConfirmAction({ mode: 'delete', event })}
           t={t}
         />
-      </div>
+      </div> : null}
       <section className="contents">
-        <div className="min-w-0 rounded-3xl border border-slate-200 bg-white p-5 shadow-sm md:col-span-2 xl:col-span-3">
+        {showDocumentWorkspace ? <div className="min-w-0 rounded-3xl border border-slate-200 bg-white p-5 shadow-sm md:col-span-2 xl:col-span-1">
           <div className="mb-4 flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
             <div>
               <h2 className="text-xl font-bold text-slate-950">{t('projectDocuments')}</h2>
@@ -1802,9 +1807,9 @@ function ProjectDetailPageContent({ lead, companySettings, clients = [], invoice
               <div className="rounded-2xl border border-dashed border-slate-300 bg-slate-50 p-4 text-sm text-slate-500">{t('noInvoices')}</div>
             )}
           </div>
-        </div>
+        </div> : null}
 
-        <div className="min-w-0 rounded-3xl border border-slate-200 bg-white p-5 shadow-sm xl:col-span-3">
+        {showPaymentWorkspace ? <div className="min-w-0 rounded-3xl border border-slate-200 bg-white p-5 shadow-sm md:col-span-2 xl:col-span-1">
           <div className="mb-4">
             <h2 className="text-xl font-bold text-slate-950">{t('paymentHistory')}</h2>
             <p className="text-sm text-slate-500">{t('paymentsRecorded')}</p>
@@ -1879,10 +1884,10 @@ function ProjectDetailPageContent({ lead, companySettings, clients = [], invoice
               </div>
             )}
           </div>
-        </div>
+        </div> : null}
       </section>
 
-      <section className="min-w-0 rounded-3xl border border-slate-200 bg-white p-5 shadow-sm md:col-span-2 xl:col-span-6 sm:p-6">
+      {showPhotoWorkspace ? <section className="min-w-0 rounded-3xl border border-slate-200 bg-white p-5 shadow-sm md:col-span-2 xl:col-span-2 sm:p-6">
         <div className="mb-4 flex flex-col justify-between gap-3 sm:flex-row sm:items-center">
           <div>
             <h2 className="text-xl font-bold text-slate-950">{t('projectPhotos')}</h2>
@@ -1963,10 +1968,10 @@ function ProjectDetailPageContent({ lead, companySettings, clients = [], invoice
             <p className="mt-1 text-sm text-slate-500">{t('noPhotosUploadedYet')}</p>
           </div>
         )}
-      </section>
+      </section> : null}
 
       <section className="contents">
-        <div className="min-w-0 [&>article]:h-full xl:col-span-3">
+        {showClientWorkspace ? <div className="min-w-0 [&>article]:h-full md:col-span-2 xl:col-span-1">
           <InfoCard title={t('clientInformation')}>
             {currentLead.phone ? <DetailRow label={t('phone')} value={<a href={`tel:${currentLead.phone}`} className="rounded text-blue-700 underline-offset-4 hover:underline focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-blue-500">{currentLead.phone}</a>} /> : null}
             {currentLead.email ? <DetailRow label={t('email')} value={<a href={`mailto:${currentLead.email}`} className="break-all rounded text-blue-700 underline-offset-4 hover:underline focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-blue-500">{currentLead.email}</a>} /> : null}
@@ -1977,9 +1982,9 @@ function ProjectDetailPageContent({ lead, companySettings, clients = [], invoice
               </button>
             ) : null}
           </InfoCard>
-        </div>
+        </div> : null}
 
-        <div className="min-w-0 [&>article]:h-full xl:col-span-3">
+        <div className="min-w-0 [&>article]:h-full md:col-span-2 xl:col-span-1">
           <InfoCard title={t('customerPortal')} bodyClassName="space-y-3">
             <div className={`rounded-2xl border px-4 py-3 ${portalShareUrl ? 'border-emerald-200 bg-emerald-50 text-emerald-800' : 'border-slate-200 bg-slate-50 text-slate-600'}`}>
               <p className="text-sm font-bold">{t(portalShareUrl ? 'clientLinkReady' : 'clientLinkUnavailable')}</p>
@@ -2004,7 +2009,7 @@ function ProjectDetailPageContent({ lead, companySettings, clients = [], invoice
         </div>
 
         {(currentLead.priority || currentLead.source || currentLead.projectType || currentLead.notes || currentLead.description) ? (
-          <div className="min-w-0 md:col-span-2 [&>article]:h-full xl:col-span-6">
+          <div className="min-w-0 md:col-span-2 [&>article]:h-full xl:col-span-2">
             <InfoCard title={recordDetailsTitle}>
               {currentLead.priority ? <DetailRow label={t('priority')} value={currentLead.priority} /> : null}
               {currentLead.source ? <DetailRow label={t('source')} value={currentLead.source} /> : null}

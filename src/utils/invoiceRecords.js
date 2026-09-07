@@ -18,6 +18,16 @@ function toNumber(value, fallback = 0) {
   return Number.isFinite(parsed) ? parsed : fallback
 }
 
+export function roundMoney(value) {
+  const numericValue = toNumber(value)
+  return Math.round((numericValue + Number.EPSILON) * 100) / 100
+}
+
+export function sumMoney(values = []) {
+  if (!Array.isArray(values)) return 0
+  return roundMoney(values.reduce((sum, value) => sum + Math.round(toNumber(value) * 100), 0) / 100)
+}
+
 export function normalizeInvoiceLineItems(lineItems = []) {
   if (!Array.isArray(lineItems)) return []
 
@@ -28,7 +38,7 @@ export function normalizeInvoiceLineItems(lineItems = []) {
       : typeof item?.name === 'string'
         ? item.name
         : '',
-    amount: toNumber(item?.amount),
+    amount: roundMoney(item?.amount),
   }))
 }
 
@@ -36,14 +46,14 @@ export function calculateInvoiceTotal(lineItems = [], fallbackAmount = 0) {
   const normalizedLineItems = normalizeInvoiceLineItems(lineItems)
 
   if (normalizedLineItems.length === 0) {
-    return toNumber(fallbackAmount)
+    return roundMoney(fallbackAmount)
   }
 
-  return normalizedLineItems.reduce((sum, item) => sum + toNumber(item.amount), 0)
+  return sumMoney(normalizedLineItems.map((item) => item.amount))
 }
 
 export function getInvoiceRemainingBalance(invoice = {}) {
-  return Math.max(toNumber(invoice.amount) - toNumber(invoice.amountPaid), 0)
+  return roundMoney(Math.max(toNumber(invoice.amount) - toNumber(invoice.amountPaid), 0))
 }
 
 export function isCollectibleInvoice(invoice = {}) {
@@ -65,11 +75,11 @@ export function isCollectibleInvoice(invoice = {}) {
 export function calculateOutstandingInvoiceBalance(invoices = []) {
   if (!Array.isArray(invoices)) return 0
 
-  return invoices.reduce((total, invoice) => (
+  return roundMoney(invoices.reduce((total, invoice) => (
     isCollectibleInvoice(invoice)
       ? total + getInvoiceRemainingBalance(invoice)
       : total
-  ), 0)
+  ), 0))
 }
 
 function normalizeInvoicePaymentHistory(paymentHistory = []) {
@@ -78,7 +88,7 @@ function normalizeInvoicePaymentHistory(paymentHistory = []) {
   return paymentHistory.map((entry, index) => ({
     ...(entry && typeof entry === 'object' ? entry : {}),
     id: entry?.id || `payment-history-${index}`,
-    amount: toNumber(entry?.amount),
+    amount: roundMoney(entry?.amount),
     date: entry?.date || '',
     method: entry?.method || '',
     type: entry?.type || '',
@@ -160,8 +170,8 @@ export function hydrateInvoiceRecord(invoice = {}, { leads = [], payments = [], 
   const linkedPayments = dedupePayments(payments).filter((payment) => payment.invoiceId === invoice?.id)
   const hasLinkedPayments = linkedPayments.length > 0
   const amountPaid = hasLinkedPayments
-    ? linkedPayments.reduce((sum, payment) => sum + toNumber(payment.amount), 0)
-    : toNumber(readField(invoice, ['amountPaid', 'amount_paid']))
+    ? sumMoney(linkedPayments.map((payment) => payment.amount))
+    : roundMoney(readField(invoice, ['amountPaid', 'amount_paid']))
   const paymentHistory = hasLinkedPayments
     ? buildLinkedPaymentHistory(linkedPayments)
     : normalizeInvoicePaymentHistory(readField(invoice, ['paymentHistory', 'payment_history']) || [])
