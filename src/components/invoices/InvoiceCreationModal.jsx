@@ -64,7 +64,6 @@ export function InvoiceCreationModal({
   const [lineItems, setLineItems] = useState([{ description: '', amount: '' }])
   const [paymentTerms, setPaymentTerms] = useState('')
   const [customerNotes, setCustomerNotes] = useState('')
-  const [invoiceLanguage, setInvoiceLanguage] = useState('')
   const [validationErrors, setValidationErrors] = useState({})
   const [isSubmitting, setIsSubmitting] = useState(false)
   const submitGuardRef = useRef(false)
@@ -78,8 +77,8 @@ export function InvoiceCreationModal({
     ? projectOptions.filter((project) => project.clientId === selectedClientId || project.id === selectedProjectId)
     : projectOptions
   const total = lineItems.reduce((sum, item) => sum + (Number(item.amount) || 0), 0)
-  const effectiveInvoiceLanguage = invoiceLanguage || resolvePreferredClientLanguage({ client: selectedClient, userLanguage: language })
-  const invoiceContentT = useMemo(() => createTranslator(effectiveInvoiceLanguage), [effectiveInvoiceLanguage])
+  const resolvedInvoiceLanguage = resolvePreferredClientLanguage({ client: selectedClient, userLanguage: language })
+  const invoiceContentT = useMemo(() => createTranslator(resolvedInvoiceLanguage), [resolvedInvoiceLanguage])
   const invoiceDefaultPaymentTerms = invoiceContentT('invoiceDefaultPaymentTerms')
 
   useEffect(() => {
@@ -93,14 +92,13 @@ export function InvoiceCreationModal({
     setIssueDate(today)
     setDueDate(addDays(today, invoiceDueDays))
     setLineItems([{ description: initialProject?.title || '', amount: '' }])
-    setPaymentTerms(invoiceDefaultPaymentTerms)
+    setPaymentTerms('')
     setCustomerNotes('')
-    setInvoiceLanguage('')
     setValidationErrors({})
     setIsSubmitting(false)
     submitGuardRef.current = false
     paymentTermsEditedRef.current = false
-  }, [initialProjectId, invoiceDefaultPaymentTerms, invoiceDueDays, isOpen, projectOptions])
+  }, [initialProjectId, invoiceDueDays, isOpen, projectOptions])
 
   useEffect(() => {
     if (!isOpen || paymentTermsEditedRef.current) return
@@ -180,7 +178,7 @@ export function InvoiceCreationModal({
         lineItems,
         paymentTerms,
         customerNotes,
-        invoiceLanguage,
+        invoiceLanguage: resolvedInvoiceLanguage,
       }))
     } finally {
       submitGuardRef.current = false
@@ -265,14 +263,6 @@ export function InvoiceCreationModal({
         </section>
 
         <section className="grid min-w-0 gap-4 sm:grid-cols-2">
-          <label className="block min-w-0 text-sm font-bold text-slate-700">
-            <span className="mb-2 block">{t('invoiceLanguage')}</span>
-            <SelectField value={invoiceLanguage} onChange={(event) => setInvoiceLanguage(event.target.value)}>
-              <option value="">{t('useClientLanguage')}</option>
-              <option value="en">{t('english')}</option>
-              <option value="es">{t('spanish')}</option>
-            </SelectField>
-          </label>
           <label className="block min-w-0 text-sm font-bold text-slate-700 sm:col-span-2">
             <span className="mb-2 block">{t('paymentTerms')}</span>
             <textarea value={paymentTerms} onChange={(event) => { paymentTermsEditedRef.current = true; setPaymentTerms(event.target.value) }} rows={3} className="w-full min-w-0 rounded-2xl border border-slate-200 bg-white px-4 py-3 text-sm leading-6 text-slate-900 outline-none transition focus:border-blue-500 focus:ring-4 focus:ring-blue-100" />

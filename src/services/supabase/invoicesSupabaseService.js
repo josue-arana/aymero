@@ -428,21 +428,22 @@ async function ensureUniqueInvoiceNumber(contractorId, invoice = {}, { excludeId
     return getInvoiceDisplayNumber(invoice, invoice, readField(invoice, ['createdAt', 'created_at', 'issueDate', 'issue_date']) || new Date())
   }
 
-  let attempt = 0
-  let nextNumber = generateInvoiceNumber({
-    ...invoice,
-    id: invoice?.id || `invoice-${Date.now()}-0`,
-  }, new Date())
+  const baseId = invoice?.id || invoice?.projectId || invoice?.project_id || `invoice-${Date.now()}`
+  const invoiceDate = new Date()
 
-  while (await invoiceNumberExists(contractorId, nextNumber, excludeId)) {
-    nextNumber = generateInvoiceNumber({
-      ...invoice,
-      id: invoice?.id || `invoice-${Date.now()}-${attempt}`,
-    }, new Date())
-    attempt += 1
+  for (let attempt = 0; attempt < 100; attempt += 1) {
+    const candidate = attempt === 0
+      ? generateInvoiceNumber({ ...invoice, id: baseId }, invoiceDate)
+      : generateInvoiceNumber({ id: `${baseId}-${attempt}` }, invoiceDate)
+
+    if (!(await invoiceNumberExists(contractorId, candidate, excludeId))) {
+      return candidate
+    }
   }
 
-  return nextNumber
+  throw Object.assign(new Error('Unable to generate a unique invoice number.'), {
+    code: 'INVOICE_NUMBER_COLLISION',
+  })
 }
 
 function toSupabasePayload(contractorId, invoice = {}, { isCreate = false } = {}) {

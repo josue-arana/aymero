@@ -7,6 +7,7 @@ import { generateInvoiceNumber } from '../src/utils/invoiceNumber.js'
 import { selectProjectWorkspaceInvoices } from '../src/utils/projectWorkspaceViewModel.js'
 import { calculateInvoiceTotal, getInvoiceRemainingBalance } from '../src/utils/invoiceRecords.js'
 import { currency } from '../src/utils/formatters.js'
+import { resolveClientFacingLanguage, resolvePreferredClientLanguage } from '../src/utils/language.js'
 import { en } from '../src/translations/en.js'
 import { es } from '../src/translations/es.js'
 
@@ -97,6 +98,19 @@ assert.equal(directPayload.amount, 3000)
 assert.equal(directPayload.status, 'Draft')
 assert.equal(directPayload.invoiceLanguage, 'es')
 assert.equal(directPayload.paymentTerms, 'Due in 7 days')
+assert.notEqual(
+  generateInvoiceNumber({ projectId: 'project-direct', id: 'invoice-direct-1' }, new Date('2026-08-23T12:00:00')),
+  generateInvoiceNumber({ id: 'project-direct-1' }, new Date('2026-08-23T12:00:00')),
+)
+
+const englishClient = { id: 'client-english', name: 'English Client', preferredLanguage: 'en' }
+const spanishClient = { id: 'client-spanish', name: 'Spanish Client', preferredLanguage: 'es' }
+assert.equal(resolvePreferredClientLanguage({ client: englishClient, userLanguage: 'es' }), 'en')
+assert.equal(resolvePreferredClientLanguage({ client: spanishClient, userLanguage: 'en' }), 'es')
+assert.equal(resolvePreferredClientLanguage({ client: { id: 'client-missing-language' }, userLanguage: 'es' }), 'es')
+assert.equal(resolveClientFacingLanguage({ documentLanguage: 'en', client: spanishClient, appLanguage: 'es' }), 'en')
+assert.equal(en.invoiceDefaultPaymentTerms, 'Payment due by the due date shown on this invoice.')
+assert.equal(es.invoiceDefaultPaymentTerms, 'El pago vence en la fecha indicada en esta factura.')
 
 for (const [value, expected] of [
   [300, '$300'],
@@ -140,6 +154,8 @@ const hydratedDirectInvoice = hydrateInvoiceRecord({ id: 'invoice-direct', ...di
 assert.equal(hydratedDirectInvoice.leadId, null)
 assert.equal(hydratedDirectInvoice.projectId, 'project-direct')
 assert.equal(hydratedDirectInvoice.clientId, 'client-direct')
+const snapshottedSpanishInvoice = hydrateInvoiceRecord({ id: 'invoice-language-snapshot', ...directPayload, invoiceLanguage: 'es' }, { leads })
+assert.equal(snapshottedSpanishInvoice.invoiceLanguage, 'es')
 
 const coexistingInvoices = dedupeInvoiceRecords([
   { id: 'invoice-one', number: 'INV-ONE', projectId: 'project-direct' },
@@ -179,7 +195,13 @@ assert.doesNotMatch(modalSource, /total <= 0\} className/)
 assert.match(modalSource, /invoiceDefaultPaymentTerms/)
 assert.match(modalSource, /resolvePreferredClientLanguage/)
 assert.match(modalSource, /paymentTermsEditedRef/)
+assert.match(modalSource, /if \(submitGuardRef\.current\) return/)
+assert.match(modalSource, /await onSave\?\./)
+assert.match(modalSource, /finally \{/)
 assert.doesNotMatch(modalSource, /defaultPaymentTerms=\{/)
+assert.doesNotMatch(modalSource, /setInvoiceLanguage/)
+assert.doesNotMatch(modalSource, /t\('invoiceLanguage'\)/)
+assert.match(modalSource, /invoiceLanguage: resolvedInvoiceLanguage/)
 assert.match(appSource, /language=\{language\}/)
 assert.match(estimateSource, /companySettings\?\.defaults\?\.paymentTerms/)
 assert.match(contractSource, /buildGeneratedContractPaymentTerms/)
@@ -189,8 +211,11 @@ assert.match(modalSource, /Array\.isArray\(clients\)/)
 assert.match(modalSource, /disabled=\{lockProject\}/)
 assert.match(appSource, /invoiceModalState\.isOpen \? \(/)
 assert.match(supabaseServiceSource, /const invoiceNumber = await ensureUniqueInvoiceNumber\(contractorId, invoiceData\)/)
+assert.match(supabaseServiceSource, /for \(let attempt = 0; attempt < 100; attempt \+= 1\)/)
+assert.match(supabaseServiceSource, /INVOICE_NUMBER_COLLISION/)
 assert.match(supabaseServiceSource, /payload\.project_id = readField\(invoice, \['projectId', 'project_id'\]\) \|\| null/)
 assert.match(supabaseServiceSource, /payload\.client_id = readField\(invoice, \['clientId', 'client_id'\]\) \|\| null/)
+assert.match(supabaseServiceSource, /invoiceLanguage/)
 assert.doesNotMatch(supabaseServiceSource, /payload\.lead_id/)
 assert.match(invoiceDetailSource, /<InvoiceDocumentPreview/)
 
