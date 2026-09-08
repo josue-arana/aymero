@@ -34,6 +34,8 @@
     "verify:project-completion": "node scripts/verify-project-completion.mjs",
     "verify:project-data-integrity": "node scripts/verify-project-data-integrity.mjs",
     "verify:estimate-alternatives-foundation": "node scripts/verify-estimate-alternatives-foundation.mjs",
+    "verify:estimate-alternatives-workflow": "node scripts/verify-estimate-alternatives-workflow.mjs",
+    "verify:lead-estimate-alternatives": "node scripts/verify-lead-estimate-alternatives.mjs",
     "verify:saas-billing": "node scripts/verify-saas-billing-foundation.mjs",
     "verify:billing-settings": "node scripts/verify-billing-settings-sync.mjs",
     "verify:subscription-hub": "node scripts/verify-subscription-hub.mjs",

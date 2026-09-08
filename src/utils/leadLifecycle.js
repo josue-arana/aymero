@@ -46,7 +46,7 @@ function estimateMatchesLead(estimate, lead, portalEstimate) {
   return false
 }
 
-function dedupeEstimateCandidates(estimates = []) {
+export function dedupeEstimateRecordsById(estimates = []) {
   const seenIds = new Set()
 
   return estimates.filter((estimate) => {
@@ -59,6 +59,39 @@ function dedupeEstimateCandidates(estimates = []) {
     seenIds.add(id)
     return true
   })
+}
+
+function dedupeEstimateCandidates(estimates = []) {
+  return dedupeEstimateRecordsById(estimates)
+}
+
+export function getLeadEstimateRecords({ lead = {}, estimates = [], archivedLeadIds = [] } = {}) {
+  const portalEstimate = lead?.portal?.estimate || null
+  const candidates = dedupeEstimateCandidates([
+    ...(Array.isArray(estimates) ? estimates : [estimates]),
+    portalEstimate,
+  ])
+  return candidates.filter((estimate) => estimateMatchesLead(estimate, lead, portalEstimate)).filter((estimate) => (
+    !resolveEstimateArchiveState({ estimate, lead, archivedLeadIds }).isArchived
+  ))
+}
+
+export function summarizeLeadEstimateStatus(estimates = []) {
+  const statuses = estimates.map((estimate) => normalizeStatus(estimate?.status))
+  if (statuses.some((status) => ['approved', 'accepted', 'converted', 'converted to contract'].includes(status))) return 'approved'
+  if (statuses.includes('sent')) return 'sent'
+  if (statuses.some((status) => ['draft', 'saved'].includes(status))) return 'draft'
+  if (statuses.includes('rejected')) return 'rejected'
+  return 'none'
+}
+
+export function getLeadEstimateValue({ lead = {}, estimates = [], archivedLeadIds = [] } = {}) {
+  const activeEstimates = getLeadEstimateRecords({ lead, estimates, archivedLeadIds })
+  if (activeEstimates.length === 0) return null
+  const approved = activeEstimates.find((estimate) => ['approved', 'accepted', 'converted', 'converted to contract'].includes(normalizeStatus(estimate?.status)))
+  if (approved) return Number(approved.total ?? approved.totalAmount ?? approved.amount ?? 0) || 0
+  if (activeEstimates.length === 1) return Number(activeEstimates[0].total ?? activeEstimates[0].totalAmount ?? activeEstimates[0].amount ?? 0) || 0
+  return null
 }
 
 /**
@@ -93,7 +126,9 @@ export function selectPrimaryLeadEstimate({
   if (explicitEstimate) return explicitEstimate
 
   const sortedCandidates = [...usableCandidates].sort((left, right) => (
-    readRecordTimestamp(right) - readRecordTimestamp(left)
+    (['approved', 'accepted', 'converted', 'converted to contract'].includes(normalizeStatus(right?.status)) ? 3 : normalizeStatus(right?.status) === 'sent' ? 2 : 1)
+      - (['approved', 'accepted', 'converted', 'converted to contract'].includes(normalizeStatus(left?.status)) ? 3 : normalizeStatus(left?.status) === 'sent' ? 2 : 1)
+      || readRecordTimestamp(right) - readRecordTimestamp(left)
       || normalizeId(right?.id).localeCompare(normalizeId(left?.id))
   ))
   const activeEstimate = sortedCandidates.find((estimate) => !resolveEstimateArchiveState({
@@ -152,6 +187,7 @@ export function resolveLeadLifecycle({
   const explicitStage = normalizeLeadPipelineStage(lead?.leadPipelineStage || lead?.lead_pipeline_stage)
   const lost = explicitStage === leadPipelineStages.LOST || normalizeStatus(lead?.status) === 'lost'
   const activeContract = contract && !isRecordArchived(contract) ? contract : null
+  const relatedEstimates = getLeadEstimateRecords({ lead, estimates, archivedLeadIds })
   const relatedEstimate = selectPrimaryLeadEstimate({
     lead,
     estimates,
@@ -167,15 +203,10 @@ export function resolveLeadLifecycle({
   const relatedProject = project?.id ? project : null
   const projectArchived = Boolean(relatedProject && isRecordArchived(relatedProject, archivedProjectIds))
   const normalizedEstimateStatus = normalizeStatus(relatedEstimate?.status)
-  const estimateStatusKind = !relatedEstimate
-    ? 'none'
-    : ['approved', 'accepted', 'converted', 'converted to contract'].includes(normalizedEstimateStatus)
-      ? 'approved'
-      : normalizedEstimateStatus === 'sent'
-        ? explicitStage === leadPipelineStages.FOLLOW_UP ? 'follow-up' : 'sent'
-        : normalizedEstimateStatus === 'rejected'
-          ? 'rejected'
-          : 'draft'
+  const aggregateEstimateStatus = summarizeLeadEstimateStatus(relatedEstimates)
+  const estimateStatusKind = aggregateEstimateStatus === 'sent'
+    ? explicitStage === leadPipelineStages.FOLLOW_UP ? 'follow-up' : 'sent'
+    : aggregateEstimateStatus
   const baseResult = {
     relatedEstimate,
     relatedProject,
@@ -184,6 +215,7 @@ export function resolveLeadLifecycle({
     leadArchived,
     lost,
     estimateStatusKind,
+    relatedEstimates,
   }
 
   if (leadArchived) {
@@ -219,7 +251,7 @@ export function resolveLeadLifecycle({
     })
   }
 
-  if (relatedEstimate && !estimateArchiveState.isArchived) {
+  if (relatedEstimates.length > 0) {
     if (estimateStatusKind === 'approved' || activeContract) {
       return buildLifecycleResult({
         ...baseResult,

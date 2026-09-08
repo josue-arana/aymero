@@ -18,7 +18,7 @@ import { getEstimateForLead, getEstimatedValueForLead, readLinkedEstimateDraft, 
 import { currency, formatDisplayDate } from '../utils/formatters'
 import { archiveMenuItemClasses } from '../utils/buttonStyles'
 import { getLeadPipelineStage, leadPipelineStages } from '../utils/leadPipeline'
-import { resolveLeadLifecycle, selectPrimaryLeadEstimate } from '../utils/leadLifecycle'
+import { dedupeEstimateRecordsById, getLeadEstimateValue, resolveLeadLifecycle, selectPrimaryLeadEstimate } from '../utils/leadLifecycle'
 import { getLanguageLocale, normalizeSupportedLanguageOrEmpty } from '../utils/language'
 
 function logLeadDetailDevError(message, error, meta) {
@@ -197,6 +197,7 @@ function LeadNotFound({ onBack, t }) {
 export function LeadDetailPage({
   lead,
   clients = [],
+  estimates = [],
   archivedIds = [],
   onBack,
   onOpenProject,
@@ -207,6 +208,7 @@ export function LeadDetailPage({
   onArchiveLead,
   onRestoreLead,
   onDeleteLead,
+  onCreateEstimateOption,
   language = 'en',
   t,
 }) {
@@ -223,25 +225,20 @@ export function LeadDetailPage({
   const [confirmAction, setConfirmAction] = useState(null)
   const [isLeadActionSubmitting, setIsLeadActionSubmitting] = useState(false)
   const [estimateRecord, setEstimateRecord] = useState(() => readLinkedEstimateDraft(lead || leadId, leadId || lead?.id || ''))
+  const [estimateRecords, setEstimateRecords] = useState(() => dedupeEstimateRecordsById(estimates))
   const [relatedProjectRecord, setRelatedProjectRecord] = useState(null)
   const leadActionGuardRef = useRef(false)
   const mergedLead = useMemo(() => {
     const baseLead = USE_SUPABASE_LEADS ? record : (record || lead)
 
     if (!baseLead) return null
-    if (!hasSavedEstimate(estimateRecord)) return baseLead
-
-    const nextEstimate = {
-      ...(baseLead.portal?.estimate || {}),
-      ...estimateRecord,
-    }
-    const estimateValue = getEstimatedValueForLead({
-      ...baseLead,
-      portal: {
-        ...(baseLead.portal || {}),
-        estimate: nextEstimate,
-      },
-    }, [nextEstimate])
+    const nextEstimate = hasSavedEstimate(estimateRecord)
+      ? { ...(baseLead.portal?.estimate || {}), ...estimateRecord }
+      : null
+    const candidateEstimates = dedupeEstimateRecordsById([...estimateRecords, nextEstimate].filter(Boolean))
+    const estimateValue = getLeadEstimateValue({ lead: baseLead, estimates: candidateEstimates })
+      ?? (nextEstimate ? getEstimatedValueForLead(baseLead, [nextEstimate]) : null)
+    if (!nextEstimate && estimateRecords.length === 0) return baseLead
 
     return {
       ...baseLead,
@@ -249,11 +246,18 @@ export function LeadDetailPage({
       estimatedValue: estimateValue,
       portal: {
         ...(baseLead.portal || {}),
-        estimate: nextEstimate,
+        estimate: nextEstimate || baseLead.portal?.estimate || {},
       },
     }
-  }, [estimateRecord, lead, record])
-  const currentLead = useMemo(() => createSafeLead(mergedLead, leadId), [leadId, mergedLead])
+  }, [estimateRecord, estimateRecords, lead, record])
+  const currentLead = useMemo(() => {
+    const safeLead = createSafeLead(mergedLead, leadId)
+    if (!safeLead) return safeLead
+    const aggregateValue = getLeadEstimateValue({ lead: safeLead, estimates: estimateRecords, archivedLeadIds: archivedIds })
+    return aggregateValue === null
+      ? { ...safeLead, value: null, estimatedValue: null }
+      : { ...safeLead, value: aggregateValue ?? safeLead.value, estimatedValue: aggregateValue ?? safeLead.estimatedValue }
+  }, [archivedIds, estimateRecords, leadId, mergedLead])
   const relatedProjectId = currentLead?.projectId || currentLead?.project_id || ''
   const relatedProject = relatedProjectRecord || (relatedProjectId
     ? {
@@ -264,19 +268,25 @@ export function LeadDetailPage({
     : null)
   const lifecycle = resolveLeadLifecycle({
     lead: currentLead || {},
-    estimates: [currentLead?.portal?.estimate].filter(Boolean),
+    estimates: estimateRecords,
     contract: currentLead?.portal?.contract || null,
     project: relatedProject,
     archivedLeadIds: archivedIds,
   })
   const isArchived = lifecycle.isArchived
   const currentEstimate = lifecycle.relatedEstimate
-  const leadHasEstimate = Boolean(currentEstimate)
+  const leadEstimateRecords = lifecycle.relatedEstimates || estimateRecords
+  const leadHasEstimate = leadEstimateRecords.length > 0
+  const hasDeterministicLeadEstimate = leadEstimateRecords.length <= 1
+    || leadEstimateRecords.filter((item) => ['Approved', 'Converted to Contract', 'Accepted'].includes(String(item?.status || item?.estimateStatus || '').trim())).length === 1
+  const hasAmbiguousLeadEstimateAction = leadEstimateRecords.length > 1 && !hasDeterministicLeadEstimate
   const currentStage = lifecycle.stage
   const isConvertedToJob = lifecycle.hasActiveProject
-  const nextStepDisplay = t(lifecycle.nextStepKey)
+  const nextStepDisplay = hasAmbiguousLeadEstimateAction ? t('reviewEstimatesChoose') : t(lifecycle.nextStepKey)
   const currentStageDisplay = t(lifecycle.stageLabelKey)
-  const estimatedValueDisplay = leadHasEstimate ? currency.format(currentLead?.value || 0) : t('notEstimated')
+  const estimatedValueDisplay = currentLead?.value === null && leadEstimateRecords.length > 1
+    ? t('estimateValueNotFinalized')
+    : leadHasEstimate ? currency.format(currentLead?.value || 0) : t('notEstimated')
   const leadDisplayName = currentLead?.client || currentLead?.name || t('lead')
   const projectDisplayTitle = currentLead?.projectTitle || currentLead?.projectType || t('unknownProject')
   const createdDateDisplay = formatDisplayDate(currentLead?.createdAt || currentLead?.created_at)
@@ -358,40 +368,33 @@ export function LeadDetailPage({
       const activeLead = USE_SUPABASE_LEADS ? record : lead
       const relatedProjectId = activeLead?.projectId || activeLead?.project_id || null
       const relatedLeadId = activeLead?.id || leadId
-      const knownEstimateId = activeLead?.estimateId || activeLead?.portal?.estimate?.id || null
       const draftEstimate = readLinkedEstimateDraft(activeLead || leadId, [leadId, relatedProjectId || ''])
+      const localEstimateRows = estimates.filter((estimate) => (
+        estimate?.leadId === relatedLeadId
+          || estimate?.lead_id === relatedLeadId
+          || (relatedProjectId && (estimate?.projectId === relatedProjectId || estimate?.project_id === relatedProjectId))
+      ))
 
       try {
-        if (knownEstimateId) {
-          const estimateResponse = await dataProvider.estimates.getById?.(knownEstimateId, {
-            contractorId,
-          })
-
-          if (!isCancelled && !estimateResponse?.error && estimateResponse?.data) {
-            const nextEstimate = { ...(draftEstimate || {}), ...estimateResponse.data }
-            setEstimateRecord(nextEstimate)
-            writeLinkedEstimateDrafts([leadId, relatedProjectId || '', relatedLeadId || '', nextEstimate.id], nextEstimate)
-            return
-          }
-        }
-
-        if (!relatedProjectId && !relatedLeadId) {
+        if (!relatedLeadId && !relatedProjectId) {
           if (!isCancelled) {
             setEstimateRecord(draftEstimate)
+            setEstimateRecords(dedupeEstimateRecordsById(draftEstimate ? [draftEstimate] : []))
           }
           return
         }
 
         const response = await dataProvider.estimates.list({
           contractorId,
-          ...(relatedProjectId ? { projectId: relatedProjectId } : {}),
           ...(relatedLeadId ? { leadId: relatedLeadId } : {}),
           includeArchived: true,
         })
 
-        if (isCancelled || response?.error) {
+        if (isCancelled) return
+        if (response?.error && localEstimateRows.length === 0) {
           if (!isCancelled) {
             setEstimateRecord(draftEstimate)
+            setEstimateRecords(draftEstimate ? [draftEstimate] : [])
           }
           return
         }
@@ -399,7 +402,7 @@ export function LeadDetailPage({
         if (!isCancelled) {
           const primaryEstimate = selectPrimaryLeadEstimate({
             lead: activeLead || {},
-            estimates: [...(response?.data || []), draftEstimate].filter(Boolean),
+            estimates: [...(response?.data || localEstimateRows), ...localEstimateRows, draftEstimate].filter(Boolean),
             contract: activeLead?.portal?.contract || null,
             archivedLeadIds: archivedIds,
           })
@@ -408,6 +411,11 @@ export function LeadDetailPage({
             : draftEstimate
 
           setEstimateRecord(nextEstimate)
+          setEstimateRecords(dedupeEstimateRecordsById([
+            ...((response?.data || localEstimateRows)),
+            ...localEstimateRows,
+            draftEstimate,
+          ].filter(Boolean)))
           if (nextEstimate) {
             writeLinkedEstimateDrafts([leadId, relatedProjectId || '', relatedLeadId || '', nextEstimate.id], nextEstimate)
           }
@@ -415,6 +423,7 @@ export function LeadDetailPage({
       } catch (error) {
         if (!isCancelled) {
           setEstimateRecord(draftEstimate)
+          setEstimateRecords(dedupeEstimateRecordsById(draftEstimate ? [draftEstimate] : []))
         }
       }
     }
@@ -424,7 +433,7 @@ export function LeadDetailPage({
     return () => {
       isCancelled = true
     }
-  }, [archivedIds, contractorId, lead, leadId, record])
+  }, [archivedIds, contractorId, estimates, lead, leadId, record])
 
   useEffect(() => {
     let isCancelled = false
@@ -515,7 +524,7 @@ export function LeadDetailPage({
     setIsLeadActionSubmitting(true)
 
     try {
-      const nextLead = await onTransitionLeadStage?.(currentLead.id, targetStage)
+      const nextLead = await onTransitionLeadStage?.(currentLead.id, targetStage, { estimateId: currentEstimate?.id || '' })
 
       if (!nextLead) {
         return null
@@ -563,6 +572,10 @@ export function LeadDetailPage({
   }
 
   function openEstimateBuilder({ openSend = false } = {}) {
+    if (leadEstimateRecords.length > 1) {
+      openLeadEstimate(currentEstimate)
+      return
+    }
     navigate(`/projects/${currentLead.id}/estimate`, {
       state: {
         source: 'lead',
@@ -572,8 +585,8 @@ export function LeadDetailPage({
     })
   }
 
-  function openRelatedEstimate() {
-    const estimateId = currentEstimate?.id
+  function openRelatedEstimate(estimate = currentEstimate) {
+    const estimateId = estimate?.id
 
     if (!estimateId) {
       openEstimateBuilder()
@@ -591,6 +604,13 @@ export function LeadDetailPage({
 
   function openJobWorkspace() {
     onOpenProject?.(currentLead.projectId || currentLead.id)
+  }
+
+  function openLeadEstimate(estimate) {
+    if (!estimate?.id) return openEstimateBuilder()
+    navigate(appRoutes.estimateDetail.replace(':estimateId', estimate.id), {
+      state: { source: 'lead', leadId: currentLead.id, projectId: relatedProjectId || undefined, estimateId: estimate.id },
+    })
   }
 
   async function handleConvertLeadToJob() {
@@ -709,7 +729,7 @@ export function LeadDetailPage({
   }
 
   const moreMenuItems = [
-    leadHasEstimate && ['sent', 'follow-up'].includes(lifecycle.estimateStatusKind)
+    leadHasEstimate && !hasAmbiguousLeadEstimateAction && ['sent', 'follow-up'].includes(lifecycle.estimateStatusKind)
       ? {
           id: 'edit-estimate',
           label: t('editEstimate'),
@@ -804,17 +824,21 @@ export function LeadDetailPage({
           onDelete={() => setConfirmAction({ mode: 'delete' })}
           onEdit={() => setIsEditOpen(true)}
           onLifecycleAction={handleLifecycleAction}
+          isEstimateActionAmbiguous={hasAmbiguousLeadEstimateAction}
+          onViewEstimates={() => document.querySelector('[data-lead-related-estimates="true"]')?.scrollIntoView({ behavior: 'smooth', block: 'start' })}
           t={t}
         />
         {(leadHasEstimate || relatedProject) ? (
           <RelatedLeadRecordsCard
+            estimates={leadEstimateRecords}
             estimate={leadHasEstimate ? lifecycle.relatedEstimate : null}
-            estimateTotal={leadHasEstimate ? Number(currentLead?.value || 0) : null}
+            estimateTotal={leadHasEstimate && leadEstimateRecords.length === 1 ? Number(leadEstimateRecords[0]?.total || currentLead?.value || 0) : null}
             idSuffix="stacked"
             project={lifecycle.relatedProject}
             estimateIsArchived={lifecycle.estimateArchiveState.isArchived}
             projectIsArchived={lifecycle.projectArchived}
-            onOpenEstimate={leadHasEstimate ? openRelatedEstimate : null}
+            onOpenEstimate={leadHasEstimate ? openLeadEstimate : null}
+            onCreateEstimateOption={() => onCreateEstimateOption?.(currentLead)}
             onOpenProject={relatedProjectId ? openJobWorkspace : null}
             t={t}
           />
@@ -848,8 +872,10 @@ export function LeadDetailPage({
             nextStepDisplay={nextStepDisplay}
             onDelete={() => setConfirmAction({ mode: 'delete' })}
             onEdit={() => setIsEditOpen(true)}
-            onLifecycleAction={handleLifecycleAction}
-            t={t}
+          onLifecycleAction={handleLifecycleAction}
+          isEstimateActionAmbiguous={hasAmbiguousLeadEstimateAction}
+          onViewEstimates={() => document.querySelector('[data-lead-related-estimates="true"]')?.scrollIntoView({ behavior: 'smooth', block: 'start' })}
+          t={t}
           />
           <LeadDetailsCard
             currentLead={currentLead}
@@ -863,13 +889,15 @@ export function LeadDetailPage({
         <div className="grid min-w-0 gap-6" data-lead-detail-column="secondary">
           {(leadHasEstimate || relatedProject) ? (
             <RelatedLeadRecordsCard
+              estimates={leadEstimateRecords}
               estimate={leadHasEstimate ? lifecycle.relatedEstimate : null}
-              estimateTotal={leadHasEstimate ? Number(currentLead?.value || 0) : null}
+              estimateTotal={leadHasEstimate && leadEstimateRecords.length === 1 ? Number(leadEstimateRecords[0]?.total || currentLead?.value || 0) : null}
               idSuffix="columns"
               project={lifecycle.relatedProject}
               estimateIsArchived={lifecycle.estimateArchiveState.isArchived}
               projectIsArchived={lifecycle.projectArchived}
-              onOpenEstimate={leadHasEstimate ? openRelatedEstimate : null}
+              onOpenEstimate={leadHasEstimate ? openLeadEstimate : null}
+              onCreateEstimateOption={() => onCreateEstimateOption?.(currentLead)}
               onOpenProject={relatedProjectId ? openJobWorkspace : null}
               t={t}
             />
@@ -914,6 +942,8 @@ function LeadRecommendedActionCard({
   onDelete,
   onEdit,
   onLifecycleAction,
+  isEstimateActionAmbiguous = false,
+  onViewEstimates,
   t,
 }) {
   return (
@@ -931,8 +961,13 @@ function LeadRecommendedActionCard({
           <p className={`text-[11px] font-bold uppercase tracking-[0.16em] ${isConvertedToJob ? 'text-emerald-700' : 'text-blue-600'}`}>{t('nextStep')}</p>
           <p className="mt-1 text-sm leading-5 text-slate-700">{nextStepDisplay}</p>
         </div>
-        <div className={`grid min-w-0 gap-2 sm:col-span-2 2xl:col-span-1 ${lifecycle.actions.length > 1 ? 'sm:grid-cols-2' : ''}`}>
-          {lifecycle.actions.map((action) => (
+        <div className={`grid min-w-0 gap-2 sm:col-span-2 2xl:col-span-1 ${isEstimateActionAmbiguous ? '' : lifecycle.actions.length > 1 ? 'sm:grid-cols-2' : ''}`}>
+          {isEstimateActionAmbiguous ? (
+            <button type="button" disabled={isLeadActionSubmitting} onClick={onViewEstimates} className="flex min-h-12 w-full items-center justify-center gap-2 rounded-2xl bg-blue-600 px-4 py-3 text-sm font-bold text-white shadow-sm shadow-blue-600/20 hover:bg-blue-700 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-blue-500 focus-visible:ring-offset-2 disabled:cursor-not-allowed disabled:opacity-60">
+              <ClipboardList className="h-4 w-4" />
+              <span>{isLeadActionSubmitting ? t('saving') : t('viewEstimates')}</span>
+            </button>
+          ) : lifecycle.actions.map((action) => (
             <button
               key={action.actionType}
               type="button"
@@ -1131,30 +1166,40 @@ function RelatedRecordSection({ eyebrow, title, amount = '', status = '', isArch
   )
 }
 
-function RelatedLeadRecordsCard({ estimate, estimateTotal, idSuffix, project, estimateIsArchived = false, projectIsArchived = false, onOpenEstimate, onOpenProject, t }) {
+function RelatedLeadRecordsCard({ estimates = [], estimate, estimateTotal, idSuffix, project, estimateIsArchived = false, projectIsArchived = false, onOpenEstimate, onCreateEstimateOption, onOpenProject, t }) {
   if (!estimate && !project) return null
 
   const titleId = `related-lead-records-title-${idSuffix}`
-  const estimateTitle = estimate?.number || estimate?.estimateNumber || estimate?.title || t('relatedEstimate')
-  const estimateStatus = estimate?.status || ''
+  const estimateRows = estimates.length > 0 ? estimates : (estimate ? [estimate] : [])
   const projectTitle = project?.projectTitle || project?.title || t('relatedProject')
   const projectStatus = project?.projectStatus || project?.status
 
   return (
-    <section className="min-w-0 rounded-3xl border border-slate-200 bg-white p-5 shadow-sm" aria-labelledby={titleId}>
-      <h2 id={titleId} className="text-lg font-bold text-slate-950">{t('relatedRecords')}</h2>
+    <section data-lead-related-estimates="true" className="min-w-0 rounded-3xl border border-slate-200 bg-white p-5 shadow-sm" aria-labelledby={titleId}>
+      <h2 id={titleId} className="text-lg font-bold text-slate-950">{t('estimates')}{estimateRows.length > 0 ? ` (${estimateRows.length})` : ''}</h2>
       <div className="mt-4 space-y-4">
-        {estimate ? (
-          <RelatedRecordSection
-            eyebrow={t('estimate')}
-            title={estimateTitle}
-            amount={estimateTotal !== null ? currency.format(estimateTotal) : ''}
-            status={estimateStatus}
-            isArchived={estimateIsArchived}
-            actionLabel={t('openEstimate')}
-            onAction={onOpenEstimate}
-            t={t}
-          />
+        {estimateRows.length > 0 ? (
+          <div className="space-y-3">
+            {estimateRows.map((estimateRow) => (
+              <div key={estimateRow.id} className="rounded-2xl border border-slate-200 bg-slate-50 p-3.5">
+                <div className="flex min-w-0 flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
+                  <div className="min-w-0">
+                    <div className="flex flex-wrap items-center gap-2">
+                      <p className="text-[11px] font-bold uppercase tracking-[0.16em] text-slate-400">{t('estimate')}</p>
+                      {estimateRow.optionName || estimateRow.option_name ? <span className="rounded-full bg-blue-100 px-2 py-1 text-xs font-bold text-blue-700">{estimateRow.optionName || estimateRow.option_name}</span> : null}
+                    </div>
+                    <p className="mt-1 break-words text-sm font-bold text-slate-950">{estimateRow.number || estimateRow.estimateNumber || estimateRow.title || t('relatedEstimate')}</p>
+                    <p className="mt-1 text-sm font-semibold text-slate-700">{currency.format(Number(estimateRow.total ?? estimateRow.totalAmount ?? estimateRow.amount ?? 0))}</p>
+                  </div>
+                  <div className="flex flex-wrap items-center gap-2 sm:justify-end">
+                    <StatusBadge status={estimateRow.status || ''} t={t} />
+                    <button type="button" onClick={() => onOpenEstimate?.(estimateRow)} className="inline-flex min-h-11 items-center rounded-2xl border border-slate-200 bg-white px-4 py-2.5 text-sm font-bold text-slate-800 transition hover:bg-slate-50 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-blue-500 focus-visible:ring-offset-2">{t('openEstimate')}</button>
+                  </div>
+                </div>
+              </div>
+            ))}
+            {!projectIsArchived && onCreateEstimateOption ? <button type="button" onClick={onCreateEstimateOption} className="inline-flex min-h-11 w-full items-center justify-center rounded-2xl border border-dashed border-blue-300 bg-blue-50 px-4 py-2.5 text-sm font-bold text-blue-700 transition hover:bg-blue-100 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-blue-500 focus-visible:ring-offset-2">{t('newEstimate')}</button> : null}
+          </div>
         ) : null}
         {project ? (
           <div>

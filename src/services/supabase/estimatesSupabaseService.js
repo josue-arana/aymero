@@ -612,13 +612,6 @@ export async function deletePermanently(id, { contractorId, authenticatedUserId 
     id: `eq.${id}`,
   })
 
-  warnDev('[dev] Submitting contractor-scoped permanent estimate deletion.', {
-    estimateId: id,
-    contractorId,
-    authenticatedUserId: authenticatedUserId || null,
-    query,
-  })
-
   try {
     const response = await supabaseClient.request(TABLE_NAME, {
       method: 'DELETE',
@@ -633,20 +626,6 @@ export async function deletePermanently(id, { contractorId, authenticatedUserId 
         : []
     const row = rows[0] || null
     const affectedRowCount = response?.count ?? rows.length
-
-    warnDev('[dev] Supabase permanent estimate deletion returned.', {
-      estimateId: id,
-      contractorId,
-      authenticatedUserId: authenticatedUserId || null,
-      query,
-      status: response?.status ?? null,
-      contentRange: response?.contentRange ?? null,
-      returnedDeletedRows: rows,
-      affectedRowCount,
-      errorCode: null,
-      errorMessage: null,
-      errorDetails: null,
-    })
 
     if (!row?.id || affectedRowCount < 1) {
       const error = {

@@ -126,7 +126,7 @@ export function getEstimatesForProject(project = {}, estimates = [], { includeAr
   const projectId = normalizeLookupId(project?.id || project?.projectId || project?.project_id)
   if (!projectId) return []
 
-  return dedupeById(estimates, ['projectId', 'project_id', 'leadId', 'lead_id', 'number', 'estimateNumber'])
+  return dedupeById(estimates)
     .filter((estimate) => readEstimateProjectId(estimate) === projectId)
     .filter((estimate) => includeArchived || !isArchivedEstimate(estimate))
     .sort((left, right) => (
@@ -169,7 +169,7 @@ export function getEstimateForProject(project = {}, estimates = []) {
   const estimateId = normalizeLookupId(project?.estimateId || project?.estimate_id)
 
   if (estimateId) {
-    const explicitEstimate = dedupeById(estimates, ['projectId', 'project_id', 'leadId', 'lead_id', 'number', 'estimateNumber'])
+    const explicitEstimate = dedupeById(estimates)
       .find((estimate) => normalizeLookupId(estimate?.id) === estimateId && !isArchivedEstimate(estimate))
     if (explicitEstimate) return explicitEstimate
   }
@@ -178,7 +178,7 @@ export function getEstimateForProject(project = {}, estimates = []) {
     return null
   }
 
-  return dedupeById(estimates, ['projectId', 'project_id', 'leadId', 'lead_id', 'number', 'estimateNumber'])
+  return dedupeById(estimates)
     .filter((estimate) => !isArchivedEstimate(estimate))
     .find((estimate) => {
       const estimateProjectId = readEstimateProjectId(estimate)

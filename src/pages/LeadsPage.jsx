@@ -17,6 +17,7 @@ import dataProvider from '../services/dataProvider'
 import { getLeadsContractorId } from '../services/system/leadsRuntimeService'
 import { getLeadDisplayValue, getLeadNextStepLabel, getLeadPipelineStage, getLeadPipelineStageCounts, getPriorityLabel } from '../utils/leadPipeline'
 import { getEstimatedValueForLead } from '../utils/estimateLinks'
+import { getLeadEstimateValue } from '../utils/leadLifecycle'
 import leadsHeroBackground from '../assets/page-heroes/leads-bg.png'
 import { buildHeroBackgroundStyle } from '../utils/heroBackground'
 
@@ -31,7 +32,7 @@ function isLeadArchived(lead, archivedIds = []) {
   )
 }
 
-export function LeadsPage({ leads, clients = [], archivedIds = [], onViewLead, onCreateLead, onArchiveLead, onRestoreLead, onDeleteLead, language = 'en', t }) {
+export function LeadsPage({ leads, clients = [], estimates = [], archivedIds = [], onViewLead, onCreateLead, onArchiveLead, onRestoreLead, onDeleteLead, language = 'en', t }) {
   const [searchTerm, setSearchTerm] = useState('')
   const [selectedFilter, setSelectedFilter] = useState('New Lead')
   const [isCreateOpen, setIsCreateOpen] = useState(false)
@@ -44,14 +45,19 @@ export function LeadsPage({ leads, clients = [], archivedIds = [], onViewLead, o
   const contractorId = getLeadsContractorId({ contractor, company, session })
 
   const leadsWithEstimatedValues = useMemo(() => leads.map((lead) => {
-    const estimatedValue = getEstimatedValueForLead(lead)
+    const relatedEstimates = estimates.filter((estimate) => (
+      estimate?.leadId === lead?.id
+        || estimate?.lead_id === lead?.id
+        || (lead?.projectId && (estimate?.projectId === lead.projectId || estimate?.project_id === lead.projectId))
+    ))
+    const estimatedValue = getLeadEstimateValue({ lead, estimates: relatedEstimates }) ?? (relatedEstimates.length === 0 ? getEstimatedValueForLead(lead) : null)
 
     return {
       ...lead,
       leadEstimatedValue: estimatedValue,
       leadEstimatedValueDisplay: estimatedValue === null ? t('notEstimated') : currency.format(estimatedValue),
     }
-  }), [leads, t])
+  }), [estimates, leads, t])
 
   const activeLeads = useMemo(() => leadsWithEstimatedValues.filter((lead) => !isLeadArchived(lead, archivedIds)), [leadsWithEstimatedValues, archivedIds])
 

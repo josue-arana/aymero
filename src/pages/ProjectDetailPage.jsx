@@ -29,7 +29,7 @@ import { formatContractDisplayNumber } from '../utils/contractNumber'
 import { formatEstimateDisplayNumber } from '../utils/estimateNumber'
 import { PROJECT_PHOTO_MAX_FILE_SIZE_BYTES, revokeProjectPhotoPreviewUrl, validateProjectPhotoFile } from '../services/photosService'
 import { calculateProjectPaymentSummary, collectProjectInvoiceIds, dedupePayments, mergeProjectTimeline, normalizePaymentRecord } from '../utils/projectPayments'
-import { dedupeById, getSelectedEstimateForProject, resolveLinkedProjectId } from '../utils/projectIdentity'
+import { dedupeById, getEstimatesForProject, getSelectedEstimateForProject, resolveLinkedProjectId } from '../utils/projectIdentity'
 import { getRecordDetailsTitleKey } from '../utils/recordDetailsTitle'
 import { sortScheduleEvents } from '../utils/scheduleEvents'
 import { getInvoiceRemainingBalance } from '../utils/invoiceRecords'
@@ -407,7 +407,7 @@ class ProjectDetailErrorBoundary extends Component {
   }
 }
 
-function ProjectDetailPageContent({ lead, companySettings, clients = [], estimates = [], invoices = [], scheduleEvents = [], archivedScheduleEventIds = [], isArchived = false, onBack, onOpenPortal, onOpenContract, onConvertEstimate, onCreateInvoice, onMarkProjectComplete, onUpdateLead, onRecordPayment, onUpdatePayment, onDeletePayment, onUploadPhotos, onScheduleEvent, onEditScheduleEvent, onExportEvent, onArchiveScheduleEvent, onRestoreScheduleEvent, onDeleteScheduleEvent, onArchiveProject, onRestoreProject, onDeleteProject, language = 'en', t }) {
+function ProjectDetailPageContent({ lead, companySettings, clients = [], estimates = [], invoices = [], scheduleEvents = [], archivedScheduleEventIds = [], isArchived = false, onBack, onOpenPortal, onOpenContract, onConvertEstimate, onCreateInvoice, onMarkProjectComplete, onUpdateLead, onRecordPayment, onUpdatePayment, onDeletePayment, onUploadPhotos, onScheduleEvent, onEditScheduleEvent, onExportEvent, onArchiveScheduleEvent, onRestoreScheduleEvent, onDeleteScheduleEvent, onArchiveProject, onRestoreProject, onDeleteProject, onCreateEstimateOption, onDuplicateEstimateOption, onSelectEstimate, onClearEstimateSelection, language = 'en', t }) {
   const { id, leadId } = useParams()
   const location = useLocation()
   const navigate = useNavigate()
@@ -423,6 +423,7 @@ function ProjectDetailPageContent({ lead, companySettings, clients = [], estimat
   const [hasLoadedProject, setHasLoadedProject] = useState(!USE_SUPABASE_PROJECTS)
   const [projectLoadError, setProjectLoadError] = useState(null)
   const [estimateRecord, setEstimateRecord] = useState(() => readLinkedEstimateDraft(lead || projectId, projectId || lead?.id || ''))
+  const [estimateRecords, setEstimateRecords] = useState(() => getEstimatesForProject({ ...(lead || {}), id: lead?.projectId || lead?.project_id || projectId }, estimates))
   const [contractRecord, setContractRecord] = useState(() => readLinkedContractDraft(lead || projectId, projectId || lead?.id || ''))
   const [paymentRecords, setPaymentRecords] = useState([])
   const [projectEventRecords, setProjectEventRecords] = useState([])
@@ -469,6 +470,21 @@ function ProjectDetailPageContent({ lead, companySettings, clients = [], estimat
     || lead?.portal?.estimate
     || readLinkedEstimateDraft(baseProject || projectId, [projectId, relatedLeadId, lead?.id])
   ), [baseProject, estimateRecord, lead, projectId, relatedLeadId])
+  const projectEstimateRecords = useMemo(() => {
+    const candidates = [...estimateRecords, ...(resolvedEstimate ? [resolvedEstimate] : [])]
+    const scopedProject = { ...(baseProject || {}), id: linkedProjectId || baseProject?.projectId || baseProject?.project_id || projectId }
+    const linkedEstimates = getEstimatesForProject(scopedProject, candidates)
+    return linkedEstimates.length > 0 || !resolvedEstimate?.id || resolvedEstimate?.projectId || resolvedEstimate?.project_id
+      ? linkedEstimates
+      : [resolvedEstimate]
+  }, [baseProject, estimateRecords, linkedProjectId, projectId, resolvedEstimate])
+  const selectedEstimateId = baseProject?.selectedEstimateId || baseProject?.selected_estimate_id || ''
+  const selectedProjectEstimate = useMemo(() => (
+    selectedEstimateId
+      ? projectEstimateRecords.find((estimate) => estimate.id === selectedEstimateId) || null
+      : projectEstimateRecords.length === 1 ? projectEstimateRecords[0] : null
+  ), [projectEstimateRecords, selectedEstimateId])
+  const hasAmbiguousEstimateSelection = projectEstimateRecords.length > 1 && !selectedProjectEstimate
   const resolvedContract = useMemo(() => normalizeProjectContract(
     contractRecord
     || baseProject?.portal?.contract
@@ -732,6 +748,7 @@ function ProjectDetailPageContent({ lead, companySettings, clients = [], estimat
       if (!linkedProjectId) {
         if (!isCancelled) {
           setEstimateRecord(draftEstimate)
+          setEstimateRecords(draftEstimate ? [draftEstimate] : [])
         }
         return
       }
@@ -741,7 +758,7 @@ function ProjectDetailPageContent({ lead, companySettings, clients = [], estimat
         let estimateList = Array.isArray(estimates) ? estimates : []
 
         if (!knownEstimateId && estimateList.length > 0) {
-          resolvedEstimateRecord = getSelectedEstimateForProject(baseProject || { id: linkedProjectId }, estimateList)
+          resolvedEstimateRecord = getSelectedEstimateForProject({ ...(baseProject || {}), id: linkedProjectId }, estimateList)
         }
 
         if (knownEstimateId) {
@@ -763,7 +780,7 @@ function ProjectDetailPageContent({ lead, companySettings, clients = [], estimat
 
           if (!response?.error) {
             estimateList = response?.data || []
-            resolvedEstimateRecord = getSelectedEstimateForProject(baseProject || { id: linkedProjectId }, estimateList)
+            resolvedEstimateRecord = getSelectedEstimateForProject({ ...(baseProject || {}), id: linkedProjectId }, estimateList)
           }
         }
 
@@ -777,6 +794,7 @@ function ProjectDetailPageContent({ lead, companySettings, clients = [], estimat
 
         if (!isCancelled) {
           setEstimateRecord(nextEstimate)
+          setEstimateRecords(estimateList)
 
           if (nextEstimate) {
             writeLinkedEstimateDrafts([linkedProjectId, projectId, relatedLeadId, knownEstimateId], nextEstimate)
@@ -785,6 +803,7 @@ function ProjectDetailPageContent({ lead, companySettings, clients = [], estimat
       } catch (error) {
         if (!isCancelled) {
           setEstimateRecord(draftEstimate)
+          setEstimateRecords(draftEstimate ? [draftEstimate] : [])
         }
       }
     }
@@ -1570,16 +1589,28 @@ function ProjectDetailPageContent({ lead, companySettings, clients = [], estimat
     onRestoreScheduleEvent?.(event.id)
   }
 
-  const RecommendedActionIcon = workspaceViewModel.nextAction?.id === 'upload-photos'
+  const RecommendedActionIcon = hasAmbiguousEstimateSelection
+    ? FileText
+    : workspaceViewModel.nextAction?.id === 'upload-photos'
     ? Camera
     : workspaceViewModel.nextAction?.id === 'review-contract' || workspaceViewModel.nextAction?.id === 'view-invoice'
       ? FileText
       : CalendarDays
+  const handleSelectProjectEstimate = async (estimate) => {
+    const updatedProject = await onSelectEstimate?.(currentLead, estimate)
+    if (updatedProject) setProject((current) => ({ ...(current || currentLead), ...updatedProject }))
+  }
+  const handleClearProjectEstimate = async () => {
+    const updatedProject = await onClearEstimateSelection?.(currentLead)
+    if (updatedProject) setProject((current) => ({ ...(current || currentLead), ...updatedProject }))
+  }
   const recommendedActionMessage = workspaceViewModel.nextAction
-    ? t(workspaceViewModel.nextAction.messageKey, {
+    ? t(hasAmbiguousEstimateSelection ? 'reviewEstimateOptions' : workspaceViewModel.nextAction.messageKey, {
         date: workspaceViewModel.nextAction.event?.displayDate || workspaceViewModel.nextAction.event?.date || '',
       })
     : ''
+
+  const hasRecommendedAction = Boolean(workspaceViewModel.nextAction || hasAmbiguousEstimateSelection)
 
   return (
     <div className="space-y-6">
@@ -1703,7 +1734,7 @@ function ProjectDetailPageContent({ lead, companySettings, clients = [], estimat
         ) : null}
       </section>
 
-      {workspaceViewModel.nextAction ? (
+      {hasRecommendedAction ? (
         <section aria-labelledby="project-next-action-title" className="flex flex-col gap-4 rounded-3xl border border-blue-200 bg-blue-50 p-5 shadow-sm sm:flex-row sm:items-center sm:justify-between sm:p-6">
           <div className="flex min-w-0 items-start gap-3">
             <span className="inline-flex h-11 w-11 shrink-0 items-center justify-center rounded-2xl bg-blue-600 text-white shadow-sm" aria-hidden="true">
@@ -1714,9 +1745,11 @@ function ProjectDetailPageContent({ lead, companySettings, clients = [], estimat
               <p className="mt-1 break-words text-sm leading-6 text-slate-700 [overflow-wrap:anywhere]">{recommendedActionMessage}</p>
             </div>
           </div>
-          <span className="text-sm font-bold text-blue-700 sm:text-right">
-            {t(workspaceViewModel.nextAction.actionLabelKey)}
-          </span>
+          {hasAmbiguousEstimateSelection ? (
+            <button type="button" onClick={() => document.getElementById('project-documents')?.scrollIntoView({ behavior: 'smooth', block: 'start' })} className="text-left text-sm font-bold text-blue-700 underline-offset-4 hover:underline sm:text-right">{t('selectEstimateOption')}</button>
+          ) : (
+            <span className="text-sm font-bold text-blue-700 sm:text-right">{t(workspaceViewModel.nextAction.actionLabelKey)}</span>
+          )}
         </section>
       ) : null}
 
@@ -1737,42 +1770,68 @@ function ProjectDetailPageContent({ lead, companySettings, clients = [], estimat
         />
       </div> : null}
       <section className="contents">
-        {showDocumentWorkspace ? <div className="min-w-0 rounded-3xl border border-slate-200 bg-white p-5 shadow-sm md:col-span-2 xl:col-span-1">
+        {showDocumentWorkspace ? <div id="project-documents" aria-label={t('projectDocuments')} className="min-w-0 rounded-3xl border border-slate-200 bg-white p-5 shadow-sm md:col-span-2 xl:col-span-1">
           <div className="mb-4 flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
             <div>
-              <h2 className="text-xl font-bold text-slate-950">{t('projectDocuments')}</h2>
-              <p className="text-sm text-slate-500">{t('documents')}</p>
+              <h2 className="text-xl font-bold text-slate-950">{t('estimates')}</h2>
+              <p className="text-sm text-slate-500">{projectEstimateRecords.length > 0 ? `${t('estimates')} (${projectEstimateRecords.length})` : t('documents')}</p>
             </div>
             {!projectIsArchived ? (
-              <button type="button" onClick={onCreateInvoice} className="inline-flex min-h-11 w-full items-center justify-center gap-2 rounded-2xl border border-blue-200 bg-blue-50 px-4 py-2.5 text-sm font-bold text-blue-700 transition hover:bg-blue-100 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-blue-500 focus-visible:ring-offset-2 sm:w-auto">
-                <FileText className="h-4 w-4" aria-hidden="true" /> {t('createInvoice')}
-              </button>
-            ) : null}
+              <div className="flex w-full flex-col gap-2 sm:w-auto sm:flex-row">
+                <button type="button" onClick={() => onCreateEstimateOption?.(currentLead)} className="inline-flex min-h-11 w-full items-center justify-center gap-2 rounded-2xl border border-blue-200 bg-blue-50 px-4 py-2.5 text-sm font-bold text-blue-700 transition hover:bg-blue-100 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-blue-500 focus-visible:ring-offset-2 sm:w-auto">
+                  {t('newEstimate')}
+                </button>
+                <button type="button" onClick={onCreateInvoice} className="inline-flex min-h-11 w-full items-center justify-center gap-2 rounded-2xl border border-slate-200 bg-white px-4 py-2.5 text-sm font-bold text-slate-700 transition hover:bg-slate-50 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-blue-500 focus-visible:ring-offset-2 sm:w-auto">
+                  <FileText className="h-4 w-4" aria-hidden="true" /> {t('createInvoice')}
+                </button>
+              </div>
+                          ) : null}
           </div>
           <div className="space-y-2.5">
-            {resolvedEstimate ? (
-              <div className="flex flex-col gap-3 rounded-2xl border border-slate-200 bg-slate-50 p-3.5 sm:flex-row sm:items-center sm:justify-between">
-                <div className="min-w-0">
-                  <p className="text-[11px] font-bold uppercase tracking-[0.18em] text-slate-400">{t('estimate')}</p>
-                  <p className="mt-1 break-words font-bold text-slate-950 [overflow-wrap:anywhere]">{formatEstimateDisplayNumber(resolvedEstimate.number || resolvedEstimate.estimateNumber || '', currentLead)}</p>
-                  <div className="mt-1 flex flex-wrap items-center gap-x-3 gap-y-1 text-sm text-slate-600">
-                    <span>{currency.format(Number(resolvedEstimate.total || 0))}</span>
-                    <span>{resolvedEstimate.title || t('estimate')}</span>
-                  </div>
-                </div>
-                <div className="flex items-center justify-between gap-3 sm:justify-end">
-                  <StatusBadge status={resolvedEstimate.status || 'Draft'} t={t} />
-                  <button type="button" onClick={() => navigate(`/projects/${currentLead.id}/estimate`, { state: { source: 'project', projectId: currentLead.id } })} className="inline-flex min-h-11 items-center rounded-2xl border border-slate-200 bg-white px-4 py-2.5 text-sm font-bold text-slate-800 transition hover:bg-slate-50 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-blue-500 focus-visible:ring-offset-2">
-                    {t('view')}
-                  </button>
-                </div>
+            {projectEstimateRecords.length > 0 ? (
+              <div className="space-y-3">
+                {projectEstimateRecords.map((estimate) => {
+                  const isSelected = Boolean(selectedEstimateId && selectedProjectEstimate?.id === estimate.id)
+                  return (
+                    <div key={estimate.id} className={`flex min-w-0 flex-col gap-3 rounded-2xl border p-3.5 sm:flex-row sm:items-center sm:justify-between ${isSelected ? 'border-blue-300 bg-blue-50/60' : 'border-slate-200 bg-slate-50'}`}>
+                      <div className="min-w-0">
+                        <div className="flex flex-wrap items-center gap-2">
+                          <p className="text-[11px] font-bold uppercase tracking-[0.18em] text-slate-400">{t('estimate')}</p>
+                          {estimate.optionName || estimate.option_name ? <span className="rounded-full bg-slate-200 px-2 py-1 text-xs font-bold text-slate-700">{estimate.optionName || estimate.option_name}</span> : null}
+                          {isSelected ? <span className="rounded-full bg-blue-100 px-2 py-1 text-xs font-bold text-blue-700">{t('selectedEstimateOption')}</span> : null}
+                        </div>
+                        <p className="mt-1 break-words font-bold text-slate-950 [overflow-wrap:anywhere]">{formatEstimateDisplayNumber(estimate.number || estimate.estimateNumber || '', currentLead)}</p>
+                        <div className="mt-1 flex flex-wrap items-center gap-x-3 gap-y-1 text-sm text-slate-600">
+                          <span>{currency.format(Number(estimate.total || 0))}</span>
+                          <span>{estimate.title || t('estimate')}</span>
+                        </div>
+                      </div>
+                      <div className="flex flex-wrap items-center justify-between gap-2 sm:justify-end">
+                        <StatusBadge status={estimate.status || 'Draft'} t={t} />
+                        {!projectIsArchived && projectEstimateRecords.length > 1 ? (
+                          isSelected ? (
+                            <button type="button" onClick={handleClearProjectEstimate} className="inline-flex min-h-11 items-center rounded-2xl border border-blue-200 bg-white px-4 py-2.5 text-sm font-bold text-blue-700 transition hover:bg-blue-50 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-blue-500 focus-visible:ring-offset-2">{t('clearEstimateSelection')}</button>
+                          ) : (
+                            <button type="button" onClick={() => handleSelectProjectEstimate(estimate)} className="inline-flex min-h-11 items-center rounded-2xl border border-blue-200 bg-white px-4 py-2.5 text-sm font-bold text-blue-700 transition hover:bg-blue-50 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-blue-500 focus-visible:ring-offset-2">{t('selectEstimateOption')}</button>
+                          )
+                          ) : null}
+                        <button type="button" onClick={() => navigate(`/estimates/${estimate.id}`, { state: { source: 'project', projectId: currentLead.id, estimateId: estimate.id } })} className="inline-flex min-h-11 items-center rounded-2xl border border-slate-200 bg-white px-4 py-2.5 text-sm font-bold text-slate-800 transition hover:bg-slate-50 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-blue-500 focus-visible:ring-offset-2">
+                          {t('view')}
+                        </button>
+                        {!projectIsArchived ? (
+                          <button type="button" onClick={() => onDuplicateEstimateOption?.(currentLead, estimate)} className="inline-flex min-h-11 items-center rounded-2xl border border-slate-200 bg-white px-4 py-2.5 text-sm font-bold text-slate-800 transition hover:bg-slate-50 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-blue-500 focus-visible:ring-offset-2">{t('duplicateEstimate')}</button>
+                          ) : null}
+                        </div>
+                    </div>
+                  )
+                })}
               </div>
             ) : (
               <div className="flex flex-col items-start gap-3 rounded-2xl border border-dashed border-slate-300 bg-slate-50 p-4 text-sm text-slate-500 sm:flex-row sm:items-center sm:justify-between">
                 <span>{t('noEstimates')}</span>
                 {!projectIsArchived ? (
-                  <button type="button" onClick={() => navigate(`/projects/${currentLead.id}/estimate`, { state: { source: 'project', projectId: currentLead.id, leadId: linkedLeadId } })} className="inline-flex min-h-11 w-full items-center justify-center rounded-2xl border border-slate-200 bg-white px-4 py-2.5 text-sm font-bold text-slate-800 transition hover:bg-slate-100 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-blue-500 focus-visible:ring-offset-2 sm:w-auto">
-                    {t('createEstimate')}
+                  <button type="button" onClick={() => onCreateEstimateOption?.(currentLead)} className="inline-flex min-h-11 w-full items-center justify-center rounded-2xl border border-slate-200 bg-white px-4 py-2.5 text-sm font-bold text-slate-800 transition hover:bg-slate-100 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-blue-500 focus-visible:ring-offset-2 sm:w-auto">
+                    {t('newEstimate')}
                   </button>
                 ) : null}
               </div>
