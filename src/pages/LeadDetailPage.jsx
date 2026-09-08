@@ -20,6 +20,7 @@ import { archiveMenuItemClasses } from '../utils/buttonStyles'
 import { getLeadPipelineStage, leadPipelineStages } from '../utils/leadPipeline'
 import { dedupeEstimateRecordsById, getLeadEstimateValue, resolveLeadLifecycle, selectPrimaryLeadEstimate } from '../utils/leadLifecycle'
 import { getLanguageLocale, normalizeSupportedLanguageOrEmpty } from '../utils/language'
+import { withNavigationContext } from '../utils/navigationContext'
 
 function logLeadDetailDevError(message, error, meta) {
   if (!import.meta.env.DEV) return
@@ -188,7 +189,7 @@ function LeadNotFound({ onBack, t }) {
       <h1 className="text-2xl font-bold text-slate-950">{t('leadNotFound')}</h1>
       <p className="mx-auto mt-3 max-w-xl text-sm leading-6 text-slate-500">{t('leadNotFoundHelp')}</p>
       <button onClick={onBack} className="mt-6 rounded-2xl bg-slate-950 px-5 py-3 text-sm font-bold text-white hover:bg-slate-800">
-        {t('backToLeads')}
+        {t('back')}
       </button>
     </section>
   )
@@ -282,7 +283,7 @@ export function LeadDetailPage({
   const hasAmbiguousLeadEstimateAction = leadEstimateRecords.length > 1 && !hasDeterministicLeadEstimate
   const currentStage = lifecycle.stage
   const isConvertedToJob = lifecycle.hasActiveProject
-  const nextStepDisplay = hasAmbiguousLeadEstimateAction ? t('reviewEstimatesChoose') : t(lifecycle.nextStepKey)
+  const nextStepDisplay = hasAmbiguousLeadEstimateAction ? t('reviewEstimateReady') : t(lifecycle.nextStepKey)
   const currentStageDisplay = t(lifecycle.stageLabelKey)
   const estimatedValueDisplay = currentLead?.value === null && leadEstimateRecords.length > 1
     ? t('estimateValueNotFinalized')
@@ -577,11 +578,11 @@ export function LeadDetailPage({
       return
     }
     navigate(`/projects/${currentLead.id}/estimate`, {
-      state: {
+      state: withNavigationContext({
         source: 'lead',
         leadId: currentLead.id,
         ...(openSend ? { openSendEstimate: true } : {}),
-      },
+      }, `/leads/${currentLead.id}`, 'backToLeadDetails'),
     })
   }
 
@@ -594,11 +595,11 @@ export function LeadDetailPage({
     }
 
     navigate(appRoutes.estimateDetail.replace(':estimateId', estimateId), {
-      state: {
+      state: withNavigationContext({
         source: 'lead',
         leadId: currentLead.id,
         projectId: relatedProjectId || undefined,
-      },
+      }, `/leads/${currentLead.id}`, 'backToLeadDetails'),
     })
   }
 
@@ -609,7 +610,7 @@ export function LeadDetailPage({
   function openLeadEstimate(estimate) {
     if (!estimate?.id) return openEstimateBuilder()
     navigate(appRoutes.estimateDetail.replace(':estimateId', estimate.id), {
-      state: { source: 'lead', leadId: currentLead.id, projectId: relatedProjectId || undefined, estimateId: estimate.id },
+      state: withNavigationContext({ source: 'lead', leadId: currentLead.id, projectId: relatedProjectId || undefined, estimateId: estimate.id }, `/leads/${currentLead.id}`, 'backToLeadDetails'),
     })
   }
 
@@ -775,7 +776,7 @@ export function LeadDetailPage({
     <div className="mx-auto max-w-6xl space-y-6">
       <div className="flex min-w-0 items-center gap-4">
         <nav aria-label={t('leads')} className="flex min-w-0 items-center gap-2 text-sm font-semibold">
-          <RecordBackButton label={t('leads')} onClick={onBack} />
+          <RecordBackButton label={t('back')} onClick={onBack} />
           <ChevronRight className="h-4 w-4 shrink-0 text-slate-400" aria-hidden="true" />
           <span className="truncate text-slate-950" aria-current="page">{leadDisplayName}</span>
         </nav>
@@ -825,7 +826,6 @@ export function LeadDetailPage({
           onEdit={() => setIsEditOpen(true)}
           onLifecycleAction={handleLifecycleAction}
           isEstimateActionAmbiguous={hasAmbiguousLeadEstimateAction}
-          onViewEstimates={() => document.querySelector('[data-lead-related-estimates="true"]')?.scrollIntoView({ behavior: 'smooth', block: 'start' })}
           t={t}
         />
         {(leadHasEstimate || relatedProject) ? (
@@ -874,7 +874,6 @@ export function LeadDetailPage({
             onEdit={() => setIsEditOpen(true)}
           onLifecycleAction={handleLifecycleAction}
           isEstimateActionAmbiguous={hasAmbiguousLeadEstimateAction}
-          onViewEstimates={() => document.querySelector('[data-lead-related-estimates="true"]')?.scrollIntoView({ behavior: 'smooth', block: 'start' })}
           t={t}
           />
           <LeadDetailsCard
@@ -943,7 +942,6 @@ function LeadRecommendedActionCard({
   onEdit,
   onLifecycleAction,
   isEstimateActionAmbiguous = false,
-  onViewEstimates,
   t,
 }) {
   return (
@@ -961,13 +959,8 @@ function LeadRecommendedActionCard({
           <p className={`text-[11px] font-bold uppercase tracking-[0.16em] ${isConvertedToJob ? 'text-emerald-700' : 'text-blue-600'}`}>{t('nextStep')}</p>
           <p className="mt-1 text-sm leading-5 text-slate-700">{nextStepDisplay}</p>
         </div>
-        <div className={`grid min-w-0 gap-2 sm:col-span-2 2xl:col-span-1 ${isEstimateActionAmbiguous ? '' : lifecycle.actions.length > 1 ? 'sm:grid-cols-2' : ''}`}>
-          {isEstimateActionAmbiguous ? (
-            <button type="button" disabled={isLeadActionSubmitting} onClick={onViewEstimates} className="flex min-h-12 w-full items-center justify-center gap-2 rounded-2xl bg-blue-600 px-4 py-3 text-sm font-bold text-white shadow-sm shadow-blue-600/20 hover:bg-blue-700 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-blue-500 focus-visible:ring-offset-2 disabled:cursor-not-allowed disabled:opacity-60">
-              <ClipboardList className="h-4 w-4" />
-              <span>{isLeadActionSubmitting ? t('saving') : t('viewEstimates')}</span>
-            </button>
-          ) : lifecycle.actions.map((action) => (
+        {!isEstimateActionAmbiguous ? <div className={`grid min-w-0 gap-2 sm:col-span-2 2xl:col-span-1 ${lifecycle.actions.length > 1 ? 'sm:grid-cols-2' : ''}`}>
+          {lifecycle.actions.map((action) => (
             <button
               key={action.actionType}
               type="button"
@@ -979,7 +972,7 @@ function LeadRecommendedActionCard({
               <span className="break-words">{isLeadActionSubmitting ? t('saving') : t(action.labelKey)}</span>
             </button>
           ))}
-        </div>
+        </div> : null}
       </div>
       <div className="mt-4 flex flex-col gap-3 border-t border-slate-100 pt-3 sm:flex-row sm:items-center">
         <button disabled={isLeadActionSubmitting} onClick={onEdit} className="flex min-h-10 items-center justify-center gap-2 rounded-xl border border-slate-200 bg-slate-50 px-3.5 py-2 text-sm font-bold text-slate-800 transition hover:bg-white hover:shadow-sm focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-blue-500 focus-visible:ring-offset-2 disabled:cursor-not-allowed disabled:opacity-60">

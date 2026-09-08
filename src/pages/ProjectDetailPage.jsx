@@ -35,6 +35,7 @@ import { sortScheduleEvents } from '../utils/scheduleEvents'
 import { getInvoiceRemainingBalance } from '../utils/invoiceRecords'
 import { buildProjectWorkspaceViewModel, selectProjectWorkspaceInvoices } from '../utils/projectWorkspaceViewModel'
 import { resolveProjectHeroActionIds } from '../utils/projectHeroActions'
+import { withNavigationContext } from '../utils/navigationContext'
 import projectWorkspaceHeroBackground from '../assets/page-heroes/jobs-bg.png'
 
 function logProjectDetailDevError(message, error, meta) {
@@ -1167,7 +1168,7 @@ function ProjectDetailPageContent({ lead, companySettings, clients = [], estimat
     'upload-photos': { label: t('uploadPhotos'), icon: Camera, action: () => setShowPhotoModal(true) },
     'edit': { label: t('edit'), icon: Edit3, action: () => setIsEditOpen(true) },
     'review-contract': { label: t('openContract'), icon: FileText, action: () => onOpenContract?.(currentLead.id) },
-    'view-invoice': { label: t('viewInvoice'), icon: FileText, action: () => workspaceViewModel.nextAction?.invoiceId && navigate(`/invoices/${workspaceViewModel.nextAction.invoiceId}`) },
+    'view-invoice': { label: t('viewInvoice'), icon: FileText, action: () => workspaceViewModel.nextAction?.invoiceId && navigate(`/invoices/${workspaceViewModel.nextAction.invoiceId}`, { state: withNavigationContext({}, `/projects/${currentLead.id}`, 'backToProjectWorkspace') }) },
     'view-schedule': { label: t('viewSchedule'), icon: CalendarDays, action: () => document.getElementById('project-schedule')?.scrollIntoView({ behavior: 'smooth', block: 'start' }) },
   }
   const actionButtons = resolveProjectHeroActionIds({
@@ -1184,7 +1185,7 @@ function ProjectDetailPageContent({ lead, companySettings, clients = [], estimat
           id: 'view-estimate',
           label: t('viewEstimate'),
           icon: <FileText className="mr-2 h-4 w-4" />,
-          onClick: () => navigate(`/projects/${currentLead.id}/estimate`, { state: { source: 'project', projectId: currentLead.id } }),
+          onClick: () => navigate(`/projects/${currentLead.id}/estimate`, { state: withNavigationContext({ source: 'project', projectId: currentLead.id }, `/projects/${currentLead.id}`, 'backToProjectWorkspace') }),
         }
       : null,
     hasContract
@@ -1615,7 +1616,7 @@ function ProjectDetailPageContent({ lead, companySettings, clients = [], estimat
   return (
     <div className="space-y-6">
       <nav aria-label={t('projectWorkspace')} className="flex min-w-0 items-center gap-2 text-sm font-semibold">
-        <RecordBackButton label={t('backToDashboard')} onClick={onBack} />
+        <RecordBackButton label={t('back')} onClick={onBack} />
         <ChevronRight className="h-4 w-4 shrink-0 text-slate-300" aria-hidden="true" />
         <span className="min-w-0 truncate text-slate-950" aria-current="page">{projectTitle}</span>
       </nav>
@@ -1815,7 +1816,7 @@ function ProjectDetailPageContent({ lead, companySettings, clients = [], estimat
                             <button type="button" onClick={() => handleSelectProjectEstimate(estimate)} className="inline-flex min-h-11 items-center rounded-2xl border border-blue-200 bg-white px-4 py-2.5 text-sm font-bold text-blue-700 transition hover:bg-blue-50 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-blue-500 focus-visible:ring-offset-2">{t('selectEstimateOption')}</button>
                           )
                           ) : null}
-                        <button type="button" onClick={() => navigate(`/estimates/${estimate.id}`, { state: { source: 'project', projectId: currentLead.id, estimateId: estimate.id } })} className="inline-flex min-h-11 items-center rounded-2xl border border-slate-200 bg-white px-4 py-2.5 text-sm font-bold text-slate-800 transition hover:bg-slate-50 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-blue-500 focus-visible:ring-offset-2">
+                        <button type="button" onClick={() => navigate(`/estimates/${estimate.id}`, { state: withNavigationContext({ source: 'project', projectId: currentLead.id, estimateId: estimate.id }, `/projects/${currentLead.id}`, 'backToProjectWorkspace') })} className="inline-flex min-h-11 items-center rounded-2xl border border-slate-200 bg-white px-4 py-2.5 text-sm font-bold text-slate-800 transition hover:bg-slate-50 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-blue-500 focus-visible:ring-offset-2">
                           {t('view')}
                         </button>
                         {!projectIsArchived ? (
@@ -1875,7 +1876,7 @@ function ProjectDetailPageContent({ lead, companySettings, clients = [], estimat
                 </div>
                 <div className="flex items-center justify-between gap-3 sm:justify-end">
                   <StatusBadge status={invoice.status || 'Draft'} t={t} />
-                  <button type="button" onClick={() => navigate(`/invoices/${invoice.id}`)} className="inline-flex min-h-11 items-center rounded-2xl border border-slate-200 bg-white px-4 py-2.5 text-sm font-bold text-slate-800 transition hover:bg-slate-50 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-blue-500 focus-visible:ring-offset-2">
+                  <button type="button" onClick={() => navigate(`/invoices/${invoice.id}`, { state: withNavigationContext({}, `/projects/${currentLead.id}`, 'backToProjectWorkspace') })} className="inline-flex min-h-11 items-center rounded-2xl border border-slate-200 bg-white px-4 py-2.5 text-sm font-bold text-slate-800 transition hover:bg-slate-50 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-blue-500 focus-visible:ring-offset-2">
                     {t('view')}
                   </button>
                 </div>
@@ -1903,7 +1904,7 @@ function ProjectDetailPageContent({ lead, companySettings, clients = [], estimat
                       {payment.paymentMethod && <span>{t('paymentMethod')}: {payment.paymentMethod}</span>}
                     </div>
                     {payment.invoiceId && relatedInvoiceById.has(payment.invoiceId) ? (
-                      <button type="button" onClick={() => navigate(`/invoices/${payment.invoiceId}`)} className="mt-2 inline-flex min-h-11 items-center gap-2 rounded-xl px-2 text-sm font-bold text-blue-700 transition hover:bg-blue-50 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-blue-500 focus-visible:ring-offset-2">
+                      <button type="button" onClick={() => navigate(`/invoices/${payment.invoiceId}`, { state: withNavigationContext({}, `/projects/${currentLead.id}`, 'backToProjectWorkspace') })} className="mt-2 inline-flex min-h-11 items-center gap-2 rounded-xl px-2 text-sm font-bold text-blue-700 transition hover:bg-blue-50 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-blue-500 focus-visible:ring-offset-2">
                         <FileText className="h-4 w-4" aria-hidden="true" /> {t('viewInvoice')} {relatedInvoiceById.get(payment.invoiceId)?.number || ''}
                       </button>
                     ) : null}

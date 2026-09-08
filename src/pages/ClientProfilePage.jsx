@@ -423,7 +423,7 @@ export function ClientProfilePage({ leads, customClients = [], projects = [], ar
       <section className="rounded-3xl border border-slate-200 bg-white p-8 text-center shadow-sm">
         <h1 className="text-2xl font-bold text-slate-950">{t('clientNotFound')}</h1>
         <p className="mx-auto mt-3 max-w-xl text-sm leading-6 text-slate-500">{t('clientNotFoundHelp')}</p>
-        <button onClick={onBack} className="mt-6 rounded-2xl bg-slate-950 px-5 py-3 text-sm font-bold text-white hover:bg-slate-800">{t('backToClients')}</button>
+        <button onClick={onBack} className="mt-6 rounded-2xl bg-slate-950 px-5 py-3 text-sm font-bold text-white hover:bg-slate-800">{t('back')}</button>
       </section>
     )
   }
@@ -498,7 +498,9 @@ export function ClientProfilePage({ leads, customClients = [], projects = [], ar
 
   function renderProjectCards(cards = projectCards) {
     return cards.length ? cards.map(({ project, thumbnail, projectAddress, displayDate, contract, estimate, projectPayments, projectValue, remainingBalance, remainingBalanceAmount }) => {
-      const openProjectRecord = () => (project.isProjectRecord ? onOpenProject(project.id) : onOpenLead?.(project.id))
+      const openProjectRecord = () => (project.isProjectRecord
+        ? onOpenProject(project.id, { returnTo: `/clients/${client.id}`, returnLabelKey: 'backToClients' })
+        : onOpenLead?.(project.id, { returnTo: `/clients/${client.id}`, returnLabelKey: 'backToClients' }))
 
       return (
       <article key={project.id} className="flex min-w-0 flex-col gap-4 rounded-2xl border border-slate-200 bg-white p-4 transition hover:border-slate-300 hover:bg-slate-50/60 sm:flex-row sm:items-center">
@@ -566,7 +568,9 @@ export function ClientProfilePage({ leads, customClients = [], projects = [], ar
           </div>
           <button
             type="button"
-            onClick={() => (isEstimate ? onOpenEstimate?.(item.project.id) : onOpenContract?.(item.project.id))}
+            onClick={() => (isEstimate
+              ? onOpenEstimate?.(item.project.id, null, { returnTo: `/clients/${client.id}`, returnLabelKey: 'backToClients' })
+              : onOpenContract?.(item.project.id, { returnTo: `/clients/${client.id}`, returnLabelKey: 'backToClients' }))}
             className="inline-flex min-h-11 shrink-0 items-center justify-center gap-1 rounded-xl border border-slate-200 px-3 text-sm font-semibold text-slate-700 transition hover:bg-slate-50 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-blue-500"
             aria-label={`${t('view')}: ${item.title}`}
           >
@@ -581,7 +585,7 @@ export function ClientProfilePage({ leads, customClients = [], projects = [], ar
   return (
     <div className="mx-auto max-w-6xl min-w-0 space-y-6 overflow-x-hidden">
       <nav aria-label={t('clients')} className="flex min-w-0 items-center gap-2 text-sm font-semibold">
-        <RecordBackButton label={t('backToClients')} onClick={onBack} />
+        <RecordBackButton label={t('back')} onClick={onBack} />
         <ChevronRight className="h-4 w-4 shrink-0 text-slate-300" aria-hidden="true" />
         <span className="min-w-0 truncate text-slate-950" aria-current="page">{client.name}</span>
       </nav>

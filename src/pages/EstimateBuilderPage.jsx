@@ -47,6 +47,7 @@ import {
   resolveEstimateValidUntil,
 } from '../utils/estimateDocument'
 import { normalizeDocumentLanguageOverride, normalizeSupportedLanguage, resolveClientFacingLanguage, resolveScopeAssistantContractorLanguage } from '../utils/language'
+import { resolveNavigationContext } from '../utils/navigationContext'
 import { getPaymentTermLabel, getPaymentTermOptions, isKnownPaymentTermValue } from '../utils/paymentTerms'
 import {
   buildEstimateResendTransition,
@@ -240,7 +241,7 @@ function buildEstimateDraftState({ savedEstimate = {}, lead, companySettings, t 
   }
 }
 
-export function EstimateBuilderPage({ lead, clientRecord = null, t, appLanguage = 'en', companySettings, scopeAssistantAccessToken = '', scopeAssistantMemberId = null, scopeAssistantWorkingLanguage = 'en', isArchived = false, archiveSource = null, projectAvailable = true, isProjectLinked = false, publicEstimateLink = '', isOrphanedProject = false, openSendOnLoad = false, onOpenSendConsumed, onBack, backLabel, onSaveEstimate, onDuplicateEstimate, onConvert, onSyncContract, onOpenContract, onArchiveEstimate, onRestoreEstimate, onDeleteEstimate }) {
+export function EstimateBuilderPage({ lead, clientRecord = null, t, appLanguage = 'en', companySettings, scopeAssistantAccessToken = '', scopeAssistantMemberId = null, scopeAssistantWorkingLanguage = 'en', isArchived = false, archiveSource = null, projectAvailable = true, isProjectLinked = false, publicEstimateLink = '', isOrphanedProject = false, openSendOnLoad = false, navigationContext = null, onOpenSendConsumed, onBack, backLabel, onSaveEstimate, onDuplicateEstimate, onConvert, onSyncContract, onOpenContract, onArchiveEstimate, onRestoreEstimate, onDeleteEstimate }) {
   const { showToast } = useToast()
   const pdfTemplateRef = useRef(null)
   const draftDirtyRef = useRef(false)
@@ -616,7 +617,7 @@ export function EstimateBuilderPage({ lead, clientRecord = null, t, appLanguage 
       : savedEstimate
     if (!sourceEstimate) return null
 
-    return onDuplicateEstimate?.(sourceEstimate)
+    return onDuplicateEstimate?.(sourceEstimate, { navigationContext })
   }
 
   async function handleOpenSendModal() {
@@ -1567,6 +1568,10 @@ export function EstimateBuilderRoute({ companySettings, leads, clients = [], pro
   const sourceLeadId = location.state?.leadId
   const sourceProjectId = location.state?.projectId || projectId
   const openSendOnLoad = location.state?.openSendEstimate === true
+  const navigationContext = useMemo(() => resolveNavigationContext(location.state, {
+    returnTo: isDirectEstimateRoute ? '/estimates' : estimateSource === 'lead' && sourceLeadId ? `/leads/${sourceLeadId}` : `/projects/${sourceProjectId}`,
+    returnLabelKey: isDirectEstimateRoute ? 'backToEstimates' : estimateSource === 'lead' && sourceLeadId ? 'backToLeadDetails' : 'backToProjectWorkspace',
+  }), [estimateSource, isDirectEstimateRoute, location.state, sourceLeadId, sourceProjectId])
   const [loadedEstimate, setLoadedEstimate] = useState(cachedDirectEstimate)
   const [linkedProject, setLinkedProject] = useState(null)
   const [directLoadState, setDirectLoadState] = useState({ loading: isDirectEstimateRoute, error: '' })
@@ -1595,29 +1600,11 @@ export function EstimateBuilderRoute({ companySettings, leads, clients = [], pro
       }
     : null)
   const backLabel = useMemo(() => {
-    if (isDirectEstimateRoute) return t('backToEstimates')
-    if (estimateSource === 'lead' && sourceLeadId) return t('backToLeadDetails')
-    if (estimateSource === 'project' && sourceProjectId) return t('backToProjectWorkspace')
     return t('back')
-  }, [estimateSource, isDirectEstimateRoute, sourceLeadId, sourceProjectId, t])
+  }, [t])
 
   function handleBack() {
-    if (isDirectEstimateRoute) {
-      navigate('/estimates')
-      return
-    }
-
-    if (estimateSource === 'lead' && sourceLeadId) {
-      navigate(`/leads/${sourceLeadId}`)
-      return
-    }
-
-    if (estimateSource === 'project' && sourceProjectId) {
-      navigate(`/projects/${sourceProjectId}`)
-      return
-    }
-
-    navigate(-1)
+    navigate(navigationContext.returnTo)
   }
 
   function handleOpenSendConsumed() {
@@ -1852,7 +1839,7 @@ export function EstimateBuilderRoute({ companySettings, leads, clients = [], pro
         <h1 className="text-2xl font-bold text-slate-950">{isDirectEstimateRoute ? t('estimateNotFound') : t('projectNotFound')}</h1>
         <p className="mx-auto mt-3 max-w-xl text-sm leading-6 text-slate-500">{directLoadState.error || t(isDirectEstimateRoute ? 'estimateNotFoundHelp' : 'projectNotFoundHelp')}</p>
         <button onClick={() => navigate(isDirectEstimateRoute ? '/estimates' : '/dashboard')} className="mt-6 rounded-2xl bg-slate-950 px-5 py-3 text-sm font-bold text-white hover:bg-slate-800">
-          {t(isDirectEstimateRoute ? 'backToEstimates' : 'backToDashboardAction')}
+          {t('back')}
         </button>
       </section>
     )
@@ -1864,7 +1851,7 @@ export function EstimateBuilderRoute({ companySettings, leads, clients = [], pro
         <h1 className="text-2xl font-bold text-slate-950">{t('estimateSelectionRequired')}</h1>
         <p className="mx-auto mt-3 max-w-xl text-sm leading-6 text-slate-500">{t('estimateSelectionRequiredHelp')}</p>
         <button onClick={handleBack} className="mt-6 rounded-2xl bg-slate-950 px-5 py-3 text-sm font-bold text-white hover:bg-slate-800">
-          {t('backToProjectWorkspace')}
+          {t('back')}
         </button>
       </section>
     )
@@ -1910,6 +1897,7 @@ export function EstimateBuilderRoute({ companySettings, leads, clients = [], pro
       publicEstimateLink={publicEstimateLink}
       isOrphanedProject={isDirectEstimateRoute ? isOrphanedProject : false}
       openSendOnLoad={openSendOnLoad}
+      navigationContext={navigationContext}
       onOpenSendConsumed={handleOpenSendConsumed}
       onSaveEstimate={async (estimate, options = {}) => {
         const result = await onSaveEstimate?.(lead.id, estimate, options)
@@ -1921,7 +1909,7 @@ export function EstimateBuilderRoute({ companySettings, leads, clients = [], pro
       onDuplicateEstimate={onDuplicateEstimate}
       onConvert={async (estimate) => onConvertEstimate?.(lead.id, estimate)}
       onSyncContract={async (estimate, options = {}) => onSyncEstimateContract?.(lead.id, estimate, options)}
-      onOpenContract={() => navigate(`/projects/${lead.projectId || lead.id}/contract`, { state: { source: 'estimate', projectId: lead.projectId || lead.id, leadId: lead.id } })}
+      onOpenContract={() => navigate(`/projects/${lead.projectId || lead.id}/contract`, { state: { source: 'estimate', projectId: lead.projectId || lead.id, leadId: lead.id, estimateId: resolvedEstimate?.id || lead.portal?.estimate?.id || null, navigationContext: { returnTo: location.pathname, returnLabelKey: 'backToEstimateBuilder' } } })}
       onArchiveEstimate={async () => {
         const result = await onArchiveEstimate?.(resolvedEstimate?.id || lead.id, resolvedEstimate || lead.portal?.estimate || null)
         if (result) setLoadedEstimate(result)
