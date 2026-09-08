@@ -26,19 +26,19 @@ function extractDateStamp(value = '') {
 function extractEstimateSuffix(value = '', fallbackRecord = {}) {
   const candidate = normalizeToken(value)
   const fallback = [
+    fallbackRecord?.id,
     fallbackRecord?.estimateId,
     fallbackRecord?.estimate_id,
     fallbackRecord?.projectId,
     fallbackRecord?.project_id,
     fallbackRecord?.leadId,
     fallbackRecord?.lead_id,
-    fallbackRecord?.id,
   ]
     .map(normalizeToken)
     .find(Boolean)
 
   const source = candidate || fallback || '0001'
-  return source.slice(-4).padStart(4, '0')
+  return source.slice(-6).padStart(6, '0')
 }
 
 export function generateEstimateNumber(record = {}, date = new Date()) {

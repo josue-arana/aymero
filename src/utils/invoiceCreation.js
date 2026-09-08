@@ -1,4 +1,4 @@
-import { calculateInvoiceTotal, normalizeInvoiceLineItems } from './invoiceRecords.js'
+import { calculateInvoiceTotal, normalizeInvoiceLineItems, roundMoney } from './invoiceRecords.js'
 
 function normalizeId(value) {
   return String(value || '').trim()
@@ -64,8 +64,8 @@ export function buildInvoiceProjectOptions(input = {}) {
       || project?.portal?.contract
       || linkedLead?.portal?.contract
       || null
-    const value = Number(project?.value ?? project?.estimatedValue ?? project?.contractValue ?? linkedLead?.value ?? 0) || 0
-    const amountPaid = Number(project?.amountPaid ?? project?.paid ?? project?.portal?.amountPaid ?? linkedLead?.amountPaid ?? linkedLead?.paid ?? 0) || 0
+    const value = roundMoney(Number(project?.value ?? project?.estimatedValue ?? project?.contractValue ?? linkedLead?.value ?? 0) || 0)
+    const amountPaid = roundMoney(Number(project?.amountPaid ?? project?.paid ?? project?.portal?.amountPaid ?? linkedLead?.amountPaid ?? linkedLead?.paid ?? 0) || 0)
     const explicitRemaining = project?.remainingBalance
       ?? project?.remaining
       ?? project?.portal?.outstandingBalance
@@ -73,8 +73,8 @@ export function buildInvoiceProjectOptions(input = {}) {
       ?? linkedLead?.remaining
       ?? linkedLead?.portal?.outstandingBalance
     const remainingBalance = explicitRemaining === null || explicitRemaining === undefined || explicitRemaining === ''
-      ? Math.max(value - amountPaid, 0)
-      : Math.max(Number(explicitRemaining) || 0, 0)
+      ? roundMoney(Math.max(value - amountPaid, 0))
+      : roundMoney(Math.max(Number(explicitRemaining) || 0, 0))
 
     optionsByProjectId.set(projectId, {
       id: projectId,
@@ -138,4 +138,58 @@ export function buildInvoiceCreationPayload(input = {}) {
     invoiceLanguage: String(invoiceLanguage || '').trim(),
     paymentHistory: [],
   }
+}
+
+export function validateInvoiceCreationDraft({
+  selectedProject,
+  selectedClient,
+  title,
+  issueDate,
+  dueDate,
+  lineItems,
+} = {}) {
+  const errors = {}
+
+  if (!selectedClient) errors.client = 'required'
+  if (!selectedProject) errors.project = 'required'
+  if (!String(title || '').trim()) errors.title = 'required'
+  if (!issueDate) errors.issueDate = 'required'
+  if (!dueDate) errors.dueDate = 'required'
+  if (issueDate && dueDate && dueDate < issueDate) errors.dueDate = 'beforeIssueDate'
+
+  if (!Array.isArray(lineItems) || lineItems.length === 0) {
+    errors.lineItems = 'required'
+    return errors
+  }
+
+  lineItems.forEach((item, index) => {
+    const descriptionKey = `lineItems.${index}.description`
+    const amountKey = `lineItems.${index}.amount`
+    if (!String(item?.description || '').trim()) {
+      errors[descriptionKey] = 'required'
+    }
+
+    const rawAmount = String(item?.amount ?? '').trim()
+    if (!rawAmount) {
+      errors[amountKey] = 'required'
+      return
+    }
+
+    if (!/^\d+(?:\.\d+)?$/.test(rawAmount)) {
+      errors[amountKey] = 'invalid'
+      return
+    }
+
+    const amount = Number(rawAmount)
+    if (!Number.isFinite(amount) || amount <= 0) {
+      errors[amountKey] = 'positive'
+      return
+    }
+
+    if (Math.round(amount * 100) !== amount * 100) {
+      errors[amountKey] = 'precision'
+    }
+  })
+
+  return errors
 }

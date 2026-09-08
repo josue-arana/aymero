@@ -142,6 +142,12 @@ function toNumber(value, fallback = 0) {
   return Number.isFinite(parsed) ? parsed : fallback
 }
 
+function normalizeOptionalOptionName(value) {
+  if (value === null || value === undefined) return null
+  const normalized = String(value).trim()
+  return normalized || null
+}
+
 function normalizeLineItems(lineItems) {
   return normalizeEstimateLineItemsForStorage(lineItems)
 }
@@ -180,7 +186,7 @@ function applyStatusTimestamps(payload, estimate = {}) {
   return payload
 }
 
-function toAppEstimate(row) {
+export function toAppEstimate(row) {
   const lineItems = normalizeLineItems(row?.line_items)
 
   return {
@@ -211,6 +217,8 @@ function toAppEstimate(row) {
     materialsIncluded: Boolean(row?.materials_included),
     paymentTerms: row?.payment_terms || '',
     sampleDataKey: row?.sample_data_key || '',
+    optionName: normalizeOptionalOptionName(row?.option_name),
+    option_name: normalizeOptionalOptionName(row?.option_name),
     publicShareToken: row?.public_share_token || '',
     public_share_token: row?.public_share_token || '',
     estimateLanguage: normalizeSupportedLanguageOrEmpty(row?.estimate_language),
@@ -228,7 +236,7 @@ function toAppEstimate(row) {
   }
 }
 
-function toSupabasePayload(contractorId, estimate = {}, { isCreate = false } = {}) {
+export function toSupabasePayload(contractorId, estimate = {}, { isCreate = false } = {}) {
   const payload = {}
   const lineItemsInput = readField(estimate, ['lineItems', 'line_items'])
   const lineItems = lineItemsInput !== undefined ? normalizeLineItems(lineItemsInput) : undefined
@@ -241,6 +249,7 @@ function toSupabasePayload(contractorId, estimate = {}, { isCreate = false } = {
   const materialsIncludedInput = readField(estimate, ['materialsIncluded', 'materials_included'])
   const estimateLanguageInput = readField(estimate, ['estimateLanguage'])
   const scopeAssistantStateInput = readField(estimate, ['scopeAssistantState', 'scope_assistant_state'])
+  const optionNameInput = readField(estimate, ['optionName', 'option_name'])
 
   if (contractorId) {
     payload.contractor_id = contractorId
@@ -325,6 +334,10 @@ function toSupabasePayload(contractorId, estimate = {}, { isCreate = false } = {
 
   if (isCreate || readField(estimate, ['sampleDataKey', 'sample_data_key']) !== undefined) {
     payload.sample_data_key = readField(estimate, ['sampleDataKey', 'sample_data_key']) || null
+  }
+
+  if (isCreate || optionNameInput !== undefined) {
+    payload.option_name = normalizeOptionalOptionName(optionNameInput)
   }
 
   if (isCreate || estimateLanguageInput !== undefined) {
@@ -599,13 +612,6 @@ export async function deletePermanently(id, { contractorId, authenticatedUserId 
     id: `eq.${id}`,
   })
 
-  warnDev('[dev] Submitting contractor-scoped permanent estimate deletion.', {
-    estimateId: id,
-    contractorId,
-    authenticatedUserId: authenticatedUserId || null,
-    query,
-  })
-
   try {
     const response = await supabaseClient.request(TABLE_NAME, {
       method: 'DELETE',
@@ -620,20 +626,6 @@ export async function deletePermanently(id, { contractorId, authenticatedUserId 
         : []
     const row = rows[0] || null
     const affectedRowCount = response?.count ?? rows.length
-
-    warnDev('[dev] Supabase permanent estimate deletion returned.', {
-      estimateId: id,
-      contractorId,
-      authenticatedUserId: authenticatedUserId || null,
-      query,
-      status: response?.status ?? null,
-      contentRange: response?.contentRange ?? null,
-      returnedDeletedRows: rows,
-      affectedRowCount,
-      errorCode: null,
-      errorMessage: null,
-      errorDetails: null,
-    })
 
     if (!row?.id || affectedRowCount < 1) {
       const error = {

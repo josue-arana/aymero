@@ -29,6 +29,7 @@ import { buildContractNotesAndTermsItems, buildContractWorkBreakdownFromEstimate
 import { normalizeDocumentLanguageOverride, resolveClientFacingLanguage } from '../utils/language'
 import { ESTIMATE_PAPER_MARGIN } from '../utils/estimatePagination'
 import { archiveMenuItemClasses } from '../utils/buttonStyles'
+import { resolveNavigationContext } from '../utils/navigationContext'
 
 function formatContractDate(value, language = 'en') {
   const locale = language === 'es' ? 'es-ES' : 'en-US'
@@ -405,7 +406,7 @@ export function ContractPreviewPage({ lead, clientRecord = null, t, appLanguage 
 
   return (
     <div className="mx-auto max-w-5xl space-y-6">
-      <RecordBackButton label={backLabel || t('backToProjectWorkspace')} onClick={onBack} />
+      <RecordBackButton label={backLabel || t('back')} onClick={onBack} />
       <section className="rounded-3xl bg-gradient-to-br from-slate-950 to-slate-800 p-5 text-white shadow-xl sm:p-7 lg:p-8">
         <p className="text-xs font-bold uppercase tracking-[0.24em] text-blue-200">{t('contractPreview')}</p>
         <h1 className="mt-2 text-3xl font-bold">{lead.projectTitle || lead.projectType}</h1>
@@ -693,26 +694,14 @@ export function ContractRoute({ companySettings, leads, clients = [], projects =
   const lead = findLeadByProjectLookup(leads, projectId) || findProjectByLookup(projects, projectId)
   const [loadedContract, setLoadedContract] = useState(null)
   const [linkedProject, setLinkedProject] = useState(null)
-  const backLabel = contractSource === 'estimate' ? t('backToEstimateBuilder') : t('backToProjectWorkspace')
+  const navigationContext = resolveNavigationContext(location.state, {
+    returnTo: location.state?.source === 'estimate' ? `/projects/${projectId}/estimate` : location.state?.source === 'project' ? `/projects/${projectId}` : '/contracts',
+    returnLabelKey: location.state?.source === 'estimate' ? 'backToEstimateBuilder' : location.state?.source === 'project' ? 'backToProjectWorkspace' : 'backToContracts',
+  })
+  const backLabel = t('back')
 
   function handleBack() {
-    if (contractSource === 'estimate' && projectId) {
-      navigate(`/projects/${projectId}/estimate`, {
-        state: {
-          source: 'project',
-          projectId,
-          leadId: sourceLeadId || lead?.id || null,
-        },
-      })
-      return
-    }
-
-    if (projectId) {
-      navigate(`/projects/${projectId}`)
-      return
-    }
-
-    navigate('/dashboard')
+    navigate(navigationContext.returnTo)
   }
 
   useEffect(() => {
@@ -929,7 +918,7 @@ export function ContractsPage({ leads, contracts = [], onViewContract, onRestore
                 <div className="mt-2 flex flex-wrap gap-2"><StatusBadge status={contract.status} t={t} />{contract.isArchived ? <StatusBadge status="Archived" t={t} /> : null}</div>
               </div>
               <div className="grid grid-cols-[minmax(0,1fr)_auto] gap-2 sm:min-w-[15rem]">
-                <button onClick={() => onViewContract(contract.routeId)} className="rounded-2xl bg-slate-950 px-4 py-3 text-sm font-bold text-white hover:bg-slate-800">
+                <button onClick={() => onViewContract(contract.routeId, { returnTo: '/contracts', returnLabelKey: 'backToContracts' })} className="rounded-2xl bg-slate-950 px-4 py-3 text-sm font-bold text-white hover:bg-slate-800">
                   {t('openContract')}
                 </button>
                 {contract.isArchived ? (

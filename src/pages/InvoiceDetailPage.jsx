@@ -1,5 +1,5 @@
 import { useEffect, useMemo, useRef, useState } from 'react'
-import { useNavigate, useParams } from 'react-router-dom'
+import { useLocation, useNavigate, useParams } from 'react-router-dom'
 import { Archive, Building2, CalendarDays, CheckCircle2, ChevronRight, CreditCard, DollarSign, Download, Eye, FileText, Pencil, Printer, RotateCcw, Save, Send, Trash2, UserRound, Wallet } from 'lucide-react'
 import { StatusBadge } from '../components/ui/StatusBadge'
 import { InvoiceDocumentPreview } from '../components/invoices/InvoiceDocumentPreview'
@@ -17,7 +17,7 @@ import dataProvider from '../services/dataProvider'
 import { useAuth } from '../contexts/AuthContext'
 import { getInvoicesContractorId } from '../services/system/invoicesRuntimeService'
 import { getPaymentsContractorId } from '../services/system/paymentsRuntimeService'
-import { findRelatedLeadForInvoice, getInvoiceRemainingBalance, normalizeInvoiceStatus } from '../utils/invoiceRecords'
+import { findRelatedLeadForInvoice, getInvoiceRemainingBalance, normalizeInvoiceStatus, roundMoney } from '../utils/invoiceRecords'
 import { createTranslator } from '../translations'
 import { findRelatedClient } from '../utils/clients'
 import { getLanguageLocale, resolveClientFacingLanguage } from '../utils/language'
@@ -26,6 +26,7 @@ import { resolveInvoiceCustomerNote } from '../utils/invoiceCustomerNotes'
 import { printDocumentElement } from '../utils/printDocument'
 import { appRoutes } from '../config/appRoutes'
 import { isRecordArchived } from '../utils/archiveLifecycle'
+import { resolveNavigationContext } from '../utils/navigationContext'
 
 const paymentMethods = ['Cash', 'Check', 'Zelle', 'Credit Card', 'Bank Transfer', 'Other']
 const paymentTypes = ['Deposit', 'Progress Payment', 'Final Payment', 'Other']
@@ -270,6 +271,7 @@ function getInvoiceActionHierarchy(status, isArchived) {
 
 export function InvoiceDetailRoute({ companySettings, leads, clients = [], invoices = [], invoicesLoaded = false, archivedIds = [], deletedIds = [], onUpdateInvoice, onRecordInvoicePayment, onMarkInvoicePaid, onInvoiceSent, onArchiveInvoice, onRestoreInvoice, onDeleteInvoice, t, appLanguage = 'en' }) {
   const { invoiceId } = useParams()
+  const location = useLocation()
   const navigate = useNavigate()
   const { showToast } = useToast()
   const { contractor, company, session, user } = useAuth()
@@ -296,6 +298,7 @@ export function InvoiceDetailRoute({ companySettings, leads, clients = [], invoi
   const [routeInvoice, setRouteInvoice] = useState(null)
   const [routeInvoiceState, setRouteInvoiceState] = useState({ loading: false, error: '' })
   const invoice = invoices.find((item) => item.id === invoiceId && !deletedIds.includes(item.id))
+  const navigationContext = resolveNavigationContext(location.state, { returnTo: appRoutes.invoices, returnLabelKey: 'backToInvoices' })
   const resolvedInvoice = invoice || routeInvoice
   const lead = resolvedInvoice ? findRelatedLeadForInvoice(leads, resolvedInvoice) : null
   const clientRecord = useMemo(
@@ -398,8 +401,8 @@ export function InvoiceDetailRoute({ companySettings, leads, clients = [], invoi
       <section className="rounded-3xl border border-slate-200 bg-white p-8 text-center shadow-sm">
         <h1 className="text-2xl font-bold text-slate-950">{routeInvoiceState.error ? t('invoiceDetail') : t('invoiceNotFound')}</h1>
         <p className="mx-auto mt-3 max-w-xl text-sm leading-6 text-slate-500">{routeInvoiceState.error || t('invoiceNotFoundHelp')}</p>
-        <button onClick={() => navigate('/invoices')} className="mt-6 rounded-2xl bg-slate-950 px-5 py-3 text-sm font-bold text-white hover:bg-slate-800">
-          {t('backToInvoices')}
+        <button onClick={() => navigate(navigationContext.returnTo)} className="mt-6 rounded-2xl bg-slate-950 px-5 py-3 text-sm font-bold text-white hover:bg-slate-800">
+          {t('back')}
         </button>
       </section>
     )
@@ -594,7 +597,7 @@ export function InvoiceDetailRoute({ companySettings, leads, clients = [], invoi
       }
 
       const nextPaymentHistory = [paymentEntry, ...(currentInvoice.paymentHistory || [])]
-      const nextAmountPaid = Math.min(Number(currentInvoice.amount || 0), Number(currentInvoice.amountPaid || 0) + Number(payment.amount || 0))
+      const nextAmountPaid = roundMoney(Math.min(Number(currentInvoice.amount || 0), Number(currentInvoice.amountPaid || 0) + Number(payment.amount || 0)))
       const invoiceResponse = await dataProvider.invoices.update(currentInvoice.id, { amountPaid: nextAmountPaid, paymentHistory: nextPaymentHistory }, { contractorId: invoicesContractorId })
 
       if (invoiceResponse?.error) {
@@ -848,7 +851,7 @@ export function InvoiceDetailRoute({ companySettings, leads, clients = [], invoi
     <div className="mx-auto max-w-6xl space-y-6">
       <div className="flex min-w-0 items-center justify-between gap-4">
         <nav aria-label={t('invoices')} className="flex min-w-0 items-center gap-2 text-sm font-semibold">
-          <RecordBackButton label={t('invoices')} onClick={() => navigate(appRoutes.invoices)} />
+          <RecordBackButton label={t('back')} onClick={() => navigate(navigationContext.returnTo)} />
           <ChevronRight className="h-4 w-4 shrink-0 text-slate-300" aria-hidden="true" />
           <span className="min-w-0 truncate text-slate-950" aria-current="page">{invoiceNumber}</span>
         </nav>

@@ -3,7 +3,9 @@ import { Plus, Trash2, X } from 'lucide-react'
 import { ModalShell } from '../common/ModalShell'
 import { SelectField } from '../ui/SelectField'
 import { currency } from '../../utils/formatters'
-import { buildInvoiceCreationPayload, buildInvoiceProjectOptions } from '../../utils/invoiceCreation'
+import { createTranslator } from '../../translations'
+import { resolvePreferredClientLanguage } from '../../utils/language'
+import { buildInvoiceCreationPayload, buildInvoiceProjectOptions, validateInvoiceCreationDraft } from '../../utils/invoiceCreation'
 
 function isoDate(value = new Date()) {
   const parsedDate = value instanceof Date ? value : new Date(value)
@@ -16,19 +18,26 @@ function addDays(dateValue, days) {
   return isoDate(date)
 }
 
-function TextField({ label, value, onChange, type = 'text', required = false, min = undefined, inputMode = undefined }) {
+function TextField({ id, label, value, onChange, type = 'text', required = false, min = undefined, step = undefined, inputMode = undefined, error = '', inputRef }) {
+  const errorId = error ? `${id}-error` : undefined
   return (
-    <label className="block min-w-0 text-sm font-bold text-slate-700">
+    <label htmlFor={id} className="block min-w-0 text-sm font-bold text-slate-700">
       <span className="mb-2 block">{label}</span>
       <input
+        id={id}
+        ref={inputRef}
         type={type}
         value={value}
         onChange={(event) => onChange(event.target.value)}
         required={required}
         min={min}
+        step={step}
         inputMode={inputMode}
+        aria-invalid={error ? 'true' : undefined}
+        aria-describedby={errorId}
         className="min-h-12 w-full min-w-0 rounded-2xl border border-slate-200 bg-white px-4 py-3 text-sm text-slate-900 outline-none transition focus:border-blue-500 focus:ring-4 focus:ring-blue-100"
       />
+      {error ? <span id={errorId} role="alert" className="mt-2 block text-xs font-semibold text-red-700">{error}</span> : null}
     </label>
   )
 }
@@ -41,8 +50,8 @@ export function InvoiceCreationModal({
   contracts = [],
   initialProjectId = '',
   lockProject = false,
-  defaultPaymentTerms = '',
   invoiceDueDays = 7,
+  language = 'en',
   onClose,
   onSave,
   t,
@@ -55,9 +64,11 @@ export function InvoiceCreationModal({
   const [lineItems, setLineItems] = useState([{ description: '', amount: '' }])
   const [paymentTerms, setPaymentTerms] = useState('')
   const [customerNotes, setCustomerNotes] = useState('')
-  const [invoiceLanguage, setInvoiceLanguage] = useState('')
+  const [validationErrors, setValidationErrors] = useState({})
   const [isSubmitting, setIsSubmitting] = useState(false)
   const submitGuardRef = useRef(false)
+  const paymentTermsEditedRef = useRef(false)
+  const fieldRefs = useRef({})
   const availableClients = useMemo(() => (Array.isArray(clients) ? clients.filter(Boolean) : []), [clients])
   const projectOptions = useMemo(() => buildInvoiceProjectOptions({ projects, leads, clients: availableClients, contracts }), [availableClients, contracts, leads, projects])
   const selectedProject = projectOptions.find((project) => project.id === selectedProjectId) || null
@@ -66,6 +77,9 @@ export function InvoiceCreationModal({
     ? projectOptions.filter((project) => project.clientId === selectedClientId || project.id === selectedProjectId)
     : projectOptions
   const total = lineItems.reduce((sum, item) => sum + (Number(item.amount) || 0), 0)
+  const resolvedInvoiceLanguage = resolvePreferredClientLanguage({ client: selectedClient, userLanguage: language })
+  const invoiceContentT = useMemo(() => createTranslator(resolvedInvoiceLanguage), [resolvedInvoiceLanguage])
+  const invoiceDefaultPaymentTerms = invoiceContentT('invoiceDefaultPaymentTerms')
 
   useEffect(() => {
     if (!isOpen) return
@@ -78,12 +92,18 @@ export function InvoiceCreationModal({
     setIssueDate(today)
     setDueDate(addDays(today, invoiceDueDays))
     setLineItems([{ description: initialProject?.title || '', amount: '' }])
-    setPaymentTerms(defaultPaymentTerms || '')
+    setPaymentTerms('')
     setCustomerNotes('')
-    setInvoiceLanguage('')
+    setValidationErrors({})
     setIsSubmitting(false)
     submitGuardRef.current = false
-  }, [defaultPaymentTerms, initialProjectId, invoiceDueDays, isOpen, projectOptions])
+    paymentTermsEditedRef.current = false
+  }, [initialProjectId, invoiceDueDays, isOpen, projectOptions])
+
+  useEffect(() => {
+    if (!isOpen || paymentTermsEditedRef.current) return
+    setPaymentTerms(invoiceDefaultPaymentTerms)
+  }, [invoiceDefaultPaymentTerms, isOpen])
 
   function chooseClient(clientId) {
     setSelectedClientId(clientId)
@@ -108,6 +128,11 @@ export function InvoiceCreationModal({
   }
 
   function updateLineItem(index, field, value) {
+    setValidationErrors((current) => {
+      const next = { ...current }
+      delete next[`lineItems.${index}.${field}`]
+      return next
+    })
     setLineItems((current) => current.map((item, itemIndex) => (
       itemIndex === index ? { ...item, [field]: value } : item
     )))
@@ -123,7 +148,22 @@ export function InvoiceCreationModal({
 
   async function handleSubmit(event) {
     event.preventDefault()
-    if (submitGuardRef.current || !selectedProject || !selectedClient || total <= 0) return
+    if (submitGuardRef.current) return
+
+    const nextValidationErrors = validateInvoiceCreationDraft({
+      selectedProject,
+      selectedClient,
+      title,
+      issueDate,
+      dueDate,
+      lineItems,
+    })
+    setValidationErrors(nextValidationErrors)
+    const firstInvalidKey = Object.keys(nextValidationErrors)[0]
+    if (firstInvalidKey) {
+      window.requestAnimationFrame(() => fieldRefs.current[firstInvalidKey]?.focus())
+      return
+    }
 
     submitGuardRef.current = true
     setIsSubmitting(true)
@@ -138,7 +178,7 @@ export function InvoiceCreationModal({
         lineItems,
         paymentTerms,
         customerNotes,
-        invoiceLanguage,
+        invoiceLanguage: resolvedInvoiceLanguage,
       }))
     } finally {
       submitGuardRef.current = false
@@ -165,28 +205,30 @@ export function InvoiceCreationModal({
         </button>
       </div>
 
-      <form onSubmit={handleSubmit} className="mt-6 space-y-5">
+      <form noValidate onSubmit={handleSubmit} className="mt-6 space-y-5">
         <section className="grid min-w-0 gap-4 rounded-3xl border border-slate-200 bg-slate-50 p-4 sm:grid-cols-2">
           <label className="block min-w-0 text-sm font-bold text-slate-700">
             <span className="mb-2 block">{t('client')}</span>
-            <SelectField value={selectedClientId} onChange={(event) => chooseClient(event.target.value)} disabled={lockProject} required className="bg-white">
+            <SelectField id="invoice-client" selectRef={(element) => { fieldRefs.current.client = element }} value={selectedClientId} onChange={(event) => { setValidationErrors((current) => ({ ...current, client: undefined })); chooseClient(event.target.value) }} disabled={lockProject} required className="bg-white" aria-invalid={validationErrors.client ? 'true' : undefined} aria-describedby={validationErrors.client ? 'invoice-client-error' : undefined}>
               <option value="">{t('selectClient')}</option>
               {availableClients.map((client) => <option key={client.id} value={client.id}>{client.displayName || client.name}</option>)}
             </SelectField>
+            {validationErrors.client ? <p id="invoice-client-error" role="alert" className="mt-2 text-xs font-semibold text-red-700">{t('invoiceRequiredFieldError')}</p> : null}
           </label>
           <label className="block min-w-0 text-sm font-bold text-slate-700">
             <span className="mb-2 block">{t('project')}</span>
-            <SelectField value={selectedProjectId} onChange={(event) => chooseProject(event.target.value)} disabled={lockProject} required className="bg-white">
+            <SelectField id="invoice-project" selectRef={(element) => { fieldRefs.current.project = element }} value={selectedProjectId} onChange={(event) => { setValidationErrors((current) => ({ ...current, project: undefined })); chooseProject(event.target.value) }} disabled={lockProject} required className="bg-white" aria-invalid={validationErrors.project ? 'true' : undefined} aria-describedby={validationErrors.project ? 'invoice-project-error' : undefined}>
               <option value="">{t('selectProject')}</option>
               {visibleProjectOptions.map((project) => <option key={project.id} value={project.id}>{project.title} · {project.clientName}</option>)}
             </SelectField>
+            {validationErrors.project ? <p id="invoice-project-error" role="alert" className="mt-2 text-xs font-semibold text-red-700">{t('invoiceRequiredFieldError')}</p> : null}
           </label>
         </section>
 
         <section className="grid min-w-0 gap-4 sm:grid-cols-2">
-          <div className="sm:col-span-2"><TextField label={t('invoiceTitle')} value={title} onChange={setTitle} required /></div>
-          <TextField label={t('issueDate')} type="date" value={issueDate} onChange={(value) => { setIssueDate(value); if (dueDate && dueDate < value) setDueDate(value) }} required />
-          <TextField label={t('dueDate')} type="date" value={dueDate} onChange={setDueDate} min={issueDate} required />
+          <div className="sm:col-span-2"><TextField id="invoice-title" label={t('invoiceTitle')} value={title} onChange={(value) => { setValidationErrors((current) => ({ ...current, title: undefined })); setTitle(value) }} required error={validationErrors.title ? t('invoiceRequiredFieldError') : ''} inputRef={(element) => { fieldRefs.current.title = element }} /></div>
+          <TextField id="invoice-issue-date" label={t('issueDate')} type="date" value={issueDate} onChange={(value) => { setValidationErrors((current) => ({ ...current, issueDate: undefined })); setIssueDate(value); if (dueDate && dueDate < value) setDueDate(value) }} required error={validationErrors.issueDate ? t('invoiceRequiredFieldError') : ''} inputRef={(element) => { fieldRefs.current.issueDate = element }} />
+          <TextField id="invoice-due-date" label={t('dueDate')} type="date" value={dueDate} onChange={(value) => { setValidationErrors((current) => ({ ...current, dueDate: undefined })); setDueDate(value) }} min={issueDate} required error={validationErrors.dueDate ? t(validationErrors.dueDate === 'beforeIssueDate' ? 'invoiceDueDateBeforeIssueDate' : 'invoiceRequiredFieldError') : ''} inputRef={(element) => { fieldRefs.current.dueDate = element }} />
         </section>
 
         <section className="rounded-3xl border border-slate-200 p-4 sm:p-5">
@@ -204,8 +246,8 @@ export function InvoiceCreationModal({
           <div className="mt-4 space-y-3">
             {lineItems.map((item, index) => (
               <div key={index} className="grid min-w-0 gap-3 rounded-2xl bg-slate-50 p-3 sm:grid-cols-[minmax(0,1fr)_10rem_auto] sm:items-end">
-                <TextField label={t('description')} value={item.description} onChange={(value) => updateLineItem(index, 'description', value)} required />
-                <TextField label={t('amount')} type="number" inputMode="decimal" min="0.01" value={item.amount} onChange={(value) => updateLineItem(index, 'amount', value)} required />
+                <TextField id={`invoice-line-${index}-description`} label={t('description')} value={item.description} onChange={(value) => updateLineItem(index, 'description', value)} required error={validationErrors[`lineItems.${index}.description`] ? t('invoiceLineItemDescriptionRequired') : ''} inputRef={(element) => { fieldRefs.current[`lineItems.${index}.description`] = element }} />
+                <TextField id={`invoice-line-${index}-amount`} label={t('amount')} type="number" inputMode="decimal" min="0.01" step="0.01" value={item.amount} onChange={(value) => updateLineItem(index, 'amount', value)} required error={validationErrors[`lineItems.${index}.amount`] ? t({ required: 'invoiceLineItemAmountRequired', invalid: 'invoiceLineItemAmountInvalid', positive: 'invoiceLineItemAmountPositive', precision: 'invoiceLineItemAmountPrecision' }[validationErrors[`lineItems.${index}.amount`]] || 'invoiceLineItemAmountInvalid') : ''} inputRef={(element) => { fieldRefs.current[`lineItems.${index}.amount`] = element }} />
                 <button type="button" disabled={lineItems.length === 1} onClick={() => setLineItems((current) => current.filter((_, itemIndex) => itemIndex !== index))} aria-label={t('removeItem')} className="inline-flex h-12 w-full items-center justify-center rounded-2xl border border-red-200 bg-white text-red-600 transition hover:bg-red-50 disabled:cursor-not-allowed disabled:opacity-40 sm:w-12">
                   <Trash2 className="h-4 w-4" aria-hidden="true" />
                 </button>
@@ -221,17 +263,9 @@ export function InvoiceCreationModal({
         </section>
 
         <section className="grid min-w-0 gap-4 sm:grid-cols-2">
-          <label className="block min-w-0 text-sm font-bold text-slate-700">
-            <span className="mb-2 block">{t('invoiceLanguage')}</span>
-            <SelectField value={invoiceLanguage} onChange={(event) => setInvoiceLanguage(event.target.value)}>
-              <option value="">{t('useClientLanguage')}</option>
-              <option value="en">{t('english')}</option>
-              <option value="es">{t('spanish')}</option>
-            </SelectField>
-          </label>
           <label className="block min-w-0 text-sm font-bold text-slate-700 sm:col-span-2">
             <span className="mb-2 block">{t('paymentTerms')}</span>
-            <textarea value={paymentTerms} onChange={(event) => setPaymentTerms(event.target.value)} rows={3} className="w-full min-w-0 rounded-2xl border border-slate-200 bg-white px-4 py-3 text-sm leading-6 text-slate-900 outline-none transition focus:border-blue-500 focus:ring-4 focus:ring-blue-100" />
+            <textarea value={paymentTerms} onChange={(event) => { paymentTermsEditedRef.current = true; setPaymentTerms(event.target.value) }} rows={3} className="w-full min-w-0 rounded-2xl border border-slate-200 bg-white px-4 py-3 text-sm leading-6 text-slate-900 outline-none transition focus:border-blue-500 focus:ring-4 focus:ring-blue-100" />
           </label>
           <label className="block min-w-0 text-sm font-bold text-slate-700 sm:col-span-2">
             <span className="mb-2 block">{t('customerNote')}</span>
@@ -241,7 +275,7 @@ export function InvoiceCreationModal({
 
         <div className="flex flex-col-reverse gap-3 border-t border-slate-200 pt-5 sm:flex-row sm:justify-end">
           <button type="button" disabled={isSubmitting} onClick={onClose} className="min-h-12 rounded-2xl border border-slate-200 px-5 py-3 text-sm font-bold text-slate-700 hover:bg-slate-50 disabled:opacity-60">{t('cancel')}</button>
-          <button type="submit" disabled={isSubmitting || !selectedProject || !selectedClient || total <= 0} className="min-h-12 rounded-2xl bg-slate-950 px-5 py-3 text-sm font-bold text-white hover:bg-slate-800 disabled:cursor-not-allowed disabled:opacity-60">
+          <button type="submit" disabled={isSubmitting} className="min-h-12 rounded-2xl bg-slate-950 px-5 py-3 text-sm font-bold text-white hover:bg-slate-800 disabled:cursor-not-allowed disabled:opacity-60">
             {isSubmitting ? t('saving') : t('createInvoice')}
           </button>
         </div>

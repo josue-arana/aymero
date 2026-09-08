@@ -9,7 +9,6 @@ import { archiveMenuItemClasses } from '../utils/buttonStyles'
 import { tStatus } from '../translations'
 import { ConfirmRecordModal } from '../components/common/ConfirmRecordModal'
 import ActionMenu from '../components/common/ActionMenu'
-import { USE_SUPABASE, USE_SUPABASE_ESTIMATES } from '../config/backendConfig'
 import { useAnalyticsMode } from '../contexts/SimpleModeContext'
 import { getEstimateDisplayNumber } from '../utils/estimateNumber'
 import { dedupeById, findLeadByProjectLookup, resolveLinkedProjectId } from '../utils/projectIdentity'
@@ -17,6 +16,7 @@ import estimatesHeroBackground from '../assets/page-heroes/estimates-bg.png'
 import { buildHeroBackgroundStyle } from '../utils/heroBackground'
 import { resolveEstimateArchiveState } from '../utils/archiveLifecycle'
 import { canCreateContractFromEstimate, canEditEstimate, normalizeEstimateFinalizationStatus } from '../utils/estimateFinalization'
+import { sumUnambiguousEstimateValues } from '../utils/estimateAlternatives'
 
 const estimateFilters = ['All', 'Archived', 'Draft', 'Saved', 'Sent', 'Approved', 'Rejected', 'Converted to Contract']
 
@@ -31,7 +31,7 @@ function getEstimateStatus(lead) {
   return 'Draft'
 }
 
-export function EstimatesPage({ leads, estimates = [], contracts = [], archivedIds = [], onOpenEstimate, onConvertEstimate, onArchiveEstimate, onRestoreEstimate, onDeleteEstimate, t }) {
+export function EstimatesPage({ leads, estimates = [], projects = [], contracts = [], archivedIds = [], onOpenEstimate, onConvertEstimate, onArchiveEstimate, onRestoreEstimate, onDeleteEstimate, t }) {
   const [selectedFilter, setSelectedFilter] = useState('Draft')
   const [confirmAction, setConfirmAction] = useState(null)
   const { isAnalyticsMode } = useAnalyticsMode()
@@ -67,10 +67,11 @@ export function EstimatesPage({ leads, estimates = [], contracts = [], archivedI
       canUseProjectActions: true,
       publicShareToken: estimate.publicShareToken || estimate.public_share_token || '',
       public_share_token: estimate.public_share_token || estimate.publicShareToken || '',
+      optionName: estimate.optionName || estimate.option_name || '',
     }
   }), [archivedIds, leads, t])
 
-  const persistedEstimates = useMemo(() => dedupeById(estimates, ['projectId', 'project_id', 'leadId', 'lead_id', 'number', 'estimateNumber']).map((estimate) => {
+  const persistedEstimates = useMemo(() => dedupeById(estimates).map((estimate) => {
     const linkedLead = findLeadByProjectLookup(leads, estimate?.projectId, estimate?.project_id, estimate?.leadId, estimate?.lead_id)
       || leads.find((lead) => estimate?.id && lead?.estimateId === estimate.id)
       || null
@@ -111,8 +112,7 @@ export function EstimatesPage({ leads, estimates = [], contracts = [], archivedI
     }
   }), [archivedIds, contracts, estimates, leads, t])
 
-  const usesSupabaseEstimates = USE_SUPABASE || USE_SUPABASE_ESTIMATES
-  const estimateRows = [...(usesSupabaseEstimates && persistedEstimates.length > 0 ? persistedEstimates : leadBackedEstimates)]
+  const estimateRows = [...(persistedEstimates.length > 0 ? persistedEstimates : leadBackedEstimates)]
     .sort((left, right) => {
       const leftTimestamp = Date.parse(left.updatedAt || left.approvedAt || left.rejectedAt || left.dateCreated || '') || 0
       const rightTimestamp = Date.parse(right.updatedAt || right.approvedAt || right.rejectedAt || right.dateCreated || '') || 0
@@ -132,7 +132,7 @@ export function EstimatesPage({ leads, estimates = [], contracts = [], archivedI
   const draftCount = activeEstimates.filter((estimate) => ['Draft', 'Saved'].includes(estimate.status)).length
   const sentCount = activeEstimates.filter((estimate) => estimate.status === 'Sent').length
   const approvedCount = activeEstimates.filter((estimate) => estimate.status === 'Approved' || estimate.status === 'Converted to Contract').length
-  const totalValue = activeEstimates.reduce((sum, estimate) => sum + estimate.amount, 0)
+  const totalValue = sumUnambiguousEstimateValues(activeEstimates, projects)
 
   const summaryCards = [
     { label: t('draftEstimates'), value: draftCount, helper: t('draftEstimatesHelper'), icon: FileText },
@@ -205,7 +205,7 @@ export function EstimatesPage({ leads, estimates = [], contracts = [], archivedI
         ]
 
     const actionLayoutClasses = compact
-      ? `grid ${isArchived || !showProjectAction ? 'grid-cols-[minmax(0,1fr)_auto]' : 'grid-cols-[minmax(0,1fr)_minmax(0,1fr)_auto]'} items-center gap-2`
+      ? `grid grid-cols-1 ${isArchived || !showProjectAction ? 'sm:grid-cols-[minmax(0,1fr)_auto]' : 'sm:grid-cols-[minmax(0,1fr)_minmax(0,1fr)_auto]'} items-center gap-2`
       : `ml-auto grid ${isArchived || !showProjectAction ? 'grid-cols-[8.75rem_5.25rem]' : 'grid-cols-[8.75rem_10.5rem_5.25rem]'} items-center justify-end gap-2`
 
     const moreButtonClasses = compact
@@ -215,7 +215,7 @@ export function EstimatesPage({ leads, estimates = [], contracts = [], archivedI
     if (isArchived) {
       return (
         <div className={actionLayoutClasses}>
-          <button onClick={(event) => { event.stopPropagation(); onOpenEstimate(estimate.routeId, estimate) }} className="inline-flex min-h-[44px] w-full items-center justify-center whitespace-nowrap rounded-xl bg-slate-950 px-3 py-2 text-xs font-bold text-white hover:bg-slate-800">{t('viewEstimate')}</button>
+          <button onClick={(event) => { event.stopPropagation(); onOpenEstimate(estimate.routeId, estimate) }} className={`inline-flex min-h-[44px] w-full items-center justify-center rounded-xl bg-slate-950 px-3 py-2 text-xs font-bold text-white hover:bg-slate-800 ${compact ? 'whitespace-normal break-words text-center' : 'whitespace-nowrap'}`}>{t('viewEstimate')}</button>
           <ActionMenu
             label={compact ? <MoreVertical className="h-4 w-4" /> : t('more')}
             ariaLabel={t('more')}
@@ -228,8 +228,8 @@ export function EstimatesPage({ leads, estimates = [], contracts = [], archivedI
     }
     return (
       <div className={actionLayoutClasses}>
-        <button onClick={(event) => { event.stopPropagation(); onOpenEstimate(estimate.routeId, estimate) }} className="inline-flex min-h-[44px] w-full items-center justify-center whitespace-nowrap rounded-xl bg-slate-950 px-3 py-2 text-xs font-bold text-white hover:bg-slate-800">{primaryEstimateActionLabel}</button>
-        {showProjectAction ? <button onClick={(event) => { event.stopPropagation(); onConvertEstimate(estimate.sourceLeadId, estimate) }} className="inline-flex min-h-[44px] w-full items-center justify-center whitespace-nowrap rounded-xl border border-blue-200 bg-blue-50 px-3 py-2 text-xs font-bold text-blue-700 hover:bg-blue-100">{estimate.hasLinkedContract ? t('viewContract') : t('createContract')}</button> : null}
+        <button onClick={(event) => { event.stopPropagation(); onOpenEstimate(estimate.routeId, estimate) }} className={`inline-flex min-h-[44px] w-full items-center justify-center rounded-xl bg-slate-950 px-3 py-2 text-xs font-bold text-white hover:bg-slate-800 ${compact ? 'whitespace-normal break-words text-center' : 'whitespace-nowrap'}`}>{primaryEstimateActionLabel}</button>
+        {showProjectAction ? <button onClick={(event) => { event.stopPropagation(); onConvertEstimate(estimate.sourceLeadId, estimate) }} className={`inline-flex min-h-[44px] w-full items-center justify-center rounded-xl border border-blue-200 bg-blue-50 px-3 py-2 text-xs font-bold text-blue-700 hover:bg-blue-100 ${compact ? 'whitespace-normal break-words text-center' : 'whitespace-nowrap'}`}>{estimate.hasLinkedContract ? t('viewContract') : t('createContract')}</button> : null}
         <ActionMenu
           label={compact ? <MoreVertical className="h-4 w-4" /> : t('more')}
           ariaLabel={t('more')}
@@ -271,7 +271,7 @@ export function EstimatesPage({ leads, estimates = [], contracts = [], archivedI
           </SelectField>
         </div>
 
-        <div className="mb-5 flex gap-2 overflow-x-auto pb-1">
+        <div className="mb-5 flex flex-wrap gap-2">
           {estimateFilters.map((filter) => (
             <FilterChip key={filter} selected={selectedFilter === filter} onClick={() => setSelectedFilter(filter)}>
               {filter === 'All' ? t('all') : filter === 'Archived' ? t('archived') : tStatus(t, filter)}
@@ -279,7 +279,7 @@ export function EstimatesPage({ leads, estimates = [], contracts = [], archivedI
           ))}
         </div>
 
-        <div className="hidden overflow-hidden rounded-2xl border border-slate-200 md:block">
+        <div className="hidden overflow-hidden rounded-2xl border border-slate-200 xl:block">
           <table className="w-full border-collapse text-left text-sm">
             <thead className="bg-slate-50 text-xs font-bold uppercase tracking-wide text-slate-500">
               <tr>
@@ -302,6 +302,7 @@ export function EstimatesPage({ leads, estimates = [], contracts = [], archivedI
                   <td className="px-4 py-4 align-top">
                     <div className="min-w-0">
                       <p className="text-sm font-bold text-slate-950">{estimate.estimateNumber}</p>
+                      {estimate.optionName ? <p className="mt-1 text-xs font-semibold text-blue-700">{estimate.optionName}</p> : null}
                       <p className="mt-1 text-sm font-semibold text-slate-600">{currency.format(estimate.amount)}</p>
                     </div>
                   </td>
@@ -325,7 +326,7 @@ export function EstimatesPage({ leads, estimates = [], contracts = [], archivedI
           </table>
         </div>
 
-        <div className="space-y-3 md:hidden">
+        <div className="space-y-3 xl:hidden">
           {filteredEstimates.length ? filteredEstimates.map((estimate) => (
             <article key={estimate.id} className="rounded-3xl border border-slate-200 bg-white p-4 shadow-sm">
               <div className="mb-4 flex items-start justify-between gap-3">
@@ -342,6 +343,7 @@ export function EstimatesPage({ leads, estimates = [], contracts = [], archivedI
                 <div>
                   <p className="text-xs font-semibold uppercase tracking-wide text-slate-400">{t('estimate')}</p>
                   <p className="mt-1 text-sm font-bold text-slate-950">{estimate.estimateNumber}</p>
+                  {estimate.optionName ? <p className="mt-1 text-xs font-semibold text-blue-700">{estimate.optionName}</p> : null}
                 </div>
                 <div>
                   <p className="text-xs font-semibold uppercase tracking-wide text-slate-400">{t('date')}</p>

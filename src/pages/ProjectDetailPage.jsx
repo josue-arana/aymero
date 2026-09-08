@@ -17,7 +17,7 @@ import { RecordPaymentModal } from '../components/common/RecordPaymentModal'
 import { PhotoUploadModal } from '../components/common/PhotoUploadModal'
 import { ProjectScheduleCard } from '../components/projects/ProjectScheduleCard'
 import { useToast } from '../components/common/ToastProvider'
-import { USE_SUPABASE, USE_SUPABASE_EVENTS, USE_SUPABASE_PAYMENTS, USE_SUPABASE_PROJECTS } from '../config/backendConfig'
+import { USE_SUPABASE, USE_SUPABASE_ESTIMATES, USE_SUPABASE_EVENTS, USE_SUPABASE_PAYMENTS, USE_SUPABASE_PROJECTS } from '../config/backendConfig'
 import { useAuth } from '../contexts/AuthContext'
 import { useAnalyticsMode } from '../contexts/SimpleModeContext'
 import dataProvider from '../services/dataProvider'
@@ -29,11 +29,13 @@ import { formatContractDisplayNumber } from '../utils/contractNumber'
 import { formatEstimateDisplayNumber } from '../utils/estimateNumber'
 import { PROJECT_PHOTO_MAX_FILE_SIZE_BYTES, revokeProjectPhotoPreviewUrl, validateProjectPhotoFile } from '../services/photosService'
 import { calculateProjectPaymentSummary, collectProjectInvoiceIds, dedupePayments, mergeProjectTimeline, normalizePaymentRecord } from '../utils/projectPayments'
-import { dedupeById, resolveLinkedProjectId } from '../utils/projectIdentity'
+import { dedupeById, getEstimatesForProject, getSelectedEstimateForProject, resolveLinkedProjectId } from '../utils/projectIdentity'
 import { getRecordDetailsTitleKey } from '../utils/recordDetailsTitle'
 import { sortScheduleEvents } from '../utils/scheduleEvents'
 import { getInvoiceRemainingBalance } from '../utils/invoiceRecords'
 import { buildProjectWorkspaceViewModel, selectProjectWorkspaceInvoices } from '../utils/projectWorkspaceViewModel'
+import { resolveProjectHeroActionIds } from '../utils/projectHeroActions'
+import { withNavigationContext } from '../utils/navigationContext'
 import projectWorkspaceHeroBackground from '../assets/page-heroes/jobs-bg.png'
 
 function logProjectDetailDevError(message, error, meta) {
@@ -406,7 +408,7 @@ class ProjectDetailErrorBoundary extends Component {
   }
 }
 
-function ProjectDetailPageContent({ lead, companySettings, clients = [], invoices = [], scheduleEvents = [], archivedScheduleEventIds = [], isArchived = false, onBack, onOpenPortal, onOpenContract, onConvertEstimate, onCreateInvoice, onMarkProjectComplete, onUpdateLead, onRecordPayment, onUpdatePayment, onDeletePayment, onUploadPhotos, onScheduleEvent, onEditScheduleEvent, onExportEvent, onArchiveScheduleEvent, onRestoreScheduleEvent, onDeleteScheduleEvent, onArchiveProject, onRestoreProject, onDeleteProject, language = 'en', t }) {
+function ProjectDetailPageContent({ lead, companySettings, clients = [], estimates = [], invoices = [], scheduleEvents = [], archivedScheduleEventIds = [], isArchived = false, onBack, onOpenPortal, onOpenContract, onConvertEstimate, onCreateInvoice, onMarkProjectComplete, onUpdateLead, onRecordPayment, onUpdatePayment, onDeletePayment, onUploadPhotos, onScheduleEvent, onEditScheduleEvent, onExportEvent, onArchiveScheduleEvent, onRestoreScheduleEvent, onDeleteScheduleEvent, onArchiveProject, onRestoreProject, onDeleteProject, onCreateEstimateOption, onDuplicateEstimateOption, onSelectEstimate, onClearEstimateSelection, language = 'en', t }) {
   const { id, leadId } = useParams()
   const location = useLocation()
   const navigate = useNavigate()
@@ -422,6 +424,7 @@ function ProjectDetailPageContent({ lead, companySettings, clients = [], invoice
   const [hasLoadedProject, setHasLoadedProject] = useState(!USE_SUPABASE_PROJECTS)
   const [projectLoadError, setProjectLoadError] = useState(null)
   const [estimateRecord, setEstimateRecord] = useState(() => readLinkedEstimateDraft(lead || projectId, projectId || lead?.id || ''))
+  const [estimateRecords, setEstimateRecords] = useState(() => getEstimatesForProject({ ...(lead || {}), id: lead?.projectId || lead?.project_id || projectId }, estimates))
   const [contractRecord, setContractRecord] = useState(() => readLinkedContractDraft(lead || projectId, projectId || lead?.id || ''))
   const [paymentRecords, setPaymentRecords] = useState([])
   const [projectEventRecords, setProjectEventRecords] = useState([])
@@ -468,6 +471,21 @@ function ProjectDetailPageContent({ lead, companySettings, clients = [], invoice
     || lead?.portal?.estimate
     || readLinkedEstimateDraft(baseProject || projectId, [projectId, relatedLeadId, lead?.id])
   ), [baseProject, estimateRecord, lead, projectId, relatedLeadId])
+  const projectEstimateRecords = useMemo(() => {
+    const candidates = [...estimateRecords, ...(resolvedEstimate ? [resolvedEstimate] : [])]
+    const scopedProject = { ...(baseProject || {}), id: linkedProjectId || baseProject?.projectId || baseProject?.project_id || projectId }
+    const linkedEstimates = getEstimatesForProject(scopedProject, candidates)
+    return linkedEstimates.length > 0 || !resolvedEstimate?.id || resolvedEstimate?.projectId || resolvedEstimate?.project_id
+      ? linkedEstimates
+      : [resolvedEstimate]
+  }, [baseProject, estimateRecords, linkedProjectId, projectId, resolvedEstimate])
+  const selectedEstimateId = baseProject?.selectedEstimateId || baseProject?.selected_estimate_id || ''
+  const selectedProjectEstimate = useMemo(() => (
+    selectedEstimateId
+      ? projectEstimateRecords.find((estimate) => estimate.id === selectedEstimateId) || null
+      : projectEstimateRecords.length === 1 ? projectEstimateRecords[0] : null
+  ), [projectEstimateRecords, selectedEstimateId])
+  const hasAmbiguousEstimateSelection = projectEstimateRecords.length > 1 && !selectedProjectEstimate
   const resolvedContract = useMemo(() => normalizeProjectContract(
     contractRecord
     || baseProject?.portal?.contract
@@ -624,7 +642,6 @@ function ProjectDetailPageContent({ lead, companySettings, clients = [], invoice
   const relatedInvoiceById = useMemo(() => new Map(
     relatedProjectInvoices.map((invoice) => [invoice.id, invoice])
   ), [relatedProjectInvoices])
-
   useEffect(() => {
     if (!import.meta.env.DEV) return
 
@@ -721,17 +738,29 @@ function ProjectDetailPageContent({ lead, companySettings, clients = [], invoice
 
     async function loadEstimate() {
       const draftEstimate = readLinkedEstimateDraft(baseProject || projectId, [projectId, relatedLeadId, lead?.id])
-      const knownEstimateId = baseProject?.estimateId || baseProject?.estimate_id || lead?.estimateId || draftEstimate?.id || null
+      const knownEstimateId = baseProject?.selectedEstimateId
+        || baseProject?.selected_estimate_id
+        || baseProject?.estimateId
+        || baseProject?.estimate_id
+        || lead?.estimateId
+        || draftEstimate?.id
+        || null
 
       if (!linkedProjectId) {
         if (!isCancelled) {
           setEstimateRecord(draftEstimate)
+          setEstimateRecords(draftEstimate ? [draftEstimate] : [])
         }
         return
       }
 
       try {
         let resolvedEstimateRecord = null
+        let estimateList = Array.isArray(estimates) ? estimates : []
+
+        if (!knownEstimateId && estimateList.length > 0) {
+          resolvedEstimateRecord = getSelectedEstimateForProject({ ...(baseProject || {}), id: linkedProjectId }, estimateList)
+        }
 
         if (knownEstimateId) {
           const estimateByIdResponse = await dataProvider.estimates.getById?.(knownEstimateId, { contractorId })
@@ -741,7 +770,7 @@ function ProjectDetailPageContent({ lead, companySettings, clients = [], invoice
           }
         }
 
-        if (!resolvedEstimateRecord) {
+        if (!resolvedEstimateRecord && (USE_SUPABASE || USE_SUPABASE_ESTIMATES)) {
           const response = await dataProvider.estimates.list({
             contractorId,
             projectId: linkedProjectId,
@@ -751,14 +780,22 @@ function ProjectDetailPageContent({ lead, companySettings, clients = [], invoice
           if (isCancelled) return
 
           if (!response?.error) {
-            resolvedEstimateRecord = response?.data?.[0] || null
+            estimateList = response?.data || []
+            resolvedEstimateRecord = getSelectedEstimateForProject({ ...(baseProject || {}), id: linkedProjectId }, estimateList)
           }
         }
 
-        const nextEstimate = resolvedEstimateRecord || draftEstimate || lead?.portal?.estimate || null
+        const responseHasAmbiguousEstimates = !resolvedEstimateRecord && !knownEstimateId
+          ? (() => {
+              const activeEstimates = estimateList.filter((estimate) => !estimate?.archivedAt && !estimate?.archived_at)
+              return activeEstimates.length > 1
+            })()
+          : false
+        const nextEstimate = resolvedEstimateRecord || (responseHasAmbiguousEstimates ? null : draftEstimate || lead?.portal?.estimate || null)
 
         if (!isCancelled) {
           setEstimateRecord(nextEstimate)
+          setEstimateRecords(estimateList)
 
           if (nextEstimate) {
             writeLinkedEstimateDrafts([linkedProjectId, projectId, relatedLeadId, knownEstimateId], nextEstimate)
@@ -767,6 +804,7 @@ function ProjectDetailPageContent({ lead, companySettings, clients = [], invoice
       } catch (error) {
         if (!isCancelled) {
           setEstimateRecord(draftEstimate)
+          setEstimateRecords(draftEstimate ? [draftEstimate] : [])
         }
       }
     }
@@ -776,7 +814,7 @@ function ProjectDetailPageContent({ lead, companySettings, clients = [], invoice
     return () => {
       isCancelled = true
     }
-  }, [baseProject, contractorId, lead, linkedProjectId, projectId, relatedLeadId])
+  }, [baseProject, contractorId, estimates, lead, linkedProjectId, projectId, relatedLeadId])
 
   useEffect(() => {
     let isCancelled = false
@@ -1079,6 +1117,17 @@ function ProjectDetailPageContent({ lead, companySettings, clients = [], invoice
     photoCount: galleryPhotos.length,
     isArchived: projectIsArchived,
   }), [activeScheduleEvents, currentLead, galleryPhotos.length, paymentSummary, projectIsArchived, relatedProjectInvoices, resolvedContract])
+  const hasScheduleRecords = workspaceViewModel.upcomingEvents.length > 0
+    || workspaceViewModel.historyEvents.length > 0
+    || archivedScheduleEvents.length > 0
+  const showScheduleWorkspace = !projectIsArchived || hasScheduleRecords
+  const showDocumentWorkspace = !projectIsArchived
+    || hasEstimate
+    || hasContract
+    || relatedProjectInvoices.length > 0
+  const showPaymentWorkspace = paymentSummary.payments.length > 0 || canRecordPayment
+  const showPhotoWorkspace = !projectIsArchived || galleryPhotos.length > 0
+  const showClientWorkspace = Boolean(currentLead.phone || currentLead.email || hasClientLink)
 
   useEffect(() => {
     if (new URLSearchParams(location.search).get('sampleGuide') !== 'event' || activeScheduleEvents.length === 0) return
@@ -1110,22 +1159,33 @@ function ProjectDetailPageContent({ lead, companySettings, clients = [], invoice
   }
 
   const projectIsCompleted = workspaceViewModel.projectStatus === 'Completed'
-  const actionButtons = projectIsArchived
-    ? [{ label: t('edit'), icon: Edit3, action: () => setIsEditOpen(true) }]
-    : [
-        { label: t('recordPayment'), icon: DollarSign, action: () => { setEditingPayment(null); setShowPaymentModal(true) }, primary: true, disabled: !canRecordPayment },
-        !projectIsCompleted ? { label: t('scheduleJob'), icon: CalendarDays, action: onScheduleEvent } : null,
-        { label: t('uploadPhotos'), icon: Camera, action: () => setShowPhotoModal(true) },
-        { label: t('edit'), icon: Edit3, action: () => setIsEditOpen(true) },
-      ].filter(Boolean)
-  const moreActionSpansMobileRow = !projectIsArchived && (actionButtons.length - 1) % 2 === 0
+  const paymentIsPaidInFull = Number(paymentSummary.projectValue) > 0
+    && Number(paymentSummary.totalPaid) > 0
+    && Number(paymentSummary.outstandingBalance) <= 0
+  const heroActionHandlers = {
+    'record-payment': { label: t('recordPayment'), icon: DollarSign, action: () => { setEditingPayment(null); setShowPaymentModal(true) }, disabled: !canRecordPayment },
+    'schedule-job': { label: t('scheduleJob'), icon: CalendarDays, action: onScheduleEvent },
+    'upload-photos': { label: t('uploadPhotos'), icon: Camera, action: () => setShowPhotoModal(true) },
+    'edit': { label: t('edit'), icon: Edit3, action: () => setIsEditOpen(true) },
+    'review-contract': { label: t('openContract'), icon: FileText, action: () => onOpenContract?.(currentLead.id) },
+    'view-invoice': { label: t('viewInvoice'), icon: FileText, action: () => workspaceViewModel.nextAction?.invoiceId && navigate(`/invoices/${workspaceViewModel.nextAction.invoiceId}`, { state: withNavigationContext({}, `/projects/${currentLead.id}`, 'backToProjectWorkspace') }) },
+    'view-schedule': { label: t('viewSchedule'), icon: CalendarDays, action: () => document.getElementById('project-schedule')?.scrollIntoView({ behavior: 'smooth', block: 'start' }) },
+  }
+  const actionButtons = resolveProjectHeroActionIds({
+    nextActionId: workspaceViewModel.nextAction?.id,
+    projectIsArchived,
+    projectIsCompleted,
+    isPaidInFull: paymentIsPaidInFull,
+  }).map(({ id, primary }) => ({ id, primary, ...heroActionHandlers[id] }))
+  const secondaryHeroActionCount = actionButtons.filter((button) => !button.primary).length
+  const moreActionSpansMobileRow = secondaryHeroActionCount % 2 === 0
   const moreMenuItems = [
     hasEstimate
       ? {
           id: 'view-estimate',
           label: t('viewEstimate'),
           icon: <FileText className="mr-2 h-4 w-4" />,
-          onClick: () => navigate(`/projects/${currentLead.id}/estimate`, { state: { source: 'project', projectId: currentLead.id } }),
+          onClick: () => navigate(`/projects/${currentLead.id}/estimate`, { state: withNavigationContext({ source: 'project', projectId: currentLead.id }, `/projects/${currentLead.id}`, 'backToProjectWorkspace') }),
         }
       : null,
     hasContract
@@ -1199,16 +1259,10 @@ function ProjectDetailPageContent({ lead, companySettings, clients = [], invoice
       ? t('projectCompletionOutstandingBalanceWarning', { amount: currency.format(workspaceViewModel.outstandingInvoiceBalance) })
       : '',
   ].filter(Boolean).join(' ')
-  const rawProjectValue = baseProject?.value
-    ?? baseProject?.estimatedValue
-    ?? baseProject?.contractValue
-    ?? resolvedEstimate?.total
   const projectValue = Number(paymentSummary.projectValue)
   const portalShareUrl = normalizePortalShareUrl(portal.shareUrl)
-  const hasProjectValue = rawProjectValue !== null
-    && rawProjectValue !== undefined
-    && rawProjectValue !== ''
-    && Number.isFinite(projectValue)
+  const hasFinancialSummary = Number.isFinite(projectValue)
+    && [projectValue, Number(paymentSummary.totalPaid), Number(paymentSummary.outstandingBalance)].some((value) => value > 0)
 
   function closePaymentModal() {
     setShowPaymentModal(false)
@@ -1519,17 +1573,6 @@ function ProjectDetailPageContent({ lead, companySettings, clients = [], invoice
     }
   }
 
-  function runRecommendedAction() {
-    const nextAction = workspaceViewModel.nextAction
-
-    if (!nextAction) return
-    if (nextAction.id === 'review-contract') onOpenContract?.(currentLead.id)
-    if (nextAction.id === 'view-invoice' && nextAction.invoiceId) navigate(`/invoices/${nextAction.invoiceId}`)
-    if (nextAction.id === 'view-schedule') document.getElementById('project-schedule')?.scrollIntoView({ behavior: 'smooth', block: 'start' })
-    if (nextAction.id === 'schedule-job') onScheduleEvent?.()
-    if (nextAction.id === 'upload-photos') setShowPhotoModal(true)
-  }
-
   async function restoreArchivedProjectEvent(event) {
     try {
       const response = await dataProvider.events.restore?.(event.id, { contractorId })
@@ -1547,21 +1590,33 @@ function ProjectDetailPageContent({ lead, companySettings, clients = [], invoice
     onRestoreScheduleEvent?.(event.id)
   }
 
-  const RecommendedActionIcon = workspaceViewModel.nextAction?.id === 'upload-photos'
+  const RecommendedActionIcon = hasAmbiguousEstimateSelection
+    ? FileText
+    : workspaceViewModel.nextAction?.id === 'upload-photos'
     ? Camera
     : workspaceViewModel.nextAction?.id === 'review-contract' || workspaceViewModel.nextAction?.id === 'view-invoice'
       ? FileText
       : CalendarDays
+  const handleSelectProjectEstimate = async (estimate) => {
+    const updatedProject = await onSelectEstimate?.(currentLead, estimate)
+    if (updatedProject) setProject((current) => ({ ...(current || currentLead), ...updatedProject }))
+  }
+  const handleClearProjectEstimate = async () => {
+    const updatedProject = await onClearEstimateSelection?.(currentLead)
+    if (updatedProject) setProject((current) => ({ ...(current || currentLead), ...updatedProject }))
+  }
   const recommendedActionMessage = workspaceViewModel.nextAction
-    ? t(workspaceViewModel.nextAction.messageKey, {
+    ? t(hasAmbiguousEstimateSelection ? 'reviewEstimateOptions' : workspaceViewModel.nextAction.messageKey, {
         date: workspaceViewModel.nextAction.event?.displayDate || workspaceViewModel.nextAction.event?.date || '',
       })
     : ''
 
+  const hasRecommendedAction = Boolean(workspaceViewModel.nextAction || hasAmbiguousEstimateSelection)
+
   return (
     <div className="space-y-6">
       <nav aria-label={t('projectWorkspace')} className="flex min-w-0 items-center gap-2 text-sm font-semibold">
-        <RecordBackButton label={t('backToDashboard')} onClick={onBack} />
+        <RecordBackButton label={t('back')} onClick={onBack} />
         <ChevronRight className="h-4 w-4 shrink-0 text-slate-300" aria-hidden="true" />
         <span className="min-w-0 truncate text-slate-950" aria-current="page">{projectTitle}</span>
       </nav>
@@ -1608,7 +1663,7 @@ function ProjectDetailPageContent({ lead, companySettings, clients = [], invoice
               </div>
             </dl>
 
-            {isAnalyticsMode && hasProjectValue ? (
+            {isAnalyticsMode && hasFinancialSummary ? (
               <dl className="grid min-w-0 grid-cols-1 gap-px border-t border-white/10 bg-white/10 min-[380px]:grid-cols-3">
                 <div className="min-w-0 bg-slate-950/45 p-4">
                   <dt className="text-[0.68rem] font-bold uppercase tracking-[0.14em] text-slate-400">{t('projectValue')}</dt>
@@ -1620,7 +1675,7 @@ function ProjectDetailPageContent({ lead, companySettings, clients = [], invoice
                 </div>
                 <div className="min-w-0 bg-slate-950/45 p-4">
                   <dt className="text-[0.68rem] font-bold uppercase tracking-[0.14em] text-slate-400">{t('remainingBalance')}</dt>
-                  <dd className="mt-2 break-words text-lg font-bold tracking-tight text-white">{currency.format(paymentSummary.outstandingBalance)}</dd>
+                  <dd className="mt-2 break-words text-lg font-bold tracking-tight text-white">{paymentIsPaidInFull ? t('paidInFull') : currency.format(paymentSummary.outstandingBalance)}</dd>
                 </div>
               </dl>
             ) : null}
@@ -1645,15 +1700,15 @@ function ProjectDetailPageContent({ lead, companySettings, clients = [], invoice
         </div>
 
         <div data-project-workspace-hero-actions="true" className="relative mt-7 grid min-w-0 grid-cols-2 gap-2 border-t border-white/10 pt-5 lg:flex lg:flex-nowrap lg:items-center">
-          {actionButtons.map((button, index) => {
+          {actionButtons.map((button) => {
             const Icon = button.icon
             return (
               <button
-                key={button.label}
+                key={button.id}
                 type="button"
                 onClick={button.action}
                 disabled={button.disabled}
-                className={`inline-flex min-h-12 min-w-0 w-full items-center justify-center gap-2 rounded-2xl px-4 py-3 text-sm font-bold transition focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-blue-200 focus-visible:ring-offset-2 focus-visible:ring-offset-slate-950 lg:w-auto ${index === 0 ? 'col-span-2 lg:col-span-1' : ''} ${button.primary ? 'bg-blue-500 text-white shadow-lg shadow-blue-950/25 hover:bg-blue-400 disabled:bg-blue-400' : 'border border-white/15 bg-white/10 text-white hover:bg-white/15'}`}
+                className={`inline-flex min-h-12 min-w-0 w-full items-center justify-center gap-2 rounded-2xl px-4 py-3 text-sm font-bold transition focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-blue-200 focus-visible:ring-offset-2 focus-visible:ring-offset-slate-950 lg:w-auto ${button.primary ? 'col-span-2 lg:col-span-1 bg-blue-500 text-white shadow-lg shadow-blue-950/25 hover:bg-blue-400 disabled:bg-blue-400' : 'border border-white/15 bg-white/10 text-white hover:bg-white/15'}`}
               >
                 <Icon className="h-4 w-4 shrink-0" aria-hidden="true" /> <span className="break-words">{button.label}</span>
               </button>
@@ -1680,7 +1735,7 @@ function ProjectDetailPageContent({ lead, companySettings, clients = [], invoice
         ) : null}
       </section>
 
-      {workspaceViewModel.nextAction ? (
+      {hasRecommendedAction ? (
         <section aria-labelledby="project-next-action-title" className="flex flex-col gap-4 rounded-3xl border border-blue-200 bg-blue-50 p-5 shadow-sm sm:flex-row sm:items-center sm:justify-between sm:p-6">
           <div className="flex min-w-0 items-start gap-3">
             <span className="inline-flex h-11 w-11 shrink-0 items-center justify-center rounded-2xl bg-blue-600 text-white shadow-sm" aria-hidden="true">
@@ -1691,14 +1746,16 @@ function ProjectDetailPageContent({ lead, companySettings, clients = [], invoice
               <p className="mt-1 break-words text-sm leading-6 text-slate-700 [overflow-wrap:anywhere]">{recommendedActionMessage}</p>
             </div>
           </div>
-          <button type="button" onClick={runRecommendedAction} className="inline-flex min-h-11 w-full shrink-0 items-center justify-center rounded-2xl bg-blue-600 px-5 py-3 text-sm font-bold text-white transition hover:bg-blue-700 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-blue-500 focus-visible:ring-offset-2 sm:w-auto">
-            {t(workspaceViewModel.nextAction.actionLabelKey)}
-          </button>
+          {hasAmbiguousEstimateSelection ? (
+            <button type="button" onClick={() => document.getElementById('project-documents')?.scrollIntoView({ behavior: 'smooth', block: 'start' })} className="text-left text-sm font-bold text-blue-700 underline-offset-4 hover:underline sm:text-right">{t('selectEstimateOption')}</button>
+          ) : (
+            <span className="text-sm font-bold text-blue-700 sm:text-right">{t(workspaceViewModel.nextAction.actionLabelKey)}</span>
+          )}
         </section>
       ) : null}
 
-      <div data-project-workspace-layout="true" className="grid min-w-0 grid-cols-1 gap-4 md:grid-cols-2 xl:grid-cols-6">
-      <div className="min-w-0 md:col-span-2 xl:col-span-6">
+      <div data-project-workspace-layout="true" className="grid min-w-0 grid-cols-1 items-start gap-4 md:grid-cols-2 xl:grid-cols-2">
+      {showScheduleWorkspace ? <div className="min-w-0 md:col-span-2 xl:col-span-2">
         <ProjectScheduleCard
           upcomingEvents={workspaceViewModel.upcomingEvents}
           historyEvents={workspaceViewModel.historyEvents}
@@ -1712,44 +1769,70 @@ function ProjectDetailPageContent({ lead, companySettings, clients = [], invoice
           onDeleteEvent={(event) => setScheduleConfirmAction({ mode: 'delete', event })}
           t={t}
         />
-      </div>
+      </div> : null}
       <section className="contents">
-        <div className="min-w-0 rounded-3xl border border-slate-200 bg-white p-5 shadow-sm md:col-span-2 xl:col-span-3">
+        {showDocumentWorkspace ? <div id="project-documents" aria-label={t('projectDocuments')} className="min-w-0 rounded-3xl border border-slate-200 bg-white p-5 shadow-sm md:col-span-2 xl:col-span-1">
           <div className="mb-4 flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
             <div>
-              <h2 className="text-xl font-bold text-slate-950">{t('projectDocuments')}</h2>
-              <p className="text-sm text-slate-500">{t('documents')}</p>
+              <h2 className="text-xl font-bold text-slate-950">{t('estimates')}</h2>
+              <p className="text-sm text-slate-500">{projectEstimateRecords.length > 0 ? `${t('estimates')} (${projectEstimateRecords.length})` : t('documents')}</p>
             </div>
             {!projectIsArchived ? (
-              <button type="button" onClick={onCreateInvoice} className="inline-flex min-h-11 w-full items-center justify-center gap-2 rounded-2xl border border-blue-200 bg-blue-50 px-4 py-2.5 text-sm font-bold text-blue-700 transition hover:bg-blue-100 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-blue-500 focus-visible:ring-offset-2 sm:w-auto">
-                <FileText className="h-4 w-4" aria-hidden="true" /> {t('createInvoice')}
-              </button>
-            ) : null}
+              <div className="flex w-full flex-col gap-2 sm:w-auto sm:flex-row">
+                <button type="button" onClick={() => onCreateEstimateOption?.(currentLead)} className="inline-flex min-h-11 w-full items-center justify-center gap-2 rounded-2xl border border-blue-200 bg-blue-50 px-4 py-2.5 text-sm font-bold text-blue-700 transition hover:bg-blue-100 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-blue-500 focus-visible:ring-offset-2 sm:w-auto">
+                  {t('newEstimate')}
+                </button>
+                <button type="button" onClick={onCreateInvoice} className="inline-flex min-h-11 w-full items-center justify-center gap-2 rounded-2xl border border-slate-200 bg-white px-4 py-2.5 text-sm font-bold text-slate-700 transition hover:bg-slate-50 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-blue-500 focus-visible:ring-offset-2 sm:w-auto">
+                  <FileText className="h-4 w-4" aria-hidden="true" /> {t('createInvoice')}
+                </button>
+              </div>
+                          ) : null}
           </div>
           <div className="space-y-2.5">
-            {resolvedEstimate ? (
-              <div className="flex flex-col gap-3 rounded-2xl border border-slate-200 bg-slate-50 p-3.5 sm:flex-row sm:items-center sm:justify-between">
-                <div className="min-w-0">
-                  <p className="text-[11px] font-bold uppercase tracking-[0.18em] text-slate-400">{t('estimate')}</p>
-                  <p className="mt-1 break-words font-bold text-slate-950 [overflow-wrap:anywhere]">{formatEstimateDisplayNumber(resolvedEstimate.number || resolvedEstimate.estimateNumber || '', currentLead)}</p>
-                  <div className="mt-1 flex flex-wrap items-center gap-x-3 gap-y-1 text-sm text-slate-600">
-                    <span>{currency.format(Number(resolvedEstimate.total || 0))}</span>
-                    <span>{resolvedEstimate.title || t('estimate')}</span>
-                  </div>
-                </div>
-                <div className="flex items-center justify-between gap-3 sm:justify-end">
-                  <StatusBadge status={resolvedEstimate.status || 'Draft'} t={t} />
-                  <button type="button" onClick={() => navigate(`/projects/${currentLead.id}/estimate`, { state: { source: 'project', projectId: currentLead.id } })} className="inline-flex min-h-11 items-center rounded-2xl border border-slate-200 bg-white px-4 py-2.5 text-sm font-bold text-slate-800 transition hover:bg-slate-50 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-blue-500 focus-visible:ring-offset-2">
-                    {t('view')}
-                  </button>
-                </div>
+            {projectEstimateRecords.length > 0 ? (
+              <div className="space-y-3">
+                {projectEstimateRecords.map((estimate) => {
+                  const isSelected = Boolean(selectedEstimateId && selectedProjectEstimate?.id === estimate.id)
+                  return (
+                    <div key={estimate.id} className={`flex min-w-0 flex-col gap-3 rounded-2xl border p-3.5 sm:flex-row sm:items-center sm:justify-between ${isSelected ? 'border-blue-300 bg-blue-50/60' : 'border-slate-200 bg-slate-50'}`}>
+                      <div className="min-w-0">
+                        <div className="flex flex-wrap items-center gap-2">
+                          <p className="text-[11px] font-bold uppercase tracking-[0.18em] text-slate-400">{t('estimate')}</p>
+                          {estimate.optionName || estimate.option_name ? <span className="rounded-full bg-slate-200 px-2 py-1 text-xs font-bold text-slate-700">{estimate.optionName || estimate.option_name}</span> : null}
+                          {isSelected ? <span className="rounded-full bg-blue-100 px-2 py-1 text-xs font-bold text-blue-700">{t('selectedEstimateOption')}</span> : null}
+                        </div>
+                        <p className="mt-1 break-words font-bold text-slate-950 [overflow-wrap:anywhere]">{formatEstimateDisplayNumber(estimate.number || estimate.estimateNumber || '', currentLead)}</p>
+                        <div className="mt-1 flex flex-wrap items-center gap-x-3 gap-y-1 text-sm text-slate-600">
+                          <span>{currency.format(Number(estimate.total || 0))}</span>
+                          <span>{estimate.title || t('estimate')}</span>
+                        </div>
+                      </div>
+                      <div className="flex flex-wrap items-center justify-between gap-2 sm:justify-end">
+                        <StatusBadge status={estimate.status || 'Draft'} t={t} />
+                        {!projectIsArchived && projectEstimateRecords.length > 1 ? (
+                          isSelected ? (
+                            <button type="button" onClick={handleClearProjectEstimate} className="inline-flex min-h-11 items-center rounded-2xl border border-blue-200 bg-white px-4 py-2.5 text-sm font-bold text-blue-700 transition hover:bg-blue-50 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-blue-500 focus-visible:ring-offset-2">{t('clearEstimateSelection')}</button>
+                          ) : (
+                            <button type="button" onClick={() => handleSelectProjectEstimate(estimate)} className="inline-flex min-h-11 items-center rounded-2xl border border-blue-200 bg-white px-4 py-2.5 text-sm font-bold text-blue-700 transition hover:bg-blue-50 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-blue-500 focus-visible:ring-offset-2">{t('selectEstimateOption')}</button>
+                          )
+                          ) : null}
+                        <button type="button" onClick={() => navigate(`/estimates/${estimate.id}`, { state: withNavigationContext({ source: 'project', projectId: currentLead.id, estimateId: estimate.id }, `/projects/${currentLead.id}`, 'backToProjectWorkspace') })} className="inline-flex min-h-11 items-center rounded-2xl border border-slate-200 bg-white px-4 py-2.5 text-sm font-bold text-slate-800 transition hover:bg-slate-50 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-blue-500 focus-visible:ring-offset-2">
+                          {t('view')}
+                        </button>
+                        {!projectIsArchived ? (
+                          <button type="button" onClick={() => onDuplicateEstimateOption?.(currentLead, estimate)} className="inline-flex min-h-11 items-center rounded-2xl border border-slate-200 bg-white px-4 py-2.5 text-sm font-bold text-slate-800 transition hover:bg-slate-50 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-blue-500 focus-visible:ring-offset-2">{t('duplicateEstimate')}</button>
+                          ) : null}
+                        </div>
+                    </div>
+                  )
+                })}
               </div>
             ) : (
               <div className="flex flex-col items-start gap-3 rounded-2xl border border-dashed border-slate-300 bg-slate-50 p-4 text-sm text-slate-500 sm:flex-row sm:items-center sm:justify-between">
                 <span>{t('noEstimates')}</span>
                 {!projectIsArchived ? (
-                  <button type="button" onClick={() => navigate(`/projects/${currentLead.id}/estimate`, { state: { source: 'project', projectId: currentLead.id, leadId: linkedLeadId } })} className="inline-flex min-h-11 w-full items-center justify-center rounded-2xl border border-slate-200 bg-white px-4 py-2.5 text-sm font-bold text-slate-800 transition hover:bg-slate-100 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-blue-500 focus-visible:ring-offset-2 sm:w-auto">
-                    {t('createEstimate')}
+                  <button type="button" onClick={() => onCreateEstimateOption?.(currentLead)} className="inline-flex min-h-11 w-full items-center justify-center rounded-2xl border border-slate-200 bg-white px-4 py-2.5 text-sm font-bold text-slate-800 transition hover:bg-slate-100 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-blue-500 focus-visible:ring-offset-2 sm:w-auto">
+                    {t('newEstimate')}
                   </button>
                 ) : null}
               </div>
@@ -1793,7 +1876,7 @@ function ProjectDetailPageContent({ lead, companySettings, clients = [], invoice
                 </div>
                 <div className="flex items-center justify-between gap-3 sm:justify-end">
                   <StatusBadge status={invoice.status || 'Draft'} t={t} />
-                  <button type="button" onClick={() => navigate(`/invoices/${invoice.id}`)} className="inline-flex min-h-11 items-center rounded-2xl border border-slate-200 bg-white px-4 py-2.5 text-sm font-bold text-slate-800 transition hover:bg-slate-50 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-blue-500 focus-visible:ring-offset-2">
+                  <button type="button" onClick={() => navigate(`/invoices/${invoice.id}`, { state: withNavigationContext({}, `/projects/${currentLead.id}`, 'backToProjectWorkspace') })} className="inline-flex min-h-11 items-center rounded-2xl border border-slate-200 bg-white px-4 py-2.5 text-sm font-bold text-slate-800 transition hover:bg-slate-50 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-blue-500 focus-visible:ring-offset-2">
                     {t('view')}
                   </button>
                 </div>
@@ -1802,9 +1885,9 @@ function ProjectDetailPageContent({ lead, companySettings, clients = [], invoice
               <div className="rounded-2xl border border-dashed border-slate-300 bg-slate-50 p-4 text-sm text-slate-500">{t('noInvoices')}</div>
             )}
           </div>
-        </div>
+        </div> : null}
 
-        <div className="min-w-0 rounded-3xl border border-slate-200 bg-white p-5 shadow-sm xl:col-span-3">
+        {showPaymentWorkspace ? <div className="min-w-0 rounded-3xl border border-slate-200 bg-white p-5 shadow-sm md:col-span-2 xl:col-span-1">
           <div className="mb-4">
             <h2 className="text-xl font-bold text-slate-950">{t('paymentHistory')}</h2>
             <p className="text-sm text-slate-500">{t('paymentsRecorded')}</p>
@@ -1821,7 +1904,7 @@ function ProjectDetailPageContent({ lead, companySettings, clients = [], invoice
                       {payment.paymentMethod && <span>{t('paymentMethod')}: {payment.paymentMethod}</span>}
                     </div>
                     {payment.invoiceId && relatedInvoiceById.has(payment.invoiceId) ? (
-                      <button type="button" onClick={() => navigate(`/invoices/${payment.invoiceId}`)} className="mt-2 inline-flex min-h-11 items-center gap-2 rounded-xl px-2 text-sm font-bold text-blue-700 transition hover:bg-blue-50 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-blue-500 focus-visible:ring-offset-2">
+                      <button type="button" onClick={() => navigate(`/invoices/${payment.invoiceId}`, { state: withNavigationContext({}, `/projects/${currentLead.id}`, 'backToProjectWorkspace') })} className="mt-2 inline-flex min-h-11 items-center gap-2 rounded-xl px-2 text-sm font-bold text-blue-700 transition hover:bg-blue-50 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-blue-500 focus-visible:ring-offset-2">
                         <FileText className="h-4 w-4" aria-hidden="true" /> {t('viewInvoice')} {relatedInvoiceById.get(payment.invoiceId)?.number || ''}
                       </button>
                     ) : null}
@@ -1879,10 +1962,10 @@ function ProjectDetailPageContent({ lead, companySettings, clients = [], invoice
               </div>
             )}
           </div>
-        </div>
+        </div> : null}
       </section>
 
-      <section className="min-w-0 rounded-3xl border border-slate-200 bg-white p-5 shadow-sm md:col-span-2 xl:col-span-6 sm:p-6">
+      {showPhotoWorkspace ? <section className="min-w-0 rounded-3xl border border-slate-200 bg-white p-5 shadow-sm md:col-span-2 xl:col-span-2 sm:p-6">
         <div className="mb-4 flex flex-col justify-between gap-3 sm:flex-row sm:items-center">
           <div>
             <h2 className="text-xl font-bold text-slate-950">{t('projectPhotos')}</h2>
@@ -1963,10 +2046,10 @@ function ProjectDetailPageContent({ lead, companySettings, clients = [], invoice
             <p className="mt-1 text-sm text-slate-500">{t('noPhotosUploadedYet')}</p>
           </div>
         )}
-      </section>
+      </section> : null}
 
       <section className="contents">
-        <div className="min-w-0 [&>article]:h-full xl:col-span-3">
+        {showClientWorkspace ? <div className="min-w-0 [&>article]:h-full md:col-span-2 xl:col-span-1">
           <InfoCard title={t('clientInformation')}>
             {currentLead.phone ? <DetailRow label={t('phone')} value={<a href={`tel:${currentLead.phone}`} className="rounded text-blue-700 underline-offset-4 hover:underline focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-blue-500">{currentLead.phone}</a>} /> : null}
             {currentLead.email ? <DetailRow label={t('email')} value={<a href={`mailto:${currentLead.email}`} className="break-all rounded text-blue-700 underline-offset-4 hover:underline focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-blue-500">{currentLead.email}</a>} /> : null}
@@ -1977,9 +2060,9 @@ function ProjectDetailPageContent({ lead, companySettings, clients = [], invoice
               </button>
             ) : null}
           </InfoCard>
-        </div>
+        </div> : null}
 
-        <div className="min-w-0 [&>article]:h-full xl:col-span-3">
+        <div className="min-w-0 [&>article]:h-full md:col-span-2 xl:col-span-1">
           <InfoCard title={t('customerPortal')} bodyClassName="space-y-3">
             <div className={`rounded-2xl border px-4 py-3 ${portalShareUrl ? 'border-emerald-200 bg-emerald-50 text-emerald-800' : 'border-slate-200 bg-slate-50 text-slate-600'}`}>
               <p className="text-sm font-bold">{t(portalShareUrl ? 'clientLinkReady' : 'clientLinkUnavailable')}</p>
@@ -2004,7 +2087,7 @@ function ProjectDetailPageContent({ lead, companySettings, clients = [], invoice
         </div>
 
         {(currentLead.priority || currentLead.source || currentLead.projectType || currentLead.notes || currentLead.description) ? (
-          <div className="min-w-0 md:col-span-2 [&>article]:h-full xl:col-span-6">
+          <div className="min-w-0 md:col-span-2 [&>article]:h-full xl:col-span-2">
             <InfoCard title={recordDetailsTitle}>
               {currentLead.priority ? <DetailRow label={t('priority')} value={currentLead.priority} /> : null}
               {currentLead.source ? <DetailRow label={t('source')} value={currentLead.source} /> : null}

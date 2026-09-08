@@ -167,6 +167,8 @@ export function mapProjectRowToUiProject(row) {
     address,
     notes,
     sampleDataKey: row?.sample_data_key || '',
+    selectedEstimateId: row?.selected_estimate_id || null,
+    selected_estimate_id: row?.selected_estimate_id || null,
     description,
     events: [],
     schedule: [],
@@ -206,10 +208,10 @@ export function mapProjectRowToUiProject(row) {
   }
 }
 
-export function mapUiProjectToProjectRow(contractorId, project = {}) {
+export function mapUiProjectToProjectRow(contractorId, project = {}, { isCreate = false } = {}) {
   const normalizedNotes = typeof project.notes === 'string' ? project.notes.trim() : project.notes
 
-  return {
+  const payload = {
     contractor_id: contractorId,
     client_id: normalizeOptionalUuid(project.clientId || project.client_id, 'client_id'),
     lead_id: normalizeOptionalUuid(project.leadId || project.lead_id, 'lead_id'),
@@ -226,6 +228,18 @@ export function mapUiProjectToProjectRow(contractorId, project = {}) {
     notes: normalizedNotes || null,
     sample_data_key: project.sampleDataKey || project.sample_data_key || null,
   }
+
+  const selectedEstimateInput = hasOwnField(project, 'selectedEstimateId')
+    ? project.selectedEstimateId
+    : hasOwnField(project, 'selected_estimate_id')
+      ? project.selected_estimate_id
+      : undefined
+
+  if (isCreate || selectedEstimateInput !== undefined) {
+    payload.selected_estimate_id = normalizeOptionalUuid(selectedEstimateInput, 'selected_estimate_id')
+  }
+
+  return payload
 }
 
 function buildContractorQuery(contractorId, extraQuery = {}) {
@@ -348,7 +362,7 @@ export async function create(projectData, { contractorId } = {}) {
   try {
     const data = await supabaseClient.request(TABLE_NAME, {
       method: 'POST',
-      body: mapUiProjectToProjectRow(contractorId, projectData),
+      body: mapUiProjectToProjectRow(contractorId, projectData, { isCreate: true }),
     })
 
     return {

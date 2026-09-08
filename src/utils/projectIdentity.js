@@ -103,14 +103,85 @@ export function getProjectsForClient(client = {}, projects = []) {
     })
 }
 
+function readEstimateProjectId(estimate = {}) {
+  return normalizeLookupId(estimate?.projectId || estimate?.project_id)
+}
+
+function isArchivedEstimate(estimate = {}) {
+  return Boolean(estimate?.isArchived || estimate?.archivedAt || estimate?.archived_at)
+}
+
+function estimateCreatedAt(estimate = {}) {
+  const value = estimate?.createdAt || estimate?.created_at || estimate?.dateCreated
+  const timestamp = value ? new Date(value).getTime() : 0
+  return Number.isFinite(timestamp) ? timestamp : 0
+}
+
+/**
+ * Returns active estimates explicitly linked to this project. The project id
+ * is required so an estimate from another project can never be selected by a
+ * loose lead/title/position match.
+ */
+export function getEstimatesForProject(project = {}, estimates = [], { includeArchived = false } = {}) {
+  const projectId = normalizeLookupId(project?.id || project?.projectId || project?.project_id)
+  if (!projectId) return []
+
+  return dedupeById(estimates)
+    .filter((estimate) => readEstimateProjectId(estimate) === projectId)
+    .filter((estimate) => includeArchived || !isArchivedEstimate(estimate))
+    .sort((left, right) => (
+      estimateCreatedAt(right) - estimateCreatedAt(left)
+      || normalizeLookupId(right?.id).localeCompare(normalizeLookupId(left?.id))
+    ))
+}
+
+/**
+ * Resolves the explicit project selection, with a safe legacy fallback only
+ * when exactly one active estimate exists. A stale or cross-project selection
+ * returns null rather than silently choosing another estimate.
+ */
+export function getSelectedEstimateForProject(project = {}, estimates = [], { includeArchived = false } = {}) {
+  const projectEstimates = getEstimatesForProject(project, estimates, { includeArchived })
+  const selectedEstimateId = normalizeLookupId(project?.selectedEstimateId || project?.selected_estimate_id)
+
+  if (selectedEstimateId) {
+    return projectEstimates.find((estimate) => normalizeLookupId(estimate?.id) === selectedEstimateId) || null
+  }
+
+  const activeEstimates = includeArchived
+    ? projectEstimates.filter((estimate) => !isArchivedEstimate(estimate))
+    : projectEstimates
+
+  return activeEstimates.length === 1 ? activeEstimates[0] : null
+}
+
+export function hasAmbiguousProjectEstimateSelection(project = {}, estimates = []) {
+  return getEstimatesForProject(project, estimates).length > 1
+    && !normalizeLookupId(project?.selectedEstimateId || project?.selected_estimate_id)
+}
+
 export function getEstimateForProject(project = {}, estimates = []) {
+  const selectedEstimate = getSelectedEstimateForProject(project, estimates)
+  if (selectedEstimate) return selectedEstimate
+
   const projectId = resolveLinkedProjectId(project)
   const leadId = resolveLinkedLeadId(project, project?.isProjectRecord === false ? project?.id : '')
   const estimateId = normalizeLookupId(project?.estimateId || project?.estimate_id)
 
-  return dedupeById(estimates, ['projectId', 'project_id', 'leadId', 'lead_id', 'number', 'estimateNumber'])
+  if (estimateId) {
+    const explicitEstimate = dedupeById(estimates)
+      .find((estimate) => normalizeLookupId(estimate?.id) === estimateId && !isArchivedEstimate(estimate))
+    if (explicitEstimate) return explicitEstimate
+  }
+
+  if (projectId && getEstimatesForProject(project, estimates).length > 1) {
+    return null
+  }
+
+  return dedupeById(estimates)
+    .filter((estimate) => !isArchivedEstimate(estimate))
     .find((estimate) => {
-      const estimateProjectId = normalizeLookupId(estimate?.projectId || estimate?.project_id)
+      const estimateProjectId = readEstimateProjectId(estimate)
       const estimateLeadId = resolveLinkedLeadId(estimate)
       const currentEstimateId = normalizeLookupId(estimate?.id)
 
