@@ -76,10 +76,11 @@ export function EstimatesPage({ leads, estimates = [], projects = [], contracts 
       || leads.find((lead) => estimate?.id && lead?.estimateId === estimate.id)
       || null
     const linkedContract = contracts.find((contract) => (
-      (estimate?.id && contract?.estimateId === estimate.id)
-      || ((estimate?.projectId || estimate?.project_id) && (contract?.projectId === (estimate.projectId || estimate.project_id) || contract?.project_id === (estimate.projectId || estimate.project_id)))
-      || ((estimate?.leadId || estimate?.lead_id) && (contract?.leadId === (estimate.leadId || estimate.lead_id) || contract?.lead_id === (estimate.leadId || estimate.lead_id)))
-    )) || linkedLead?.portal?.contract || null
+      estimate?.id
+        ? contract?.estimateId === estimate.id || contract?.estimate_id === estimate.id
+        : ((estimate?.projectId || estimate?.project_id) && (contract?.projectId === (estimate.projectId || estimate.project_id) || contract?.project_id === (estimate.projectId || estimate.project_id)))
+          || ((estimate?.leadId || estimate?.lead_id) && (contract?.leadId === (estimate.leadId || estimate.lead_id) || contract?.lead_id === (estimate.leadId || estimate.lead_id)))
+    )) || (estimate?.id && linkedLead?.portal?.contract?.estimateId === estimate.id ? linkedLead.portal.contract : null)
     const archiveState = resolveEstimateArchiveState({
       estimate,
       lead: linkedLead,
@@ -131,7 +132,7 @@ export function EstimatesPage({ leads, estimates = [], projects = [], contracts 
 
   const draftCount = activeEstimates.filter((estimate) => ['Draft', 'Saved'].includes(estimate.status)).length
   const sentCount = activeEstimates.filter((estimate) => estimate.status === 'Sent').length
-  const approvedCount = activeEstimates.filter((estimate) => estimate.status === 'Approved' || estimate.status === 'Converted to Contract').length
+  const approvedCount = activeEstimates.filter((estimate) => estimate.status === 'Approved').length
   const totalValue = sumUnambiguousEstimateValues(activeEstimates, projects)
 
   const summaryCards = [

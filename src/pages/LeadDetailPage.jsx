@@ -18,7 +18,7 @@ import { getEstimateForLead, getEstimatedValueForLead, readLinkedEstimateDraft, 
 import { currency, formatDisplayDate } from '../utils/formatters'
 import { archiveMenuItemClasses } from '../utils/buttonStyles'
 import { getLeadPipelineStage, leadPipelineStages } from '../utils/leadPipeline'
-import { dedupeEstimateRecordsById, getLeadEstimateValue, resolveLeadLifecycle, selectPrimaryLeadEstimate } from '../utils/leadLifecycle'
+import { dedupeEstimateRecordsById, getLeadEstimateValue, hasAmbiguousLeadEstimateValue, resolveLeadLifecycle, selectPrimaryLeadEstimate } from '../utils/leadLifecycle'
 import { getLanguageLocale, normalizeSupportedLanguageOrEmpty } from '../utils/language'
 import { withNavigationContext } from '../utils/navigationContext'
 
@@ -278,15 +278,17 @@ export function LeadDetailPage({
   const currentEstimate = lifecycle.relatedEstimate
   const leadEstimateRecords = lifecycle.relatedEstimates || estimateRecords
   const leadHasEstimate = leadEstimateRecords.length > 0
-  const hasDeterministicLeadEstimate = leadEstimateRecords.length <= 1
-    || leadEstimateRecords.filter((item) => ['Approved', 'Converted to Contract', 'Accepted'].includes(String(item?.status || item?.estimateStatus || '').trim())).length === 1
-  const hasAmbiguousLeadEstimateAction = leadEstimateRecords.length > 1 && !hasDeterministicLeadEstimate
+  const hasAmbiguousLeadEstimateAction = hasAmbiguousLeadEstimateValue({
+    lead: currentLead || {},
+    estimates: leadEstimateRecords,
+    archivedLeadIds: archivedIds,
+  })
   const currentStage = lifecycle.stage
   const isConvertedToJob = lifecycle.hasActiveProject
   const nextStepDisplay = hasAmbiguousLeadEstimateAction ? t('reviewEstimateReady') : t(lifecycle.nextStepKey)
   const currentStageDisplay = t(lifecycle.stageLabelKey)
-  const estimatedValueDisplay = currentLead?.value === null && leadEstimateRecords.length > 1
-    ? t('estimateValueNotFinalized')
+  const estimatedValueDisplay = hasAmbiguousLeadEstimateAction
+    ? t('multipleEstimates')
     : leadHasEstimate ? currency.format(currentLead?.value || 0) : t('notEstimated')
   const leadDisplayName = currentLead?.client || currentLead?.name || t('lead')
   const projectDisplayTitle = currentLead?.projectTitle || currentLead?.projectType || t('unknownProject')

@@ -179,7 +179,10 @@ export function getProjectPaymentRecords(project = {}, payments = [], { relatedI
 export function calculateProjectPaymentSummary(project = {}, payments = [], { relatedInvoiceIds = [] } = {}) {
   const projectPayments = getProjectPaymentRecords(project, payments, { relatedInvoiceIds })
   const projectValue = clampAtZero(
-    project?.value
+    project?.portal?.contract?.total
+      ?? project?.portal?.contract?.totalAmount
+      ?? project?.portal?.contract?.contractAmount
+      ?? project?.value
       ?? project?.estimatedValue
       ?? project?.contractValue
       ?? project?.portal?.contractAmount
