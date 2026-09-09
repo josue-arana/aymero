@@ -498,7 +498,7 @@ export const es = {
   "estimateDuplicated": "Estimado duplicado",
   "estimateSelectionSaved": "Opción de estimado seleccionada",
   "estimateSelectionCleared": "Selección de estimado eliminada",
-  "estimateValueNotFinalized": "No hay un estimado único seleccionado",
+  "multipleEstimates": "Varios estimados",
   "loadingEstimate": "Cargando estimado",
   "loadingEstimateHelp": "Cargando la información más reciente del estimado...",
   "publicEstimateNotFound": "Estimado no encontrado",

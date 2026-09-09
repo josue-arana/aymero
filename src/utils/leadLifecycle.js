@@ -94,6 +94,15 @@ export function getLeadEstimateValue({ lead = {}, estimates = [], archivedLeadId
   return null
 }
 
+export function hasAmbiguousLeadEstimateValue({ lead = {}, estimates = [], archivedLeadIds = [] } = {}) {
+  const activeEstimates = getLeadEstimateRecords({ lead, estimates, archivedLeadIds })
+  const hasFinalizedEstimate = activeEstimates.some((estimate) => (
+    ['approved', 'accepted', 'converted', 'converted to contract'].includes(normalizeStatus(estimate?.status))
+  ))
+
+  return activeEstimates.length > 1 && !hasFinalizedEstimate
+}
+
 /**
  * Selects the Lead's current Estimate deterministically.
  * A persisted lead.estimateId wins; otherwise the newest active related

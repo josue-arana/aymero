@@ -1,7 +1,7 @@
 import assert from 'node:assert/strict'
 import fs from 'node:fs'
 import { buildDuplicatedEstimateDraft, buildNewEstimateOptionDraft, sumUnambiguousEstimateValues } from '../src/utils/estimateAlternatives.js'
-import { dedupeEstimateRecordsById, getLeadEstimateRecords, getLeadEstimateValue, resolveLeadLifecycle, summarizeLeadEstimateStatus } from '../src/utils/leadLifecycle.js'
+import { dedupeEstimateRecordsById, getLeadEstimateRecords, getLeadEstimateValue, hasAmbiguousLeadEstimateValue, resolveLeadLifecycle, summarizeLeadEstimateStatus } from '../src/utils/leadLifecycle.js'
 import { getEstimatesForProject } from '../src/utils/projectIdentity.js'
 import { generateEstimateNumber } from '../src/utils/estimateNumber.js'
 
@@ -23,11 +23,14 @@ assert.equal(summarizeLeadEstimateStatus([draft, sent]), 'sent')
 assert.equal(summarizeLeadEstimateStatus([{ ...draft, status: 'Rejected' }, sent]), 'sent')
 assert.equal(summarizeLeadEstimateStatus([approved, draft]), 'approved')
 assert.equal(getLeadEstimateValue({ lead, estimates: [draft, sent] }), null)
+assert.equal(hasAmbiguousLeadEstimateValue({ lead, estimates: [draft, sent] }), true)
 assert.equal(getLeadEstimateValue({ lead, estimates: [approved, draft] }), 15000)
+assert.equal(hasAmbiguousLeadEstimateValue({ lead, estimates: [approved, draft] }), false)
 assert.equal(resolveLeadLifecycle({ lead, estimates: [draft, sent] }).estimateStatusKind, 'sent')
 assert.equal(resolveLeadLifecycle({ lead, estimates: [{ ...draft, status: 'Rejected' }, sent] }).estimateStatusKind, 'sent')
 assert.equal(resolveLeadLifecycle({ lead, estimates: [approved, draft] }).estimateStatusKind, 'approved')
 assert.equal(getLeadEstimateRecords({ lead, estimates: [draft, { ...sent, archivedAt: '2026-09-07T00:00:00Z' }] }).length, 1)
+assert.equal(hasAmbiguousLeadEstimateValue({ lead, estimates: [draft, { ...sent, archivedAt: '2026-09-07T00:00:00Z' }] }), false)
 
 const fresh = buildNewEstimateOptionDraft({ lead })
 assert.equal(fresh.projectId, null)
@@ -62,6 +65,7 @@ assert.equal(sumUnambiguousEstimateValues([{ ...draft }, { ...sent }]), 0)
 assert.equal(sumUnambiguousEstimateValues([{ ...draft }, { ...sent }, { ...approved }]), 0)
 
 const leadDetailSource = fs.readFileSync(new URL('../src/pages/LeadDetailPage.jsx', import.meta.url), 'utf8')
+const leadsPageSource = fs.readFileSync(new URL('../src/pages/LeadsPage.jsx', import.meta.url), 'utf8')
 const builderSource = fs.readFileSync(new URL('../src/pages/EstimateBuilderPage.jsx', import.meta.url), 'utf8')
 const projectIdentitySource = fs.readFileSync(new URL('../src/utils/projectIdentity.js', import.meta.url), 'utf8')
 const estimatesPageSource = fs.readFileSync(new URL('../src/pages/EstimatesPage.jsx', import.meta.url), 'utf8')
@@ -71,6 +75,10 @@ assert.match(leadDetailSource, /t\('newEstimate'\)/)
 assert.doesNotMatch(leadDetailSource, /duplicateEstimateOption/)
 assert.match(leadDetailSource, /!hasAmbiguousLeadEstimateAction && \['sent', 'follow-up'\]/)
 assert.match(leadDetailSource, /reviewEstimateReady/)
+assert.match(leadDetailSource, /multipleEstimates/)
+assert.doesNotMatch(leadDetailSource, /estimateValueNotFinalized/)
+assert.match(leadsPageSource, /hasAmbiguousLeadEstimateValue/)
+assert.match(leadsPageSource, /t\('multipleEstimates'\)/)
 assert.match(leadDetailSource, /onClick=\{\(\) => onOpenEstimate\?\.\(estimateRow\)\}/)
 assert.doesNotMatch(leadDetailSource, /viewEstimates/)
 assert.doesNotMatch(leadDetailSource, /reviewEstimatesChoose/)

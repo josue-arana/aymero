@@ -17,7 +17,7 @@ import dataProvider from '../services/dataProvider'
 import { getLeadsContractorId } from '../services/system/leadsRuntimeService'
 import { getLeadDisplayValue, getLeadNextStepLabel, getLeadPipelineStage, getLeadPipelineStageCounts, getPriorityLabel } from '../utils/leadPipeline'
 import { getEstimatedValueForLead } from '../utils/estimateLinks'
-import { getLeadEstimateValue } from '../utils/leadLifecycle'
+import { getLeadEstimateValue, hasAmbiguousLeadEstimateValue } from '../utils/leadLifecycle'
 import leadsHeroBackground from '../assets/page-heroes/leads-bg.png'
 import { buildHeroBackgroundStyle } from '../utils/heroBackground'
 
@@ -50,14 +50,17 @@ export function LeadsPage({ leads, clients = [], estimates = [], archivedIds = [
         || estimate?.lead_id === lead?.id
         || (lead?.projectId && (estimate?.projectId === lead.projectId || estimate?.project_id === lead.projectId))
     ))
-    const estimatedValue = getLeadEstimateValue({ lead, estimates: relatedEstimates }) ?? (relatedEstimates.length === 0 ? getEstimatedValueForLead(lead) : null)
+    const isAmbiguous = hasAmbiguousLeadEstimateValue({ lead, estimates: relatedEstimates, archivedLeadIds: archivedIds })
+    const estimatedValue = getLeadEstimateValue({ lead, estimates: relatedEstimates, archivedLeadIds: archivedIds }) ?? (relatedEstimates.length === 0 ? getEstimatedValueForLead(lead) : null)
 
     return {
       ...lead,
       leadEstimatedValue: estimatedValue,
-      leadEstimatedValueDisplay: estimatedValue === null ? t('notEstimated') : currency.format(estimatedValue),
+      leadEstimatedValueDisplay: isAmbiguous
+        ? t('multipleEstimates')
+        : estimatedValue === null ? t('notEstimated') : currency.format(estimatedValue),
     }
-  }), [estimates, leads, t])
+  }), [archivedIds, estimates, leads, t])
 
   const activeLeads = useMemo(() => leadsWithEstimatedValues.filter((lead) => !isLeadArchived(lead, archivedIds)), [leadsWithEstimatedValues, archivedIds])
 

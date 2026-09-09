@@ -2,7 +2,7 @@ import assert from 'node:assert/strict'
 import { readFileSync } from 'node:fs'
 import { fileURLToPath } from 'node:url'
 import { leadPipelineStages } from '../src/utils/leadPipeline.js'
-import { resolveLeadLifecycle, selectPrimaryLeadEstimate } from '../src/utils/leadLifecycle.js'
+import { getLeadEstimateValue, hasAmbiguousLeadEstimateValue, resolveLeadLifecycle, selectPrimaryLeadEstimate } from '../src/utils/leadLifecycle.js'
 
 const activeLead = {
   id: 'lead-a',
@@ -15,6 +15,14 @@ const draftEstimate = {
   status: 'Draft',
   createdAt: '2026-08-15T12:00:00.000Z',
 }
+
+const sentEstimate = { ...draftEstimate, id: 'estimate-sent', status: 'Sent', total: 12000 }
+const approvedEstimate = { ...draftEstimate, id: 'estimate-approved', status: 'Approved', total: 15000 }
+assert.equal(getLeadEstimateValue({ lead: activeLead, estimates: [draftEstimate, sentEstimate] }), null)
+assert.equal(hasAmbiguousLeadEstimateValue({ lead: activeLead, estimates: [draftEstimate, sentEstimate] }), true)
+assert.equal(getLeadEstimateValue({ lead: activeLead, estimates: [approvedEstimate, draftEstimate] }), 15000)
+assert.equal(hasAmbiguousLeadEstimateValue({ lead: activeLead, estimates: [approvedEstimate, draftEstimate] }), false)
+assert.equal(getLeadEstimateValue({ lead: activeLead, estimates: [{ ...draftEstimate, archivedAt: '2026-08-16T12:00:00.000Z' }] }), null)
 
 function actionTypes(lifecycle) {
   return lifecycle.actions.map((action) => action.actionType)
