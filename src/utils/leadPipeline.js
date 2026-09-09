@@ -236,11 +236,15 @@ export function inferLeadPipelineStage(lead = {}) {
   }
 
   if (hasContract && (contractStatus === 'draft' || contractStatus === 'sent')) {
-    return contractStatus === 'sent' ? leadPipelineStages.READY_FOR_JOB : leadPipelineStages.ESTIMATE_APPROVED
+    return contractStatus === 'sent' ? leadPipelineStages.READY_FOR_JOB : leadPipelineStages.ESTIMATE_CREATED
   }
 
-  if (estimateStatus === 'approved' || estimateStatus === 'accepted' || estimateStatus === 'converted' || estimateStatus === 'converted_to_contract') {
+  if (estimateStatus === 'approved' || estimateStatus === 'accepted') {
     return leadPipelineStages.ESTIMATE_APPROVED
+  }
+
+  if (estimateStatus === 'converted' || estimateStatus === 'converted_to_contract') {
+    return leadPipelineStages.ESTIMATE_CREATED
   }
 
   if (estimateStatus === 'sent') {

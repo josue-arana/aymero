@@ -78,7 +78,8 @@ export function getLeadEstimateRecords({ lead = {}, estimates = [], archivedLead
 
 export function summarizeLeadEstimateStatus(estimates = []) {
   const statuses = estimates.map((estimate) => normalizeStatus(estimate?.status))
-  if (statuses.some((status) => ['approved', 'accepted', 'converted', 'converted to contract'].includes(status))) return 'approved'
+  if (statuses.some((status) => ['approved', 'accepted'].includes(status))) return 'approved'
+  if (statuses.some((status) => ['converted', 'converted to contract'].includes(status))) return 'converted'
   if (statuses.includes('sent')) return 'sent'
   if (statuses.some((status) => ['draft', 'saved'].includes(status))) return 'draft'
   if (statuses.includes('rejected')) return 'rejected'
@@ -260,8 +261,19 @@ export function resolveLeadLifecycle({
     })
   }
 
+  if (activeContract && aggregateEstimateStatus !== 'approved') {
+    return buildLifecycleResult({
+      ...baseResult,
+      stage: leadPipelineStages.NEW_LEAD,
+      stageLabelKey: 'leadProgressInquiry',
+      progressStep: 'inquiry',
+      nextStepKey: 'leadNextStepReviewContract',
+      actions: [{ actionType: 'viewContract', labelKey: 'viewContract', variant: 'primary' }],
+    })
+  }
+
   if (relatedEstimates.length > 0) {
-    if (estimateStatusKind === 'approved' || activeContract) {
+    if (estimateStatusKind === 'approved') {
       return buildLifecycleResult({
         ...baseResult,
         stage: leadPipelineStages.ESTIMATE_APPROVED,
@@ -269,6 +281,17 @@ export function resolveLeadLifecycle({
         progressStep: 'approved',
         nextStepKey: activeContract ? 'leadNextStepReviewContract' : 'leadNextStepCreateContract',
         actions: [{ actionType: 'createContract', labelKey: activeContract ? 'viewContract' : 'createContract', variant: 'primary' }],
+      })
+    }
+
+    if (estimateStatusKind === 'converted') {
+      return buildLifecycleResult({
+        ...baseResult,
+        stage: leadPipelineStages.ESTIMATE_CREATED,
+        stageLabelKey: 'leadLifecycleStageEstimateDraft',
+        progressStep: 'estimate',
+        nextStepKey: 'leadNextStepReviewContract',
+        actions: [{ actionType: 'viewContract', labelKey: 'viewContract', variant: 'primary' }],
       })
     }
 
@@ -309,17 +332,6 @@ export function resolveLeadLifecycle({
             { actionType: 'editEstimate', labelKey: 'editEstimate', variant: 'secondary' },
             { actionType: 'sendEstimate', labelKey: 'sendEstimate', variant: 'primary' },
           ],
-    })
-  }
-
-  if (activeContract) {
-    return buildLifecycleResult({
-      ...baseResult,
-      stage: leadPipelineStages.ESTIMATE_APPROVED,
-      stageLabelKey: 'leadProgressApproved',
-      progressStep: 'approved',
-      nextStepKey: 'leadNextStepConvertToJob',
-      actions: [{ actionType: 'convertToJob', labelKey: 'convertToJob', variant: 'primary' }],
     })
   }
 

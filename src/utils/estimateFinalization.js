@@ -36,7 +36,12 @@ export function canSendEstimate(status) {
 }
 
 export function canCreateContractFromEstimate(status) {
-  return normalizeEstimateFinalizationStatus(status) === ESTIMATE_FINALIZATION_STATUS.APPROVED
+  return [
+    ESTIMATE_FINALIZATION_STATUS.DRAFT,
+    ESTIMATE_FINALIZATION_STATUS.SAVED,
+    ESTIMATE_FINALIZATION_STATUS.SENT,
+    ESTIMATE_FINALIZATION_STATUS.APPROVED,
+  ].includes(normalizeEstimateFinalizationStatus(status))
 }
 
 export function buildEstimateRevisionReset() {

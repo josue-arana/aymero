@@ -216,6 +216,8 @@ export function ContractPreviewPage({ lead, clientRecord = null, t, appLanguage 
   }, [contractLanguage, contractT, contractTotal, isEditing, lead.id, lead.portal?.contract?.updatedAt, lead.portal?.contract?.signedDate, lead.portal?.estimate?.updatedAt, portal.estimatedCompletion, portal.startDate])
 
   function getContractPayload(extra = {}) {
+    const hasExplicitEstimateId = Object.prototype.hasOwnProperty.call(savedContract, 'estimateId')
+      || Object.prototype.hasOwnProperty.call(savedContract, 'estimate_id')
     return {
       id: savedContract.id || undefined,
       number: savedContract.number || generateContractNumber(lead),
@@ -223,7 +225,9 @@ export function ContractPreviewPage({ lead, clientRecord = null, t, appLanguage 
       leadId: savedContract.leadId || lead.id,
       clientId: savedContract.clientId || lead.clientId || lead.client_id || null,
       projectId: savedContract.projectId || lead.projectId || lead.project_id || lead.id,
-      estimateId: savedContract.estimateId || lead.estimateId || lead.portal?.estimate?.id || null,
+      estimateId: hasExplicitEstimateId
+        ? (savedContract.estimateId ?? savedContract.estimate_id ?? null)
+        : lead.estimateId || lead.portal?.estimate?.id || null,
       projectTitle: savedContract.projectTitle || lead.projectTitle || lead.projectType || 'Contract',
       title: savedContract.title || lead.projectTitle || lead.projectType || 'Contract',
       status: savedContract.status || 'Draft',
@@ -784,6 +788,7 @@ export function ContractRoute({ companySettings, leads, clients = [], projects =
       }
 
       const relatedProject = findLeadByProjectLookup(leads, relatedProjectId)
+        || findProjectByLookup(projects, relatedProjectId)
       setLinkedProject(relatedProject && !isArchivedProjectRecord(relatedProject) ? relatedProject : null)
     }
 
@@ -792,7 +797,7 @@ export function ContractRoute({ companySettings, leads, clients = [], projects =
     return () => {
       isCancelled = true
     }
-  }, [contractorId, lead?.id, lead?.projectId, lead?.project_id, leads, projectId])
+  }, [contractorId, lead?.id, lead?.projectId, lead?.project_id, leads, projectId, projects])
 
   if (!lead) {
     return (

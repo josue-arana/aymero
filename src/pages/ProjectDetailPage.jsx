@@ -36,6 +36,7 @@ import { getInvoiceRemainingBalance } from '../utils/invoiceRecords'
 import { buildProjectWorkspaceViewModel, selectProjectWorkspaceInvoices } from '../utils/projectWorkspaceViewModel'
 import { resolveProjectHeroActionIds } from '../utils/projectHeroActions'
 import { withNavigationContext } from '../utils/navigationContext'
+import { canCreateContractFromEstimate } from '../utils/estimateFinalization'
 import projectWorkspaceHeroBackground from '../assets/page-heroes/jobs-bg.png'
 
 function logProjectDetailDevError(message, error, meta) {
@@ -443,6 +444,8 @@ function ProjectDetailPageContent({ lead, companySettings, clients = [], estimat
   const [failedPhotoIds, setFailedPhotoIds] = useState([])
   const [hiddenFallbackPhotoIds, setHiddenFallbackPhotoIds] = useState([])
   const [showPortalLinkModal, setShowPortalLinkModal] = useState(false)
+  const [showContractSourceModal, setShowContractSourceModal] = useState(false)
+  const [contractSourceSelectionId, setContractSourceSelectionId] = useState('')
   const [scheduleConfirmAction, setScheduleConfirmAction] = useState(null)
   const baseProject = useMemo(() => (
     USE_SUPABASE_PROJECTS
@@ -486,6 +489,10 @@ function ProjectDetailPageContent({ lead, companySettings, clients = [], estimat
       : projectEstimateRecords.length === 1 ? projectEstimateRecords[0] : null
   ), [projectEstimateRecords, selectedEstimateId])
   const hasAmbiguousEstimateSelection = projectEstimateRecords.length > 1 && !selectedProjectEstimate
+  const contractSourceEstimates = useMemo(() => projectEstimateRecords.filter((estimate) => canCreateContractFromEstimate(estimate?.status)), [projectEstimateRecords])
+  const selectedContractSourceEstimate = selectedProjectEstimate && contractSourceEstimates.some((estimate) => estimate.id === selectedProjectEstimate.id)
+    ? selectedProjectEstimate
+    : contractSourceEstimates.length === 1 ? contractSourceEstimates[0] : null
   const resolvedContract = useMemo(() => normalizeProjectContract(
     contractRecord
     || baseProject?.portal?.contract
@@ -520,8 +527,9 @@ function ProjectDetailPageContent({ lead, companySettings, clients = [], estimat
     portal: {
       ...(baseProject?.portal || {}),
       ...(lead?.portal || {}),
+      contract: resolvedContract || baseProject?.portal?.contract || lead?.portal?.contract || {},
     },
-  }, [...paymentRecords, ...localPaymentRecords], { relatedInvoiceIds }), [baseProject, lead, linkedProjectId, localPaymentRecords, paymentRecords, projectId, relatedInvoiceIds, relatedLeadId])
+  }, [...paymentRecords, ...localPaymentRecords], { relatedInvoiceIds }), [baseProject, lead, linkedProjectId, localPaymentRecords, paymentRecords, projectId, relatedInvoiceIds, relatedLeadId, resolvedContract])
   const portalTimeline = useMemo(() => mergeProjectTimeline(
     baseProject?.portal?.timeline || lead?.portal?.timeline || [],
     paymentSummary.payments
@@ -1195,14 +1203,12 @@ function ProjectDetailPageContent({ lead, companySettings, clients = [], estimat
           icon: <FileText className="mr-2 h-4 w-4" />,
           onClick: () => onOpenContract?.(currentLead.id),
         }
-      : hasEstimate
-        ? {
-            id: 'convert-contract',
-            label: t('convertToContract'),
-            icon: <FileText className="mr-2 h-4 w-4" />,
-            onClick: () => onConvertEstimate?.(currentLead.id),
-          }
-        : null,
+      : {
+          id: 'create-contract',
+          label: t('createContract'),
+          icon: <FileText className="mr-2 h-4 w-4" />,
+          onClick: openContractCreation,
+        },
     hasClientLink
       ? {
           id: 'view-client',
@@ -1613,6 +1619,57 @@ function ProjectDetailPageContent({ lead, companySettings, clients = [], estimat
 
   const hasRecommendedAction = Boolean(workspaceViewModel.nextAction || hasAmbiguousEstimateSelection)
 
+  const documentCountSummary = [
+    `${projectEstimateRecords.length} ${t(projectEstimateRecords.length === 1 ? 'estimate' : 'estimates').toLowerCase()}`,
+    `${resolvedContract ? 1 : 0} ${t(resolvedContract ? 'contract' : 'contracts').toLowerCase()}`,
+    `${relatedProjectInvoices.length} ${t(relatedProjectInvoices.length === 1 ? 'invoice' : 'invoices').toLowerCase()}`,
+  ].join(' · ')
+
+  const newDocumentMenuItems = [
+    !projectIsArchived
+      ? {
+          id: 'new-estimate',
+          label: t('newEstimate'),
+          icon: <FileText className="h-4 w-4" aria-hidden="true" />,
+          onClick: () => onCreateEstimateOption?.(currentLead),
+        }
+      : null,
+    !projectIsArchived && !resolvedContract && !projectIsCompleted
+      ? {
+          id: 'create-contract',
+          label: t('createContract'),
+          icon: <FileText className="h-4 w-4" aria-hidden="true" />,
+          onClick: openContractCreation,
+        }
+      : null,
+    !projectIsArchived
+      ? {
+          id: 'create-invoice',
+          label: t('createInvoice'),
+          icon: <FileText className="h-4 w-4" aria-hidden="true" />,
+          onClick: onCreateInvoice,
+        }
+      : null,
+  ]
+
+  function openContractCreation() {
+    if (contractSourceEstimates.length > 1) {
+      setContractSourceSelectionId(selectedContractSourceEstimate?.id || '')
+      setShowContractSourceModal(true)
+      return
+    }
+
+    onConvertEstimate?.(currentLead.id, selectedContractSourceEstimate || null, { directProject: !selectedContractSourceEstimate })
+  }
+
+  function confirmContractCreation() {
+    const sourceEstimate = contractSourceSelectionId
+      ? contractSourceEstimates.find((estimate) => estimate.id === contractSourceSelectionId) || null
+      : null
+    setShowContractSourceModal(false)
+    onConvertEstimate?.(currentLead.id, sourceEstimate, { directProject: !sourceEstimate })
+  }
+
   return (
     <div className="space-y-6">
       <nav aria-label={t('projectWorkspace')} className="flex min-w-0 items-center gap-2 text-sm font-semibold">
@@ -1773,20 +1830,18 @@ function ProjectDetailPageContent({ lead, companySettings, clients = [], estimat
       <section className="contents">
         {showDocumentWorkspace ? <div id="project-documents" aria-label={t('projectDocuments')} className="min-w-0 rounded-3xl border border-slate-200 bg-white p-5 shadow-sm md:col-span-2 xl:col-span-1">
           <div className="mb-4 flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
-            <div>
-              <h2 className="text-xl font-bold text-slate-950">{t('estimates')}</h2>
-              <p className="text-sm text-slate-500">{projectEstimateRecords.length > 0 ? `${t('estimates')} (${projectEstimateRecords.length})` : t('documents')}</p>
+            <div className="min-w-0">
+              <h2 className="text-xl font-bold text-slate-950">{t('projectDocuments')}</h2>
+              <p className="break-words text-sm text-slate-500">{documentCountSummary}</p>
             </div>
-            {!projectIsArchived ? (
-              <div className="flex w-full flex-col gap-2 sm:w-auto sm:flex-row">
-                <button type="button" onClick={() => onCreateEstimateOption?.(currentLead)} className="inline-flex min-h-11 w-full items-center justify-center gap-2 rounded-2xl border border-blue-200 bg-blue-50 px-4 py-2.5 text-sm font-bold text-blue-700 transition hover:bg-blue-100 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-blue-500 focus-visible:ring-offset-2 sm:w-auto">
-                  {t('newEstimate')}
-                </button>
-                <button type="button" onClick={onCreateInvoice} className="inline-flex min-h-11 w-full items-center justify-center gap-2 rounded-2xl border border-slate-200 bg-white px-4 py-2.5 text-sm font-bold text-slate-700 transition hover:bg-slate-50 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-blue-500 focus-visible:ring-offset-2 sm:w-auto">
-                  <FileText className="h-4 w-4" aria-hidden="true" /> {t('createInvoice')}
-                </button>
-              </div>
-                          ) : null}
+            <ActionMenu
+              label={t('newDocumentAction')}
+              ariaLabel={t('newDocument')}
+              containerClassName="w-full shrink-0 sm:w-auto"
+              buttonClassName="inline-flex min-h-11 w-full items-center justify-center gap-2 rounded-2xl border border-blue-200 bg-blue-50 px-4 py-2.5 text-sm font-bold text-blue-700 transition hover:bg-blue-100 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-blue-500 focus-visible:ring-offset-2 sm:w-auto"
+              menuClassName="max-w-[calc(100vw-2rem)]"
+              items={newDocumentMenuItems}
+            />
           </div>
           <div className="space-y-2.5">
             {projectEstimateRecords.length > 0 ? (
@@ -2115,6 +2170,53 @@ function ProjectDetailPageContent({ lead, companySettings, clients = [], estimat
         onSave={saveProjectEdits}
         t={t}
       />
+      <ModalShell
+        isOpen={showContractSourceModal}
+        onBackdropClick={() => setShowContractSourceModal(false)}
+        panelClassName="sm:max-w-xl"
+        ariaLabelledBy="contract-source-title"
+        ariaDescribedBy="contract-source-help"
+      >
+        <div className="space-y-5">
+          <div>
+            <h2 id="contract-source-title" className="text-xl font-bold text-slate-950">{t('contractSource')}</h2>
+            <p id="contract-source-help" className="mt-2 text-sm leading-6 text-slate-600">{t('contractSourceHelp')}</p>
+          </div>
+          <div className="space-y-3">
+            {contractSourceEstimates.map((estimate) => {
+              const estimateId = estimate.id || ''
+              const isSelected = contractSourceSelectionId === estimateId
+              return (
+                <button
+                  key={estimateId}
+                  type="button"
+                  aria-pressed={isSelected}
+                  onClick={() => setContractSourceSelectionId(estimateId)}
+                  className={`flex min-h-16 w-full min-w-0 items-start justify-between gap-4 rounded-2xl border p-4 text-left transition focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-blue-500 focus-visible:ring-offset-2 ${isSelected ? 'border-blue-500 bg-blue-50' : 'border-slate-200 bg-slate-50 hover:border-blue-300 hover:bg-blue-50/50'}`}
+                >
+                  <span className="min-w-0">
+                    <span className="block break-words font-bold text-slate-950">{estimate.optionName || estimate.option_name || estimate.title || t('estimate')}</span>
+                    <span className="mt-1 block break-words text-sm text-slate-600">{formatEstimateDisplayNumber(estimate.number || estimate.estimateNumber || '', currentLead)} · {currency.format(Number(estimate.total || 0))}</span>
+                  </span>
+                  <span className="flex shrink-0 flex-col items-end gap-1 pt-0.5"><StatusBadge status={estimate.status || 'Draft'} t={t} />{isSelected ? <span className="text-xs font-bold text-blue-700">{t('selectedEstimateOption')}</span> : null}</span>
+                </button>
+              )
+            })}
+            <button
+              type="button"
+              aria-pressed={!contractSourceSelectionId}
+              onClick={() => setContractSourceSelectionId('')}
+              className={`flex min-h-16 w-full min-w-0 items-start gap-3 rounded-2xl border p-4 text-left transition focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-blue-500 focus-visible:ring-offset-2 ${!contractSourceSelectionId ? 'border-blue-500 bg-blue-50' : 'border-slate-200 bg-slate-50 hover:border-blue-300 hover:bg-blue-50/50'}`}
+            >
+              <span className="min-w-0 break-words font-bold text-slate-950">{t('createFromProjectDetails')}{!contractSourceSelectionId ? <span className="mt-1 block text-xs font-semibold text-blue-700">{t('selectedContractSource')}</span> : null}</span>
+            </button>
+          </div>
+          <div className="flex flex-col-reverse gap-3 sm:flex-row sm:justify-end">
+            <button type="button" onClick={() => setShowContractSourceModal(false)} className="min-h-11 rounded-2xl border border-slate-200 px-4 py-2.5 text-sm font-bold text-slate-700 hover:bg-slate-50">{t('cancel')}</button>
+            <button type="button" onClick={confirmContractCreation} className="min-h-11 rounded-2xl bg-blue-600 px-4 py-2.5 text-sm font-bold text-white hover:bg-blue-700">{t('createContract')}</button>
+          </div>
+        </div>
+      </ModalShell>
       <RecordPaymentModal
         isOpen={showPaymentModal}
         remainingBalance={portal.outstandingBalance}
