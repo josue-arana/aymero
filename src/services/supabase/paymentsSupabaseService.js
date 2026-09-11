@@ -57,10 +57,14 @@ function createErrorResult(message, details = null) {
 }
 
 function normalizeError(error, fallbackMessage) {
+  const raw = error?.raw || {}
   return {
     message: error?.message || fallbackMessage,
-    details: error?.details || null,
-    code: error?.code || null,
+    details: error?.details || raw.details || null,
+    hint: error?.hint || raw.hint || null,
+    constraint: error?.constraint || raw.constraint || null,
+    code: error?.code || raw.code || null,
+    status: error?.status || null,
   }
 }
 
@@ -206,7 +210,7 @@ function toAppPayment(row) {
   }
 }
 
-function toSupabasePayload(contractorId, payment = {}, { isCreate = false } = {}) {
+export function toSupabasePayload(contractorId, payment = {}, { isCreate = false } = {}) {
   const payload = {}
   const amountInput = readField(payment, ['amount'])
   const paymentDateInput = readField(payment, ['paymentDate', 'payment_date', 'date'])

@@ -128,6 +128,14 @@ export function buildProjectWorkspaceViewModel({
 
   return {
     projectStatus,
+    agreedValue: paymentSummary.agreedValue ?? paymentSummary.projectValue ?? 0,
+    agreedValueSource: paymentSummary.agreedValueSource || 'none',
+    totalInvoiced: paymentSummary.totalInvoiced ?? 0,
+    totalInvoicePaid: paymentSummary.totalInvoicePaid ?? 0,
+    unappliedProjectPayments: paymentSummary.unappliedProjectPayments ?? 0,
+    remainingToBill: paymentSummary.remainingToBill ?? 0,
+    overbilledAmount: paymentSummary.overbilledAmount ?? 0,
+    isOverbilled: Boolean(paymentSummary.isOverbilled),
     ...eventGroups,
     collectibleInvoices,
     outstandingInvoiceBalance: calculateOutstandingInvoiceBalance(invoices),

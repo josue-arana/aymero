@@ -1197,23 +1197,6 @@ export function EstimateBuilderPage({ lead, clientRecord = null, t, appLanguage 
             </button>
             {isSettingsOpen ? (
               <div id="estimate-settings-panel" className="grid gap-4 border-t border-slate-200 px-5 py-4 sm:grid-cols-2">
-                {(isProjectLinked || Boolean(lead?.id)) ? (
-                  <div className="min-w-0 space-y-3 sm:col-span-2">
-                    <label htmlFor="estimate-option-name" className="block text-sm font-bold text-slate-800">{t('estimateOptionName')}</label>
-                    <p className="text-sm leading-6 text-slate-500">{t('estimateOptionNameHelp')}</p>
-                    {isEditing ? (
-                      <input
-                        id="estimate-option-name"
-                        value={optionName}
-                        onChange={(event) => { markDraftDirty(); setOptionName(event.target.value) }}
-                        className="w-full rounded-2xl border border-slate-200 bg-slate-50 p-4 text-sm outline-none focus:border-blue-500 focus:ring-4 focus:ring-blue-100"
-                        placeholder={t('estimateOptionName')}
-                      />
-                    ) : (
-                      <div className="rounded-2xl bg-slate-50 p-4 text-sm leading-6 text-slate-700">{optionName || t('estimate')}</div>
-                    )}
-                  </div>
-                ) : null}
                 <div className="min-w-0 space-y-3">
                   <label className="block text-sm font-bold text-slate-800">{t('estimateLanguage')}</label>
                   <p className="text-sm leading-6 text-slate-500">{t('estimateLanguageHelp')}</p>
