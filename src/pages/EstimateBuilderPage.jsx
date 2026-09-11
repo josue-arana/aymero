@@ -77,6 +77,8 @@ import {
   editScopeAssistantClientScope,
   getScopeAssistantSendReadiness,
   isEmptyScopeAssistantState,
+  markScopeAssistantTranslationFailed,
+  markScopeAssistantTranslationPending,
   normalizeScopeAssistantState,
 } from '../utils/scopeAssistantState'
 import { runPersistedScopeAssistantRequest } from '../utils/scopeAssistantWorkflow'
@@ -90,8 +92,6 @@ const scopeAssistantReadinessTranslationKeys = {
   [ESTIMATE_SEND_REASON_CONTENT_REQUIRED]: 'estimateContentRequired',
   [SCOPE_ASSISTANT_SEND_REASON.APPROVAL_REQUIRED]: 'scopeAssistantApprovalRequiredNotice',
   [SCOPE_ASSISTANT_SEND_REASON.APPROVAL_STALE]: 'scopeAssistantApprovalStaleNotice',
-  [SCOPE_ASSISTANT_SEND_REASON.TRANSLATION_REQUIRED]: 'scopeAssistantTranslationRequiredNotice',
-  [SCOPE_ASSISTANT_SEND_REASON.TRANSLATION_STALE]: 'scopeAssistantTranslationStaleNotice',
   [SCOPE_ASSISTANT_SEND_REASON.CONTRACTOR_VERSION_NOT_ACCEPTED]: 'scopeAssistantContractorAcceptanceRequiredNotice',
   [SCOPE_ASSISTANT_SEND_REASON.CLIENT_VERSION_NOT_ACCEPTED]: 'scopeAssistantClientAcceptanceRequiredNotice',
   [SCOPE_ASSISTANT_SEND_REASON.CANONICAL_SCOPE_MISMATCH]: 'scopeAssistantCanonicalMismatchNotice',
@@ -274,6 +274,9 @@ export function EstimateBuilderPage({ lead, clientRecord = null, t, appLanguage 
   const [isTranslatingScope, setIsTranslatingScope] = useState(false)
   const [isAcceptingClientScope, setIsAcceptingClientScope] = useState(false)
   const scopeAssistantActionGuardRef = useRef(false)
+  const scopeAssistantTranslationRequestRef = useRef({ id: 0, key: '' })
+  const scopeAssistantStateRef = useRef(initialDraftState.scopeAssistantState)
+  scopeAssistantStateRef.current = scopeAssistantState
   const [total, setTotal] = useState(initialDraftState.total)
   const [totalInput, setTotalInput] = useState(initialDraftState.totalInput)
   const [materialsIncluded, setMaterialsIncluded] = useState(initialDraftState.materialsIncluded)
@@ -838,7 +841,7 @@ export function EstimateBuilderPage({ lead, clientRecord = null, t, appLanguage 
       const nextCanonicalScope = sameLanguage ? approvedState.approvedContractorScope : scope
       const nextState = sameLanguage
         ? await acceptScopeAssistantCanonicalScope(approvedState, { canonicalScope: nextCanonicalScope })
-        : approvedState
+        : markScopeAssistantTranslationPending(approvedState)
       const persistedApproval = await persistEstimate({
         ...(isPostSendRevision ? buildEstimateRevisionReset() : {}),
         ...(savedEstimate.id ? { id: savedEstimate.id } : {}),
@@ -851,48 +854,101 @@ export function EstimateBuilderPage({ lead, clientRecord = null, t, appLanguage 
       }
 
       setScopeAssistantState(nextState)
+      scopeAssistantStateRef.current = nextState
       if (sameLanguage) setScope(nextCanonicalScope)
+      if (!sameLanguage) {
+        setScopeAssistantReadiness({ ready: false, manual: false, reason: SCOPE_ASSISTANT_SEND_REASON.TRANSLATION_PENDING })
+      }
       showToast(t('scopeAssistantApprovedToast'))
+      if (!sameLanguage) {
+        await requestScopeAssistantTranslation(nextState, { persistedEstimate: persistedApproval })
+      }
       return persistedApproval
     })
   }
 
-  async function handleTranslateScope() {
-    return runScopeAssistantAction(setIsTranslatingScope, async () => {
-      const currentState = scopeAssistantState
+  async function requestScopeAssistantTranslation(sourceState, { persistedEstimate = null } = {}) {
+    const sourceFingerprint = sourceState?.approvalSourceFingerprint || ''
+    const requestKey = `${sourceFingerprint}:${sourceState?.clientLanguage || ''}`
+    if (!sourceFingerprint || !sourceState?.clientLanguage) return null
+    if (scopeAssistantTranslationRequestRef.current.key === requestKey) return null
+
+    const requestId = scopeAssistantTranslationRequestRef.current.id + 1
+    scopeAssistantTranslationRequestRef.current = { id: requestId, key: requestKey }
+    setIsTranslatingScope(true)
+    setScopeAssistantReadiness({ ready: false, manual: false, reason: SCOPE_ASSISTANT_SEND_REASON.TRANSLATION_PENDING })
+    let persistedEstimateForFailure = persistedEstimate
+
+    try {
       const translation = await runPersistedScopeAssistantRequest({
-        persist: () => persistScopeAssistantTransition(currentState),
+        persist: () => persistedEstimate || persistScopeAssistantTransition(sourceState),
         request: (estimateId) => translateApprovedEstimateScope({
           estimateId,
           accessToken: scopeAssistantAccessToken,
         }),
       })
+      persistedEstimateForFailure = translation.persistedEstimate
       if (!translation.requestInvoked) {
-        setScopeAssistantFailure(null, 'scopeAssistantApprovalSaveFailed')
-        return null
+        throw new Error('The approved estimate could not be prepared for translation.')
       }
-      const persistedApproval = translation.persistedEstimate
       const response = translation.response
       if (response?.error) {
-        setScopeAssistantFailure(response.error)
-        return null
+        throw response.error
       }
 
-      const translatedState = await applyClientScope(currentState, {
+      if (scopeAssistantTranslationRequestRef.current.id !== requestId) return null
+      if (
+        scopeAssistantStateRef.current.approvalSourceFingerprint !== sourceFingerprint
+        || scopeAssistantStateRef.current.clientLanguage !== sourceState.clientLanguage
+      ) return null
+
+      const translatedState = await applyClientScope(sourceState, {
         scope: response.data.scope,
         model: response.data.metadata?.model,
         promptVersion: response.data.metadata?.promptVersion,
         generatedAt: response.data.metadata?.generatedAt,
       })
-      const persistedTranslation = await persistScopeAssistantTransition(translatedState, persistedApproval.id)
+      const persistedTranslation = await persistScopeAssistantTransition(translatedState, translation.persistedEstimate.id)
       if (!persistedTranslation) {
-        setScopeAssistantFailure(null, 'scopeAssistantTranslationSaveFailed')
-        return null
+        throw new Error('The client translation could not be saved.')
       }
 
       setScopeAssistantState(translatedState)
+      scopeAssistantStateRef.current = translatedState
       showToast(t('scopeAssistantTranslationReady'))
       return persistedTranslation
+    } catch (error) {
+      let failedState = null
+      try {
+        failedState = markScopeAssistantTranslationFailed(sourceState)
+        const failedEstimate = await persistScopeAssistantTransition(failedState, persistedEstimateForFailure?.id || savedEstimate.id)
+        if (failedEstimate) {
+          setScopeAssistantState(failedState)
+          scopeAssistantStateRef.current = failedState
+        }
+        setScopeAssistantReadiness({ ready: false, manual: false, reason: SCOPE_ASSISTANT_SEND_REASON.TRANSLATION_FAILED })
+      } catch {
+        // The approved contractor snapshot remains authoritative even if the failure marker cannot persist.
+        if (failedState) {
+          setScopeAssistantState(failedState)
+          scopeAssistantStateRef.current = failedState
+        }
+        setScopeAssistantReadiness({ ready: false, manual: false, reason: SCOPE_ASSISTANT_SEND_REASON.TRANSLATION_FAILED })
+      }
+      setScopeAssistantError('')
+      showToast(t('scopeAssistantTranslationFailedNotice'), 'error')
+      return null
+    } finally {
+      if (scopeAssistantTranslationRequestRef.current.id === requestId) {
+        scopeAssistantTranslationRequestRef.current = { id: requestId, key: '' }
+      }
+      setIsTranslatingScope(false)
+    }
+  }
+
+  async function handleTranslateScope() {
+    return runScopeAssistantAction(() => {}, async () => {
+      return requestScopeAssistantTranslation(scopeAssistantState)
     })
   }
 

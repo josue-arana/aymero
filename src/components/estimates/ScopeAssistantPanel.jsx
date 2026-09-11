@@ -111,6 +111,13 @@ export function ScopeAssistantPanel({
     ].includes(readiness?.reason)
   const hasAcceptedClientVersion = translationRequired && state?.canonicalAcceptance?.source === 'client'
   const clientVersionAccepted = hasAcceptedClientVersion && readiness?.ready
+  const translationPending = isTranslating || state?.translationStatus === SCOPE_ASSISTANT_STATUS.PENDING
+  const translationFailed = state?.translationStatus === SCOPE_ASSISTANT_STATUS.FAILED
+  const showTranslationRecoveryAction = !translationPending
+    && !translationCurrent
+    && isEditing
+    && isEnabled
+    && [SCOPE_ASSISTANT_STATUS.FAILED, SCOPE_ASSISTANT_STATUS.STALE, SCOPE_ASSISTANT_STATUS.NONE].includes(state?.translationStatus)
   const actionPending = isImproving || isRegenerating || isApproving || isTranslating || isAccepting
   const wasApprovalCurrentRef = useRef(false)
   const wasClientVersionAcceptedRef = useRef(false)
@@ -283,16 +290,28 @@ export function ScopeAssistantPanel({
           <VersionLabel
             title={<span id="scope-assistant-client-title">{t('scopeAssistantClientVersion')}</span>}
             language={state.clientLanguage}
-            status={translationCurrent
-              ? t(clientVersionAccepted
-                ? 'scopeAssistantClientVersionReady'
-                : state.clientScopeManuallyEdited
-                  ? 'scopeAssistantManuallyEdited'
-                  : 'scopeAssistantReadyToReview')
-              : t('scopeAssistantNotTranslated')}
+            status={translationPending
+              ? t('scopeAssistantTranslationPendingStatus')
+              : translationFailed
+              ? t('scopeAssistantTranslationFailed')
+              : translationCurrent
+                ? t(clientVersionAccepted
+                  ? 'scopeAssistantClientVersionReady'
+                  : state.clientScopeManuallyEdited
+                    ? 'scopeAssistantManuallyEdited'
+                    : 'scopeAssistantReadyToReview')
+                : t('scopeAssistantNotTranslated')}
             t={t}
           />
-          {translationCurrent && state.clientScope ? (
+          {translationPending ? (
+            <p role="status" className="rounded-xl bg-white px-3 py-4 text-sm leading-6 text-slate-500">
+              {t('scopeAssistantTranslationPending', { language: languageName(state.clientLanguage, t) })}
+            </p>
+          ) : translationFailed ? (
+            <div role="alert" className="rounded-xl border border-rose-200 bg-rose-50 px-3 py-3 text-sm leading-6 text-rose-800">
+              {t('scopeAssistantTranslationFailedHelp', { language: languageName(state.clientLanguage, t) })}
+            </div>
+          ) : translationCurrent && state.clientScope ? (
             isEditing ? (
               <LightweightFormattedTextarea
                 value={state.clientScope}
@@ -309,7 +328,7 @@ export function ScopeAssistantPanel({
             )
           ) : (
             <p className="rounded-xl bg-white px-3 py-4 text-sm leading-6 text-slate-500">
-              {t('scopeAssistantClientLanguageNotice', { language: languageName(state.clientLanguage, t) })}
+              {t('scopeAssistantTranslationRequiredNotice', { language: languageName(state.clientLanguage, t) })}
             </p>
           )}
           {clientVersionAccepted ? (
@@ -321,23 +340,21 @@ export function ScopeAssistantPanel({
               </div>
             </div>
           ) : null}
-          {isEditing && isEnabled ? (
+          {showTranslationRecoveryAction ? (
             <div className="flex flex-col gap-2 sm:flex-row sm:flex-wrap">
               <button type="button" disabled={actionPending} onClick={onTranslate} className={secondaryButtonClasses}>
                 <Languages aria-hidden="true" className="h-4 w-4" />
-                {isTranslating
-                  ? t('scopeAssistantTranslating')
-                  : translationCurrent
-                    ? t('scopeAssistantRetranslate')
-                    : t('scopeAssistantTranslateToLanguage', { language: languageName(state.clientLanguage, t) })}
+                {translationFailed
+                  ? t('scopeAssistantRetryTranslation')
+                  : t('scopeAssistantTranslateToLanguage', { language: languageName(state.clientLanguage, t) })}
               </button>
-              {translationCurrent && !clientVersionAccepted ? (
-                <button type="button" disabled={actionPending || !state.clientScope.trim()} onClick={onUseClientVersion} className={primaryButtonClasses}>
-                  <CheckCircle2 aria-hidden="true" className="h-4 w-4" />
-                  {isAccepting ? t('scopeAssistantUsingClientVersion') : t('scopeAssistantUseClientVersion')}
-                </button>
-              ) : null}
             </div>
+          ) : null}
+          {translationCurrent && !clientVersionAccepted && isEditing && isEnabled ? (
+            <button type="button" disabled={actionPending || !state.clientScope.trim()} onClick={onUseClientVersion} className={primaryButtonClasses}>
+              <CheckCircle2 aria-hidden="true" className="h-4 w-4" />
+              {isAccepting ? t('scopeAssistantUsingClientVersion') : t('scopeAssistantUseClientVersion')}
+            </button>
           ) : null}
         </section>
       ) : null}

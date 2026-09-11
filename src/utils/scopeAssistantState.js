@@ -8,6 +8,8 @@ export const SCOPE_ASSISTANT_STATUS = Object.freeze({
   CURRENT: 'current',
   APPROVED: 'approved',
   STALE: 'stale',
+  PENDING: 'pending',
+  FAILED: 'failed',
 })
 
 export const SCOPE_ASSISTANT_SEND_REASON = Object.freeze({
@@ -17,6 +19,8 @@ export const SCOPE_ASSISTANT_SEND_REASON = Object.freeze({
   APPROVAL_STALE: 'approval_stale',
   TRANSLATION_REQUIRED: 'translation_required',
   TRANSLATION_STALE: 'translation_stale',
+  TRANSLATION_PENDING: 'translation_pending',
+  TRANSLATION_FAILED: 'translation_failed',
   CONTRACTOR_VERSION_NOT_ACCEPTED: 'contractor_version_not_accepted',
   CLIENT_VERSION_NOT_ACCEPTED: 'client_version_not_accepted',
   CANONICAL_SCOPE_MISMATCH: 'canonical_scope_mismatch',
@@ -32,6 +36,8 @@ const validDerivedStatuses = new Set([
   SCOPE_ASSISTANT_STATUS.NONE,
   SCOPE_ASSISTANT_STATUS.CURRENT,
   SCOPE_ASSISTANT_STATUS.STALE,
+  SCOPE_ASSISTANT_STATUS.PENDING,
+  SCOPE_ASSISTANT_STATUS.FAILED,
 ])
 
 function readText(value) {
@@ -210,6 +216,11 @@ export function normalizeScopeAssistantState(value) {
     validDerivedStatuses,
     translation ? SCOPE_ASSISTANT_STATUS.STALE : SCOPE_ASSISTANT_STATUS.NONE,
   )
+  const normalizedTranslationStatus = translation && clientScope
+    ? requestedTranslationStatus
+    : [SCOPE_ASSISTANT_STATUS.PENDING, SCOPE_ASSISTANT_STATUS.FAILED].includes(requestedTranslationStatus)
+      ? requestedTranslationStatus
+      : SCOPE_ASSISTANT_STATUS.NONE
 
   return {
     version: SCOPE_ASSISTANT_STATE_VERSION,
@@ -229,9 +240,7 @@ export function normalizeScopeAssistantState(value) {
     clientScope,
     clientScopeManuallyEdited: Boolean(value.clientScopeManuallyEdited),
     clientLanguage: readLanguage(value.clientLanguage),
-    translationStatus: translation && clientScope
-      ? requestedTranslationStatus
-      : SCOPE_ASSISTANT_STATUS.NONE,
+    translationStatus: normalizedTranslationStatus,
     translation,
     canonicalAcceptance: normalizeCanonicalAcceptance(value.canonicalAcceptance),
   }
@@ -303,6 +312,7 @@ export async function approveContractorDraft(state, {
 } = {}) {
   const current = requireInitializedState(state)
   const approvedScope = requireNonEmptyText(current.contractorDraft, 'Contractor draft')
+  const sameLanguage = current.contractorLanguage === current.clientLanguage
 
   return clearCanonicalAcceptance({
     ...cloneState(current),
@@ -311,9 +321,44 @@ export async function approveContractorDraft(state, {
     approvedAt: readTimestamp(approvedAt) || new Date().toISOString(),
     approvedByMemberId: readNullableText(memberId),
     approvalSourceFingerprint: await createScopeAssistantFingerprint(approvedScope),
-    translationStatus: current.translation || current.clientScope
-      ? SCOPE_ASSISTANT_STATUS.STALE
-      : SCOPE_ASSISTANT_STATUS.NONE,
+    clientScope: sameLanguage ? '' : current.clientScope,
+    clientScopeManuallyEdited: sameLanguage ? false : current.clientScopeManuallyEdited,
+    translationStatus: sameLanguage
+      ? SCOPE_ASSISTANT_STATUS.NONE
+      : current.translation || current.clientScope
+        ? SCOPE_ASSISTANT_STATUS.STALE
+        : SCOPE_ASSISTANT_STATUS.NONE,
+    translation: sameLanguage ? null : current.translation,
+  })
+}
+
+export function markScopeAssistantTranslationPending(state) {
+  const current = requireInitializedState(state)
+  if (current.approvalStatus !== SCOPE_ASSISTANT_STATUS.APPROVED || !current.approvedContractorScope) {
+    throw new Error('A current approved contractor scope is required.')
+  }
+
+  return clearCanonicalAcceptance({
+    ...cloneState(current),
+    clientScope: '',
+    clientScopeManuallyEdited: false,
+    translationStatus: SCOPE_ASSISTANT_STATUS.PENDING,
+    translation: null,
+  })
+}
+
+export function markScopeAssistantTranslationFailed(state) {
+  const current = requireInitializedState(state)
+  if (current.approvalStatus !== SCOPE_ASSISTANT_STATUS.APPROVED || !current.approvedContractorScope) {
+    throw new Error('A current approved contractor scope is required.')
+  }
+
+  return clearCanonicalAcceptance({
+    ...cloneState(current),
+    clientScope: '',
+    clientScopeManuallyEdited: false,
+    translationStatus: SCOPE_ASSISTANT_STATUS.FAILED,
+    translation: null,
   })
 }
 
@@ -326,9 +371,14 @@ export function changeScopeAssistantClientLanguage(state, clientLanguage) {
   return clearCanonicalAcceptance({
     ...cloneState(current),
     clientLanguage: nextLanguage,
-    translationStatus: current.translation || current.clientScope
+    clientScope: nextLanguage === current.contractorLanguage ? '' : current.clientScope,
+    clientScopeManuallyEdited: nextLanguage === current.contractorLanguage ? false : current.clientScopeManuallyEdited,
+    translationStatus: nextLanguage === current.contractorLanguage
+      ? SCOPE_ASSISTANT_STATUS.NONE
+      : current.translation || current.clientScope
       ? SCOPE_ASSISTANT_STATUS.STALE
       : SCOPE_ASSISTANT_STATUS.NONE,
+    translation: nextLanguage === current.contractorLanguage ? null : current.translation,
   })
 }
 
@@ -473,9 +523,13 @@ export async function getScopeAssistantSendReadiness(state, canonicalScope = '')
     return {
       ready: false,
       manual: false,
-      reason: current.translationStatus === SCOPE_ASSISTANT_STATUS.STALE
-        ? SCOPE_ASSISTANT_SEND_REASON.TRANSLATION_STALE
-        : SCOPE_ASSISTANT_SEND_REASON.TRANSLATION_REQUIRED,
+      reason: current.translationStatus === SCOPE_ASSISTANT_STATUS.FAILED
+        ? SCOPE_ASSISTANT_SEND_REASON.TRANSLATION_FAILED
+        : current.translationStatus === SCOPE_ASSISTANT_STATUS.PENDING
+          ? SCOPE_ASSISTANT_SEND_REASON.TRANSLATION_PENDING
+          : current.translationStatus === SCOPE_ASSISTANT_STATUS.STALE
+            ? SCOPE_ASSISTANT_SEND_REASON.TRANSLATION_STALE
+            : SCOPE_ASSISTANT_SEND_REASON.TRANSLATION_REQUIRED,
     }
   }
 

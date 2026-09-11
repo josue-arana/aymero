@@ -90,8 +90,9 @@ assert.equal(reapproved.approvedContractorScope, edited.contractorDraft)
 assert.equal(reapproved.translationStatus, SCOPE_ASSISTANT_STATUS.STALE)
 
 const languageChanged = changeScopeAssistantClientLanguage(translated, 'en')
-assert.equal(languageChanged.clientScope, translated.clientScope)
-assert.equal(languageChanged.translationStatus, SCOPE_ASSISTANT_STATUS.STALE)
+assert.equal(languageChanged.clientScope, '')
+assert.equal(languageChanged.translationStatus, SCOPE_ASSISTANT_STATUS.NONE)
+assert.equal(languageChanged.translation, null)
 assert.equal(scopeAssistantNeedsTranslation(languageChanged), false)
 
 const rawEdited = editRawContractorInput(generated, 'paint walls 3 coats')
