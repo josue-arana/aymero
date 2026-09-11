@@ -3,6 +3,7 @@ import { readFileSync } from 'node:fs'
 import { fileURLToPath } from 'node:url'
 import {
   SCOPE_ASSISTANT_SEND_REASON,
+  SCOPE_ASSISTANT_STATUS,
   acceptScopeAssistantCanonicalScope,
   applyClientScope,
   applyProfessionalizedCandidate,
@@ -12,6 +13,8 @@ import {
   editContractorDraft,
   editScopeAssistantClientScope,
   getScopeAssistantSendReadiness,
+  markScopeAssistantTranslationFailed,
+  markScopeAssistantTranslationPending,
 } from '../src/utils/scopeAssistantState.js'
 import { runPersistedScopeAssistantRequest } from '../src/utils/scopeAssistantWorkflow.js'
 import { en } from '../src/translations/en.js'
@@ -68,6 +71,14 @@ const approved = await approveContractorDraft(candidate, { memberId, approvedAt 
 assert.equal(approved.approvedContractorScope, candidate.contractorDraft)
 assert.equal(approved.approvedByMemberId, memberId)
 assert.equal((await getScopeAssistantSendReadiness(approved, originalCanonicalScope)).reason, SCOPE_ASSISTANT_SEND_REASON.TRANSLATION_REQUIRED)
+const pendingTranslation = markScopeAssistantTranslationPending(approved)
+assert.equal(pendingTranslation.approvedContractorScope, approved.approvedContractorScope)
+assert.equal(pendingTranslation.translationStatus, SCOPE_ASSISTANT_STATUS.PENDING)
+assert.equal((await getScopeAssistantSendReadiness(pendingTranslation, originalCanonicalScope)).reason, SCOPE_ASSISTANT_SEND_REASON.TRANSLATION_PENDING)
+const failedTranslation = markScopeAssistantTranslationFailed(pendingTranslation)
+assert.equal(failedTranslation.approvedContractorScope, approved.approvedContractorScope)
+assert.equal(failedTranslation.translationStatus, SCOPE_ASSISTANT_STATUS.FAILED)
+assert.equal((await getScopeAssistantSendReadiness(failedTranslation, originalCanonicalScope)).reason, SCOPE_ASSISTANT_SEND_REASON.TRANSLATION_FAILED)
 
 const editedAfterApproval = editContractorDraft(approved, `${approved.contractorDraft} Protect adjacent finishes.`)
 assert.equal(editedAfterApproval.approvedContractorScope, approved.approvedContractorScope)
@@ -164,7 +175,9 @@ assert.equal(
 
 const changedClientLanguage = changeScopeAssistantClientLanguage(acceptedClient, 'en')
 assert.equal(changedClientLanguage.canonicalAcceptance, null)
-assert.equal(changedClientLanguage.translationStatus, 'stale')
+assert.equal(changedClientLanguage.translationStatus, SCOPE_ASSISTANT_STATUS.NONE)
+assert.equal(changedClientLanguage.translation, null)
+assert.equal(changedClientLanguage.clientScope, '')
 
 const editedTranslatedDraft = editContractorDraft(translated, `${translated.contractorDraft} Protect adjacent finishes.`)
 const reapprovedChangedDraft = await approveContractorDraft(editedTranslatedDraft, { memberId, approvedAt })
@@ -202,6 +215,8 @@ const sameLanguageReaccepted = await acceptScopeAssistantCanonicalScope(sameLang
 })
 assert.equal(sameLanguageReapproved.approvedContractorScope, 'Repair the exterior door.')
 assert.equal((await getScopeAssistantSendReadiness(sameLanguageReaccepted, sameLanguageReapproved.approvedContractorScope)).ready, true)
+assert.equal(sameLanguageReapproved.translationStatus, SCOPE_ASSISTANT_STATUS.NONE)
+assert.equal(sameLanguageReapproved.translation, null)
 
 let requestCount = 0
 const persistenceFailure = await runPersistedScopeAssistantRequest({
@@ -242,6 +257,10 @@ const publicEndpoint = read('../supabase/functions/super-endpoint/index.ts')
 const app = read('../src/App.jsx')
 
 assert.match(page, /runPersistedScopeAssistantRequest/)
+assert.match(page, /markScopeAssistantTranslationPending/)
+assert.match(page, /requestScopeAssistantTranslation\(nextState, \{ persistedEstimate: persistedApproval \}\)/)
+assert.match(page, /scopeAssistantTranslationRequestRef/)
+assert.match(page, /markScopeAssistantTranslationFailed/)
 assert.match(page, /persistScopeAssistantTransition\(initializedState\)/)
 assert.match(page, /professionalizeEstimateScope\(\{[\s\S]*estimateId,[\s\S]*accessToken: scopeAssistantAccessToken/)
 assert.match(page, /translateApprovedEstimateScope\(\{[\s\S]*estimateId,[\s\S]*accessToken: scopeAssistantAccessToken/)
@@ -260,6 +279,8 @@ assert.match(page, /scopeAssistantState,/)
 assert.match(page, /scopeAssistantMemberId/)
 assert.match(page, /scopeAssistantWorkingLanguage=\{resolveScopeAssistantContractorLanguage\(\{ appLanguage \}\)\}/)
 assert.match(page, /changeScopeAssistantClientLanguage/)
+assert.doesNotMatch(page, /SCOPE_ASSISTANT_SEND_REASON\.TRANSLATION_REQUIRED\]: 'scopeAssistantTranslationRequiredNotice'/)
+assert.doesNotMatch(page, /SCOPE_ASSISTANT_SEND_REASON\.TRANSLATION_STALE\]: 'scopeAssistantTranslationStaleNotice'/)
 assert.match(service, /body: JSON\.stringify\(\{ action, estimateId: normalizedEstimateId \}\)/)
 assert.doesNotMatch(service, /contractorId|rawContractorInput|approvedContractorScope/)
 assert.match(backendConfig, /VITE_AI_SCOPE_ASSISTANT_ENABLED === 'true'/)
@@ -281,7 +302,12 @@ assert.match(panel, /function ReviewNotices\([\s\S]*if \(approved\)[\s\S]*scopeA
 assert.match(panel, /approvalCurrent && translationRequired/)
 assert.match(panel, /approvalCurrent && !translationRequired/)
 assert.match(panel, /scopeAssistantTranslateToLanguage/)
-assert.match(panel, /scopeAssistantClientLanguageNotice/)
+assert.match(panel, /showTranslationRecoveryAction/)
+assert.match(panel, /translationPending/)
+assert.match(panel, /translationFailed/)
+assert.doesNotMatch(panel, /translationCurrent\s*\?\s*t\('scopeAssistantRetranslate'/)
+assert.match(panel, /scopeAssistantTranslationRequiredNotice/)
+assert.doesNotMatch(panel, /scopeAssistantClientLanguageNotice/)
 assert.doesNotMatch(panel, /xl:grid-cols-2/)
 assert.doesNotMatch(panel, /<VersionLabel title=\{t\('scopeAssistantContractorVersion'\)/)
 assert.match(panel, /min-h-11/)
@@ -317,12 +343,18 @@ const translationKeys = [
   'scopeAssistantTranslateToLanguage',
   'scopeAssistantRetranslate',
   'scopeAssistantTranslating',
+  'scopeAssistantTranslationPendingStatus',
+  'scopeAssistantTranslationPending',
   'scopeAssistantContractorVersion',
   'scopeAssistantClientVersion',
   'scopeAssistantReadyToReview',
   'scopeAssistantClientVersionReady',
   'scopeAssistantClientVersionReadyHelp',
   'scopeAssistantNotTranslated',
+  'scopeAssistantTranslationFailed',
+  'scopeAssistantTranslationFailedHelp',
+  'scopeAssistantRetryTranslation',
+  'scopeAssistantTranslationRequiredNotice',
   'scopeAssistantClientLanguageNotice',
   'scopeAssistantUseClientVersion',
   'scopeAssistantReviewItemOne',
