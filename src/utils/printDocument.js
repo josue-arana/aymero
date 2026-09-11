@@ -104,7 +104,7 @@ function createPaginatedPrintContent(element, targetDocument, pagination) {
   const container = targetDocument.createElement('div')
   container.dataset.documentPaginatedPrint = 'true'
   container.style.display = 'block'
-  container.style.width = `${pageLayout.outputWidth}px`
+  container.style.width = `${pageLayout.outputWidthInches}in`
   container.style.height = 'auto'
   container.style.margin = '0'
   container.style.padding = '0'
@@ -115,8 +115,8 @@ function createPaginatedPrintContent(element, targetDocument, pagination) {
     pageNode.dataset.documentPrintPage = 'true'
     pageNode.style.position = 'relative'
     pageNode.style.display = 'block'
-    pageNode.style.width = `${pageLayout.outputWidth}px`
-    pageNode.style.height = `${pageLayout.outputHeight}px`
+    pageNode.style.width = `${pageLayout.outputWidthInches}in`
+    pageNode.style.height = `${pageLayout.outputHeightInches}in`
     pageNode.style.overflow = 'hidden'
     pageNode.style.boxSizing = 'border-box'
     pageNode.style.breakInside = 'avoid'

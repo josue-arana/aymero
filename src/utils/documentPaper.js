@@ -47,6 +47,8 @@ export function getPaginatedPrintPageLayout(pagination = {}) {
     sourcePageHeight: Number(pagination.sourcePageHeight || 0),
     outputWidth: paperGeometry.printableWidthCssPixels,
     outputHeight: paperGeometry.printableHeightCssPixels,
+    outputWidthInches: paperGeometry.printableWidthPoints / POINTS_PER_INCH,
+    outputHeightInches: paperGeometry.printableHeightPoints / POINTS_PER_INCH,
     scale,
   }
 }
