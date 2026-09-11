@@ -1,5 +1,6 @@
 import { normalizeClientPreferredLanguageFields, readRecordLanguage } from './language.js'
 import { normalizeOptionalEmail, normalizeOptionalEmailForPersistence } from './email.js'
+import { calculateProjectFinancialSummary } from './projectFinancials.js'
 
 export function getClientSlug(name = '') {
   return String(name)
@@ -183,11 +184,31 @@ export function buildClientProfiles(leads = [], customClients = [], projects = [
     if (!clientKey) return
 
     const existing = clientMap.get(clientKey)
-    const contractAmount = Number(project?.portal?.contractAmount ?? project?.contractValue ?? project?.estimatedValue ?? project?.value ?? 0) || 0
-    const paid = Number(project?.portal?.amountPaid ?? project?.amountPaid ?? project?.paid ?? 0) || 0
-    const balance = Number(project?.portal?.outstandingBalance ?? project?.remainingBalance ?? project?.remaining ?? Math.max(contractAmount - paid, 0)) || 0
     const projectId = String(project?.id || project?.projectId || project?.project_id || '').trim()
     const resolvedClientName = projectClientName || existing?.displayName || existing?.name || 'Unknown Client'
+    const financialSummary = calculateProjectFinancialSummary({
+      project: { ...project, id: projectId || project?.id },
+      estimates: [
+        ...(Array.isArray(project?.estimates) ? project.estimates : []),
+        ...(project?.portal?.estimate ? [project.portal.estimate] : []),
+      ],
+      contracts: [
+        ...(Array.isArray(project?.contracts) ? project.contracts : []),
+        ...(project?.portal?.contract ? [project.portal.contract] : []),
+      ],
+      invoices: [
+        ...(Array.isArray(project?.invoices) ? project.invoices : []),
+        ...(Array.isArray(project?.portal?.invoices) ? project.portal.invoices : []),
+      ],
+      payments: [
+        ...(Array.isArray(project?.payments) ? project.payments : []),
+        ...(Array.isArray(project?.portal?.payments) ? project.portal.payments : []),
+        ...(Array.isArray(project?.portal?.paymentHistory) ? project.portal.paymentHistory : []),
+      ],
+    })
+    const contractAmount = financialSummary.agreedValue
+    const paid = financialSummary.totalProjectPaid
+    const balance = financialSummary.projectBalance ?? 0
     const projectRecord = {
       ...project,
       id: projectId || project?.id,
@@ -202,6 +223,7 @@ export function buildClientProfiles(leads = [], customClients = [], projects = [
       amountPaid: paid,
       outstandingBalance: balance,
       latestStatus: project?.projectStatus || project?.status,
+      financialSummary,
     }
 
     if (existing) {

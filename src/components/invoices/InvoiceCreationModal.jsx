@@ -48,6 +48,9 @@ export function InvoiceCreationModal({
   leads = [],
   clients = [],
   contracts = [],
+  estimates = [],
+  invoices = [],
+  payments = [],
   initialProjectId = '',
   lockProject = false,
   invoiceDueDays = 7,
@@ -70,7 +73,7 @@ export function InvoiceCreationModal({
   const paymentTermsEditedRef = useRef(false)
   const fieldRefs = useRef({})
   const availableClients = useMemo(() => (Array.isArray(clients) ? clients.filter(Boolean) : []), [clients])
-  const projectOptions = useMemo(() => buildInvoiceProjectOptions({ projects, leads, clients: availableClients, contracts }), [availableClients, contracts, leads, projects])
+  const projectOptions = useMemo(() => buildInvoiceProjectOptions({ projects, leads, clients: availableClients, contracts, estimates, invoices, payments }), [availableClients, contracts, estimates, invoices, leads, payments, projects])
   const selectedProject = projectOptions.find((project) => project.id === selectedProjectId) || null
   const selectedClient = availableClients.find((client) => String(client?.id || '').trim() === selectedClientId) || null
   const visibleProjectOptions = selectedClientId
@@ -131,6 +134,7 @@ export function InvoiceCreationModal({
     setValidationErrors((current) => {
       const next = { ...current }
       delete next[`lineItems.${index}.${field}`]
+      delete next.billingCapacity
       return next
     })
     setLineItems((current) => current.map((item, itemIndex) => (
@@ -138,11 +142,14 @@ export function InvoiceCreationModal({
     )))
   }
 
-  function useRemainingBalance() {
+  // The legacy translation key `useProjectRemainingBalance` remains defined for
+  // older callers, but this workflow intentionally uses billing capacity.
+  function useRemainingToBill() {
     if (!selectedProject) return
+    if (selectedProject.availableToBill === null || selectedProject.availableToBill <= 0) return
     setLineItems([{
       description: title.trim() || selectedProject.title || t('invoice'),
-      amount: selectedProject.remainingBalance ? String(selectedProject.remainingBalance) : '',
+      amount: String(selectedProject.availableToBill),
     }])
   }
 
@@ -157,6 +164,7 @@ export function InvoiceCreationModal({
       issueDate,
       dueDate,
       lineItems,
+      billingCapacity: selectedProject?.billingCapacity,
     })
     setValidationErrors(nextValidationErrors)
     const firstInvalidKey = Object.keys(nextValidationErrors)[0]
@@ -237,12 +245,24 @@ export function InvoiceCreationModal({
               <h3 className="font-bold text-slate-950">{t('lineItems')}</h3>
               <p className="mt-1 text-sm text-slate-500">{t('invoiceLineItemsHelp')}</p>
             </div>
-            {selectedProject?.remainingBalance > 0 ? (
-              <button type="button" onClick={useRemainingBalance} className="min-h-11 rounded-2xl border border-blue-200 bg-blue-50 px-4 py-2 text-sm font-bold text-blue-700 transition hover:bg-blue-100">
-                {t('useProjectRemainingBalance')} · {currency.format(selectedProject.remainingBalance)}
+            {selectedProject?.availableToBill > 0 ? (
+              <button type="button" onClick={useRemainingToBill} className="min-h-11 rounded-2xl border border-blue-200 bg-blue-50 px-4 py-2 text-sm font-bold text-blue-700 transition hover:bg-blue-100">
+                {t('useRemainingToBill')} · {currency.format(selectedProject.availableToBill)}
               </button>
             ) : null}
           </div>
+          {selectedProject?.billingCapacity?.hasAgreedValue ? (
+            <dl className="mt-4 grid grid-cols-1 gap-3 rounded-2xl bg-blue-50 p-4 text-sm sm:grid-cols-3">
+              <div><dt className="font-semibold text-slate-500">{t('agreedProjectValue')}</dt><dd className="mt-1 font-bold text-slate-950">{currency.format(selectedProject.billingCapacity.agreedValue)}</dd></div>
+              <div><dt className="font-semibold text-slate-500">{t('committedBilling')}</dt><dd className="mt-1 font-bold text-slate-950">{currency.format(selectedProject.billingCapacity.committedBillingExcludingCurrent)}</dd></div>
+              <div><dt className="font-semibold text-slate-500">{t('availableToBill')}</dt><dd className="mt-1 font-bold text-blue-700">{currency.format(selectedProject.availableToBill)}</dd></div>
+            </dl>
+          ) : selectedProject ? (
+            <p className="mt-4 rounded-2xl bg-slate-50 p-4 text-sm font-semibold text-slate-600">{t('billingCapacityUnavailable')}</p>
+          ) : null}
+          {selectedProject?.billingCapacity?.hasAgreedValue && selectedProject.availableToBill <= 0 ? (
+            <p role="alert" className="mt-3 rounded-2xl bg-amber-50 p-4 text-sm font-semibold text-amber-800">{t('projectFullyBilled')}</p>
+          ) : null}
           <div className="mt-4 space-y-3">
             {lineItems.map((item, index) => (
               <div key={index} className="grid min-w-0 gap-3 rounded-2xl bg-slate-50 p-3 sm:grid-cols-[minmax(0,1fr)_10rem_auto] sm:items-end">
@@ -258,7 +278,10 @@ export function InvoiceCreationModal({
             <button type="button" onClick={() => setLineItems((current) => [...current, { description: '', amount: '' }])} className="inline-flex min-h-11 items-center justify-center gap-2 rounded-2xl border border-slate-200 px-4 py-2 text-sm font-bold text-slate-700 hover:bg-slate-50">
               <Plus className="h-4 w-4" aria-hidden="true" /> {t('addItem')}
             </button>
-            <p className="text-right text-lg font-bold text-slate-950">{t('total')}: {currency.format(total)}</p>
+            <div className="text-right">
+              {validationErrors.billingCapacity ? <p role="alert" className="mb-1 text-xs font-semibold text-red-700">{t('invoiceExceedsAvailableToBill', { amount: currency.format(validationErrors.billingCapacity.overage) })}</p> : null}
+              <p className="text-lg font-bold text-slate-950">{t('total')}: {currency.format(total)}</p>
+            </div>
           </div>
         </section>
 

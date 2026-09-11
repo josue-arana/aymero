@@ -21,6 +21,7 @@ import { buildHeroBackgroundStyle } from '../utils/heroBackground'
 import { findRelatedClient } from '../utils/clients'
 import { getLanguageLocale, resolveClientFacingLanguage } from '../utils/language'
 import { isRecordArchived } from '../utils/archiveLifecycle'
+import { calculateInvoiceBillingCapacity, validateInvoiceAgainstBillingCapacity } from '../utils/invoiceBilling'
 
 const invoiceFilters = ['All', 'Archived', 'Draft', 'Sent', 'Paid', 'Overdue', 'Canceled']
 
@@ -39,7 +40,7 @@ function formatLocalizedInvoiceDate(value, language = 'en') {
   })
 }
 
-export function InvoicesPage({ leads, clients = [], invoices: invoiceRecords = [], archivedIds = [], deletedIds = [], onCreateInvoice, onViewInvoice, onRecordPayment, onArchiveInvoice, onRestoreInvoice, onDeleteInvoice, onInvoiceSent, t, appLanguage = 'en' }) {
+export function InvoicesPage({ leads, clients = [], projects = [], estimates = [], contracts = [], payments = [], invoices: invoiceRecords = [], archivedIds = [], deletedIds = [], onCreateInvoice, onViewInvoice, onRecordPayment, onArchiveInvoice, onRestoreInvoice, onDeleteInvoice, onInvoiceSent, t, appLanguage = 'en' }) {
   const [selectedFilter, setSelectedFilter] = useState('All')
   const [confirmAction, setConfirmAction] = useState(null)
   const [sendInvoice, setSendInvoice] = useState(null)
@@ -343,6 +344,25 @@ export function InvoicesPage({ leads, clients = [], invoices: invoiceRecords = [
         onSent={async () => {
           return runSingleFlightInvoiceAction(sendInvoice.id, async () => {
             try {
+              const billingProject = projects.find((project) => String(project?.id || project?.projectId || project?.project_id || '') === String(sendInvoice?.projectId || sendInvoice?.project_id || '')) || {
+                id: sendInvoice?.projectId || sendInvoice?.project_id || '',
+                clientId: sendInvoice?.clientId || sendInvoice?.client_id || null,
+                contractId: sendInvoice?.contractId || sendInvoice?.contract_id || null,
+              }
+              const billingCapacity = calculateInvoiceBillingCapacity({
+                project: billingProject,
+                estimates,
+                contracts,
+                invoices: invoiceRecords,
+                payments,
+                currentInvoiceId: sendInvoice.id,
+                currentInvoiceAmount: sendInvoice.amount,
+              })
+              const billingError = validateInvoiceAgainstBillingCapacity({ capacity: billingCapacity, invoiceAmount: sendInvoice.amount })
+              if (billingError) {
+                showToast(t('invoiceExceedsAvailableToBill', { amount: currency.format(billingError.overage) }), 'error')
+                return false
+              }
               const response = await dataProvider.invoices.update(sendInvoice.id, { status: 'Sent' }, { contractorId })
               if (response?.error) {
                 throw new Error(response.error.message || t('invoiceSaveFailed'))

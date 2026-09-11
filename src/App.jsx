@@ -64,6 +64,7 @@ import { buildEstimateLookupIds, hasEstimateData, readLinkedEstimateDraft, resol
 import { generateContractNumber } from './utils/contractNumber'
 import { generateEstimateNumber } from './utils/estimateNumber'
 import { dedupeInvoiceRecords, hydrateInvoiceRecord, roundMoney } from './utils/invoiceRecords'
+import { calculateInvoiceBillingCapacity, validateInvoiceAgainstBillingCapacity } from './utils/invoiceBilling'
 import { buildProjectCompletionUpdate } from './utils/projectCompletion'
 import { normalizeClientPreferredLanguageFields, normalizeDocumentLanguageOverride, normalizeLeadClientLanguageFields, normalizeSupportedLanguage, normalizeSupportedLanguageOrEmpty, readStoredSupportedLanguage, resolveInitialSupportedLanguage, resolvePreferredClientLanguage } from './utils/language'
 import { buildLeadPipelineTransition, getLeadPipelineStage, leadPipelineStageOrder, leadPipelineStages, normalizeLeadPipelineStage } from './utils/leadPipeline'
@@ -1462,7 +1463,6 @@ function ContractorFlowApp() {
     const project = persistedProjects.find((record) => record.id === projectId) || { id: projectId }
     return !isRecordArchived(project, archives.projectIds)
   }), [activeLeads, archives.deletedProjectIds, archives.projectIds, persistedProjects])
-  const clients = useMemo(() => buildClientProfiles(visibleLeads, customClients, persistedProjects).filter((client) => !archives.deletedClientIds.includes(client.id)), [visibleLeads, customClients, persistedProjects, archives.deletedClientIds])
   const visibleScheduleEvents = useMemo(() => sortScheduleEventRecords(scheduleEvents.filter((event) => !archives.deletedScheduleEventIds.includes(event.id))), [scheduleEvents, archives.deletedScheduleEventIds])
   const activeScheduleEvents = useMemo(() => visibleScheduleEvents.filter((event) => !archives.scheduleEventIds.includes(event.id) && !event.archivedAt), [visibleScheduleEvents, archives.scheduleEventIds])
   const invoices = useMemo(() => dedupeInvoiceRecords(
@@ -1476,6 +1476,21 @@ function ContractorFlowApp() {
     !archives.deletedInvoiceIds.includes(invoice.id)
       && !isRecordArchived(invoice, archives.invoiceIds)
   )), [archives.deletedInvoiceIds, archives.invoiceIds, invoices])
+  const financialProjects = useMemo(() => persistedProjects.map((project) => {
+      const projectId = String(project?.id || project?.projectId || project?.project_id || '')
+      const projectInvoices = activeInvoices.filter((invoice) => String(invoice?.projectId || invoice?.project_id || '') === projectId)
+      const projectInvoiceIds = new Set(projectInvoices.map((invoice) => String(invoice?.id || invoice?.invoiceId || invoice?.invoice_id || '')).filter(Boolean))
+      return {
+        ...project,
+        invoices: projectInvoices,
+        payments: persistedPayments.filter((payment) => (
+          String(payment?.projectId || payment?.project_id || '') === projectId
+            || projectInvoiceIds.has(String(payment?.invoiceId || payment?.invoice_id || ''))
+        )),
+      }
+    }), [activeInvoices, persistedPayments, persistedProjects])
+  const clients = useMemo(() => buildClientProfiles(visibleLeads, customClients, financialProjects)
+    .filter((client) => !archives.deletedClientIds.includes(client.id)), [archives.deletedClientIds, customClients, financialProjects, visibleLeads])
   const mobileTodaySummary = useMemo(() => {
     const todayKey = buildDateKey(new Date())
     const findLeadByAnyId = (...ids) => {
@@ -3203,12 +3218,31 @@ function buildWorkspaceJobRecord(job, clientRecord = null) {
     return created
   }
 
-  async function createLeadEstimateOption(leadRecord) {
+  async function createLeadEstimateOption(leadRecord, options = {}) {
     const lead = findLeadByProjectLookup(visibleLeads, leadRecord?.id, leadRecord?.leadId, leadRecord?.lead_id)
     if (!lead?.id) return null
+
+    const currentEstimate = options.currentEstimate
+    const currentEstimateName = String(options.currentEstimateName || '').trim() || null
+    const previousCurrentEstimateName = String(currentEstimate?.optionName || currentEstimate?.option_name || '').trim() || null
+
+    // The two-estimate handoff may rename the one existing estimate first. This
+    // keeps estimate identity unchanged and only writes when the contractor
+    // actually changed the optional human label.
+    if (currentEstimate?.id && currentEstimateName !== previousCurrentEstimateName) {
+      const renamed = await saveEstimate(lead.id, {
+        ...currentEstimate,
+        id: currentEstimate.id,
+        optionName: currentEstimateName,
+      }, { leadOnly: true, silent: true })
+      if (!renamed) return null
+    }
+
     const draft = buildNewEstimateOptionDraft({ lead, project: {} })
     draft.projectId = null
     draft.project_id = null
+    draft.optionName = String(options.newEstimateName || '').trim() || null
+    draft.option_name = draft.optionName
     const created = await saveEstimate(lead.id, draft, { createNew: true, leadOnly: true, silent: true })
     if (!created) return null
     showToast(t('estimateCreated'))
@@ -4441,6 +4475,24 @@ function buildWorkspaceJobRecord(job, clientRecord = null) {
 
   async function createInvoiceRecord(invoiceDraft) {
     try {
+      const billingProject = persistedProjects.find((project) => String(project?.id || project?.projectId || project?.project_id || '') === String(invoiceDraft?.projectId || ''))
+        || visibleLeads.find((lead) => String(lead?.projectId || lead?.project_id || lead?.id || '') === String(invoiceDraft?.projectId || ''))
+        || {
+        id: invoiceDraft?.projectId || '',
+        clientId: invoiceDraft?.clientId || null,
+        contractId: invoiceDraft?.contractId || null,
+      }
+      const billingCapacity = calculateInvoiceBillingCapacity({
+        project: billingProject,
+        estimates: persistedEstimates,
+        contracts: persistedContracts,
+        invoices: activeInvoices,
+        payments: persistedPayments,
+      })
+      const billingError = validateInvoiceAgainstBillingCapacity({ capacity: billingCapacity, invoiceAmount: invoiceDraft?.amount })
+      if (billingError) {
+        throw new Error(t('invoiceExceedsAvailableToBill', { amount: currency.format(billingError.overage) }))
+      }
       const response = await dataProvider.invoices.create(invoiceDraft, {
         contractorId: invoicesContractorId,
         authenticatedUserId: user?.id || session?.user?.id || '',
@@ -4927,9 +4979,9 @@ function buildWorkspaceJobRecord(job, clientRecord = null) {
       <Route path={appRoutes.jobs} element={<JobsPage leads={visibleLeads} projectRecords={persistedProjects} clients={clients} archivedIds={archives.projectIds} sampleWorkspace={companySettings?.sampleWorkspace} onViewJob={(projectId, leadId) => openCalendarProject(projectId, leadId, { returnTo: appRoutes.jobs, returnLabelKey: 'backToJobs' })} onViewLead={openLead} onCreateJob={() => openJobModal()} onArchiveJob={archiveRecord.job} onRestoreJob={restoreRecord.job} onDeleteJob={deleteRecord.job} t={t} />} />
       <Route path={appRoutes.calendar} element={<CalendarPage leads={activeLeads} scheduleEvents={activeScheduleEvents} onCreateEvent={(event) => createScheduleEvent(event, 'event')} onExportEvent={exportScheduleEvent} onViewProject={openCalendarProject} onViewLead={openLead} onMarkComplete={markScheduleEventComplete} t={t} language={language} />} />
       <Route path={appRoutes.clients} element={<ClientsPage leads={visibleLeads} customClients={customClients} archivedClientIds={archives.clientIds} onOpenClient={openClient} onCreateClient={createClient} onArchiveClient={archiveRecord.client} onRestoreClient={restoreRecord.client} onDeleteClient={deleteRecord.client} language={language} t={t} />} />
-      <Route path={appRoutes.clientProfile} element={<ClientProfilePage leads={visibleLeads} customClients={customClients} projects={persistedProjects} archivedClientIds={archives.clientIds} onBack={() => navigate('/clients')} onOpenProject={openProject} onOpenLead={openLead} onOpenEstimate={openEstimateForLead} onOpenContract={openContractForLead} onCreateJob={(client) => openJobModal({ clientId: client?.id, client })} onUpdateClient={updateClient} onArchiveClient={archiveRecord.client} onRestoreClient={restoreRecord.client} onDeleteClient={deleteRecord.client} language={language} t={t} />} />
-      <Route path={appRoutes.invoices} element={<InvoicesPage leads={visibleLeads} clients={clients} invoices={invoices} archivedIds={archives.invoiceIds} deletedIds={archives.deletedInvoiceIds} onCreateInvoice={() => openInvoiceModal()} onViewInvoice={(invoiceId) => navigate(`/invoices/${invoiceId}`, { state: withNavigationContext({}, appRoutes.invoices, 'backToInvoices') })} onRecordPayment={(invoiceId) => navigate(`/invoices/${invoiceId}`, { state: withNavigationContext({}, appRoutes.invoices, 'backToInvoices') })} onArchiveInvoice={archiveRecord.invoice} onRestoreInvoice={restoreRecord.invoice} onDeleteInvoice={deleteRecord.invoice} onInvoiceSent={markInvoiceSent} t={t} appLanguage={language} />} />
-      <Route path={appRoutes.invoiceDetail} element={<InvoiceDetailRoute companySettings={companySettings} leads={visibleLeads} clients={clients} invoices={invoices} invoicesLoaded={areInvoicesLoaded} archivedIds={archives.invoiceIds} deletedIds={archives.deletedInvoiceIds} onUpdateInvoice={updateInvoice} onRecordInvoicePayment={recordInvoicePayment} onMarkInvoicePaid={markInvoicePaid} onInvoiceSent={markInvoiceSent} onArchiveInvoice={archiveRecord.invoice} onRestoreInvoice={restoreRecord.invoice} onDeleteInvoice={deleteRecord.invoice} t={t} appLanguage={language} />} />
+      <Route path={appRoutes.clientProfile} element={<ClientProfilePage leads={visibleLeads} customClients={customClients} projects={financialProjects} archivedClientIds={archives.clientIds} onBack={() => navigate('/clients')} onOpenProject={openProject} onOpenLead={openLead} onOpenEstimate={openEstimateForLead} onOpenContract={openContractForLead} onCreateJob={(client) => openJobModal({ clientId: client?.id, client })} onUpdateClient={updateClient} onArchiveClient={archiveRecord.client} onRestoreClient={restoreRecord.client} onDeleteClient={deleteRecord.client} language={language} t={t} />} />
+      <Route path={appRoutes.invoices} element={<InvoicesPage leads={visibleLeads} clients={clients} projects={persistedProjects} estimates={persistedEstimates} contracts={persistedContracts} payments={persistedPayments} invoices={invoices} archivedIds={archives.invoiceIds} deletedIds={archives.deletedInvoiceIds} onCreateInvoice={() => openInvoiceModal()} onViewInvoice={(invoiceId) => navigate(`/invoices/${invoiceId}`, { state: withNavigationContext({}, appRoutes.invoices, 'backToInvoices') })} onRecordPayment={(invoiceId) => navigate(`/invoices/${invoiceId}`, { state: withNavigationContext({}, appRoutes.invoices, 'backToInvoices') })} onArchiveInvoice={archiveRecord.invoice} onRestoreInvoice={restoreRecord.invoice} onDeleteInvoice={deleteRecord.invoice} onInvoiceSent={markInvoiceSent} t={t} appLanguage={language} />} />
+      <Route path={appRoutes.invoiceDetail} element={<InvoiceDetailRoute companySettings={companySettings} leads={visibleLeads} clients={clients} projects={persistedProjects} estimates={persistedEstimates} contracts={persistedContracts} invoices={invoices} payments={persistedPayments} invoicesLoaded={areInvoicesLoaded} archivedIds={archives.invoiceIds} deletedIds={archives.deletedInvoiceIds} onUpdateInvoice={updateInvoice} onRecordInvoicePayment={recordInvoicePayment} onMarkInvoicePaid={markInvoicePaid} onInvoiceSent={markInvoiceSent} onArchiveInvoice={archiveRecord.invoice} onRestoreInvoice={restoreRecord.invoice} onDeleteInvoice={deleteRecord.invoice} t={t} appLanguage={language} />} />
       <Route path={appRoutes.settings} element={<SettingsPage settings={companySettings} onSaveSettings={(settings) => { setCompanySettings(settings); showToast(t('settingsSaved')) }} onOpenCompanySetup={() => { setIsCompanySetupReopen(true); setOnboardingSessionActive(true) }} onCreateSampleData={installSampleWorkspace} onUpdateSampleData={updateInstalledSampleWorkspace} onRemoveSampleData={uninstallSampleWorkspace} onReopenSampleGuide={async () => { const result = await persistSampleGuide({ ...(companySettings?.sampleWorkspace?.guide || {}), dismissed: false }); if (!result?.error) navigate(appRoutes.dashboard); return result }} onOpenSampleWorkspace={() => navigate(appRoutes.dashboard)} language={language} setLanguage={setLanguage} portalLanguage={portalLanguage} setPortalLanguage={setPortalLanguage} t={t} />} />
       <Route path={appRoutes.subscription} element={<SubscriptionPage language={language} t={t} />} />
       <Route path={appRoutes.projects} element={<ProjectRoute companySettings={companySettings} leads={visibleLeads} projects={persistedProjects} clients={clients} estimates={persistedEstimates} invoices={activeInvoices} scheduleEvents={visibleScheduleEvents} archivedIds={archives.projectIds} archivedScheduleEventIds={archives.scheduleEventIds} onBack={() => navigate('/dashboard')} onOpenPortal={openPortal} onOpenContract={openContractForLead} onConvertEstimate={async (leadId, estimate, options = {}) => { const contract = await ensureContractForLead(leadId, estimate, options); if (contract) openContractForLead(leadId, { source: 'project', projectId: contract.projectId || contract.project_id || undefined, leadId }) }} onCreateInvoice={(projectId) => openInvoiceModal({ projectId, lockProject: true, returnTo: `/projects/${projectId}`, returnLabelKey: 'backToProjectWorkspace' })} onMarkProjectComplete={markProjectComplete} onUpdateLead={updateLead} onRecordPayment={recordProjectPayment} onUpdatePayment={updateProjectPayment} onDeletePayment={deleteProjectPayment} onUploadPhotos={uploadProjectPhotos} onScheduleEvent={openScheduleModal} onExportEvent={exportScheduleEvent} onArchiveScheduleEvent={archiveRecord.scheduleEvent} onRestoreScheduleEvent={restoreRecord.scheduleEvent} onDeleteScheduleEvent={deleteRecord.scheduleEvent} onArchiveProject={archiveRecord.project} onRestoreProject={restoreRecord.project} onDeleteProject={deleteRecord.project} onCreateEstimateOption={createEstimateOption} onDuplicateEstimateOption={duplicateEstimateOption} onSelectEstimate={selectProjectEstimate} onClearEstimateSelection={clearProjectEstimateSelection} language={language} t={t} />} />
@@ -5078,6 +5130,9 @@ function buildWorkspaceJobRecord(job, clientRecord = null) {
             leads={visibleLeads}
             clients={clients}
             contracts={persistedContracts}
+            estimates={persistedEstimates}
+            invoices={activeInvoices}
+            payments={persistedPayments}
             initialProjectId={invoiceModalState.initialProjectId}
             lockProject={invoiceModalState.lockProject}
             invoiceDueDays={companySettings?.defaults?.invoiceDueDays ?? 7}

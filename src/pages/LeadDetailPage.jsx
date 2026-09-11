@@ -7,6 +7,7 @@ import { AymeroLoader } from '../components/common/AymeroLoader'
 import { ConfirmRecordModal } from '../components/common/ConfirmRecordModal'
 import { useToast } from '../components/common/ToastProvider'
 import { LeadFormModal } from '../components/leads/LeadFormModal'
+import { CreateAnotherEstimateModal } from '../components/estimates/CreateAnotherEstimateModal'
 import { LeadProgress } from '../components/leads/LeadProgress'
 import { StatusBadge } from '../components/ui/StatusBadge'
 import { USE_SUPABASE_LEADS } from '../config/backendConfig'
@@ -223,6 +224,9 @@ export function LeadDetailPage({
   const [isLoading, setIsLoading] = useState(Boolean(USE_SUPABASE_LEADS))
   const [hasLoaded, setHasLoaded] = useState(!USE_SUPABASE_LEADS)
   const [isEditOpen, setIsEditOpen] = useState(false)
+  const [isCreateEstimateModalOpen, setIsCreateEstimateModalOpen] = useState(false)
+  const [isCreatingEstimate, setIsCreatingEstimate] = useState(false)
+  const [createEstimateModalNames, setCreateEstimateModalNames] = useState({ current: '' })
   const [confirmAction, setConfirmAction] = useState(null)
   const [isLeadActionSubmitting, setIsLeadActionSubmitting] = useState(false)
   const [estimateRecord, setEstimateRecord] = useState(() => readLinkedEstimateDraft(lead || leadId, leadId || lead?.id || ''))
@@ -312,6 +316,38 @@ export function LeadDetailPage({
     language,
     t,
   })
+
+  function openCreateEstimateWorkflow() {
+    if (leadEstimateRecords.length === 0) {
+      onCreateEstimateOption?.(currentLead)
+      return
+    }
+
+    const currentName = leadEstimateRecords.length === 1
+      ? String(leadEstimateRecords[0]?.optionName || leadEstimateRecords[0]?.option_name || '').trim()
+      : ''
+    setCreateEstimateModalNames({ current: currentName })
+    setIsCreateEstimateModalOpen(true)
+  }
+
+  async function handleCreateEstimateModalSubmit({ currentEstimateName, newEstimateName }) {
+    if (isCreatingEstimate) return
+
+    setIsCreatingEstimate(true)
+    try {
+      const created = await onCreateEstimateOption?.(currentLead, {
+        currentEstimate: leadEstimateRecords.length === 1 ? leadEstimateRecords[0] : null,
+        currentEstimateName,
+        newEstimateName,
+        existingEstimateCount: leadEstimateRecords.length,
+      })
+      if (created) {
+        setIsCreateEstimateModalOpen(false)
+      }
+    } finally {
+      setIsCreatingEstimate(false)
+    }
+  }
 
   useEffect(() => {
     if (!USE_SUPABASE_LEADS) {
@@ -840,7 +876,7 @@ export function LeadDetailPage({
             estimateIsArchived={lifecycle.estimateArchiveState.isArchived}
             projectIsArchived={lifecycle.projectArchived}
             onOpenEstimate={leadHasEstimate ? openLeadEstimate : null}
-            onCreateEstimateOption={() => onCreateEstimateOption?.(currentLead)}
+            onCreateEstimateOption={openCreateEstimateWorkflow}
             onOpenProject={relatedProjectId ? openJobWorkspace : null}
             t={t}
           />
@@ -898,7 +934,7 @@ export function LeadDetailPage({
               estimateIsArchived={lifecycle.estimateArchiveState.isArchived}
               projectIsArchived={lifecycle.projectArchived}
               onOpenEstimate={leadHasEstimate ? openLeadEstimate : null}
-              onCreateEstimateOption={() => onCreateEstimateOption?.(currentLead)}
+              onCreateEstimateOption={openCreateEstimateWorkflow}
               onOpenProject={relatedProjectId ? openJobWorkspace : null}
               t={t}
             />
@@ -915,6 +951,15 @@ export function LeadDetailPage({
         defaultClientLanguage={language}
         onClose={() => setIsEditOpen(false)}
         onSave={handleSaveLead}
+        t={t}
+      />
+      <CreateAnotherEstimateModal
+        isOpen={isCreateEstimateModalOpen}
+        existingEstimateCount={leadEstimateRecords.length}
+        currentEstimateName={createEstimateModalNames.current}
+        isSubmitting={isCreatingEstimate}
+        onClose={() => setIsCreateEstimateModalOpen(false)}
+        onSubmit={handleCreateEstimateModalSubmit}
         t={t}
       />
       <ConfirmRecordModal

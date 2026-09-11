@@ -1,4 +1,5 @@
 import { calculateInvoiceTotal, normalizeInvoiceLineItems, roundMoney } from './invoiceRecords.js'
+import { calculateInvoiceBillingCapacity } from './invoiceBilling.js'
 
 function normalizeId(value) {
   return String(value || '').trim()
@@ -31,6 +32,9 @@ export function buildInvoiceProjectOptions(input = {}) {
   const leads = Array.isArray(source.leads) ? source.leads.filter(Boolean) : []
   const clients = Array.isArray(source.clients) ? source.clients.filter(Boolean) : []
   const contracts = Array.isArray(source.contracts) ? source.contracts.filter(Boolean) : []
+  const estimates = Array.isArray(source.estimates) ? source.estimates.filter(Boolean) : []
+  const invoices = Array.isArray(source.invoices) ? source.invoices.filter(Boolean) : []
+  const payments = Array.isArray(source.payments) ? source.payments.filter(Boolean) : []
   const projectRecords = [
     ...projects,
     ...leads
@@ -75,6 +79,25 @@ export function buildInvoiceProjectOptions(input = {}) {
     const remainingBalance = explicitRemaining === null || explicitRemaining === undefined || explicitRemaining === ''
       ? roundMoney(Math.max(value - amountPaid, 0))
       : roundMoney(Math.max(Number(explicitRemaining) || 0, 0))
+    const billingCapacity = calculateInvoiceBillingCapacity({
+      project: {
+        ...project,
+        id: projectId,
+        projectId,
+        clientId,
+        contractId: linkedContract?.id || project?.contractId || null,
+      },
+      estimates: [
+        ...estimates.filter((estimate) => recordsShareProject(estimate, project)),
+        ...(project?.portal?.estimate ? [project.portal.estimate] : []),
+      ],
+      contracts: [
+        ...contracts.filter((contract) => recordsShareProject(contract, project)),
+        ...(linkedContract ? [linkedContract] : []),
+      ],
+      invoices,
+      payments,
+    })
 
     optionsByProjectId.set(projectId, {
       id: projectId,
@@ -87,6 +110,10 @@ export function buildInvoiceProjectOptions(input = {}) {
       value,
       amountPaid,
       remainingBalance,
+      billingCapacity,
+      availableToBill: billingCapacity.availableToBill,
+      agreedValue: billingCapacity.agreedValue,
+      agreedValueSource: billingCapacity.agreedValueSource,
       isArchived: Boolean(project?.archivedAt || project?.archived_at || project?.isArchived),
     })
   })
@@ -147,6 +174,7 @@ export function validateInvoiceCreationDraft({
   issueDate,
   dueDate,
   lineItems,
+  billingCapacity = null,
 } = {}) {
   const errors = {}
 
@@ -190,6 +218,16 @@ export function validateInvoiceCreationDraft({
       errors[amountKey] = 'precision'
     }
   })
+
+  if (!Object.keys(errors).some((key) => key.startsWith('lineItems.'))) {
+    const total = calculateInvoiceTotal(lineItems)
+    if (billingCapacity?.hasAgreedValue && total > Number(billingCapacity.availableToBill || 0)) {
+      errors.billingCapacity = {
+        code: 'exceedsAvailableToBill',
+        overage: roundMoney(total - Number(billingCapacity.availableToBill || 0)),
+      }
+    }
+  }
 
   return errors
 }

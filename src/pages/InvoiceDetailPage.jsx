@@ -27,6 +27,10 @@ import { printDocumentElement } from '../utils/printDocument'
 import { appRoutes } from '../config/appRoutes'
 import { isRecordArchived } from '../utils/archiveLifecycle'
 import { resolveNavigationContext } from '../utils/navigationContext'
+import { calculateInvoiceBillingCapacity, validateInvoiceAgainstBillingCapacity } from '../utils/invoiceBilling'
+import { buildInvoicePaymentContext, validateInvoicePayment } from '../utils/paymentAllocation'
+import { normalizeCurrencyInput, parsePaymentAmount } from '../utils/paymentAmount'
+import { getPaymentPersistenceErrorMessage, logPaymentPersistenceError } from '../utils/paymentErrors'
 
 const paymentMethods = ['Cash', 'Check', 'Zelle', 'Credit Card', 'Bank Transfer', 'Other']
 const paymentTypes = ['Deposit', 'Progress Payment', 'Final Payment', 'Other']
@@ -42,6 +46,13 @@ function getAvailableContactValue(...values) {
   }
 
   return ''
+}
+
+function toPaymentPersistenceError(error, fallbackMessage) {
+  const paymentError = new Error(error?.message || fallbackMessage)
+  Object.assign(paymentError, error || {})
+  paymentError.paymentPersistence = true
+  return paymentError
 }
 
 function calculateInvoiceTotal(lineItems = []) {
@@ -269,7 +280,7 @@ function getInvoiceActionHierarchy(status, isArchived) {
   }
 }
 
-export function InvoiceDetailRoute({ companySettings, leads, clients = [], invoices = [], invoicesLoaded = false, archivedIds = [], deletedIds = [], onUpdateInvoice, onRecordInvoicePayment, onMarkInvoicePaid, onInvoiceSent, onArchiveInvoice, onRestoreInvoice, onDeleteInvoice, t, appLanguage = 'en' }) {
+export function InvoiceDetailRoute({ companySettings, leads, clients = [], projects = [], estimates = [], contracts = [], invoices = [], payments = [], invoicesLoaded = false, archivedIds = [], deletedIds = [], onUpdateInvoice, onRecordInvoicePayment, onMarkInvoicePaid, onInvoiceSent, onArchiveInvoice, onRestoreInvoice, onDeleteInvoice, t, appLanguage = 'en' }) {
   const { invoiceId } = useParams()
   const location = useLocation()
   const navigate = useNavigate()
@@ -412,6 +423,21 @@ export function InvoiceDetailRoute({ companySettings, leads, clients = [], invoi
   const lineItems = syncedInvoice.lineItems || []
   const invoiceTotal = calculateInvoiceTotal(lineItems) || Number(syncedInvoice.amount || 0)
   const currentInvoice = { ...syncedInvoice, amount: invoiceTotal, remainingBalance: getInvoiceRemainingBalance({ ...syncedInvoice, amount: invoiceTotal }) }
+  const billingProject = projects.find((project) => String(project?.id || project?.projectId || project?.project_id || '') === String(currentInvoice.projectId || currentInvoice.project_id || '')) || {
+    id: currentInvoice.projectId || currentInvoice.project_id || '',
+    clientId: currentInvoice.clientId || currentInvoice.client_id || null,
+    contractId: currentInvoice.contractId || currentInvoice.contract_id || null,
+    value: currentInvoice.projectValue || currentInvoice.value || undefined,
+  }
+  const invoiceBillingCapacity = calculateInvoiceBillingCapacity({
+    project: billingProject,
+    estimates,
+    contracts,
+    invoices: [...invoices.filter((record) => record?.id !== currentInvoice.id), currentInvoice],
+    payments,
+    currentInvoiceId: currentInvoice.id,
+    currentInvoiceAmount: invoiceTotal,
+  })
   const balance = currentInvoice.remainingBalance
   const clientAddress = getAvailableContactValue(lead?.billingAddress, lead?.address, lead?.location, currentInvoice.clientAddress, clientRecord?.address)
   const clientEmail = getAvailableContactValue(lead?.email, currentInvoice.clientEmail, clientRecord?.email)
@@ -532,6 +558,11 @@ export function InvoiceDetailRoute({ companySettings, leads, clients = [], invoi
     setIsSavingInvoice(true)
 
     try {
+      const billingError = validateInvoiceAgainstBillingCapacity({ capacity: invoiceBillingCapacity, invoiceAmount: invoiceTotal })
+      if (billingError) {
+        showToast(t('invoiceExceedsAvailableToBill', { amount: currency.format(billingError.overage) }), 'error')
+        return false
+      }
       const payload = {
         ...currentInvoice,
         customerNotes: resolveInvoiceCustomerNote(currentInvoice),
@@ -591,9 +622,25 @@ export function InvoiceDetailRoute({ companySettings, leads, clients = [], invoi
     const paymentEntry = { id: `payment-${Date.now()}`, ...payment }
 
     try {
-      const paymentResponse = await dataProvider.payments.create({ ...paymentEntry, clientId: lead?.clientId || null, invoiceId: currentInvoice.id, leadId: lead?.id, projectId: currentInvoice.projectId }, { contractorId })
+      const paymentValidation = validateInvoicePayment({
+        invoice: currentInvoice,
+        amount: payment?.amount,
+        projectId: currentInvoice.projectId,
+        payments,
+      })
+      if (paymentValidation) {
+        const messageKey = paymentValidation.code === 'amountExceedsRemaining'
+          ? 'paymentExceedsInvoiceBalance'
+          : paymentValidation.code === 'amountPrecision'
+            ? 'paymentAmountPrecision'
+            : 'paymentAmountMustBeGreaterThanZero'
+        showToast(t(messageKey, { amount: currency.format(paymentValidation.overage || 0) }), 'error')
+        return
+      }
+      const paymentContext = buildInvoicePaymentContext({ invoice: currentInvoice, project: billingProject, lead })
+      const paymentResponse = await dataProvider.payments.create({ ...paymentEntry, ...paymentContext }, { contractorId })
       if (paymentResponse?.error) {
-        throw new Error(paymentResponse.error.message || t('paymentSaveFailed'))
+        throw toPaymentPersistenceError(paymentResponse.error, t('paymentSaveFailed'))
       }
 
       const nextPaymentHistory = [paymentEntry, ...(currentInvoice.paymentHistory || [])]
@@ -610,8 +657,8 @@ export function InvoiceDetailRoute({ companySettings, leads, clients = [], invoi
 
       onRecordInvoicePayment?.(currentInvoice.id, paymentResponse?.data || paymentEntry)
     } catch (err) {
-      console.warn('Record payment failed', err)
-      showToast(err?.message || t('paymentSaveFailed'), 'error')
+      logPaymentPersistenceError(err, { operation: 'create-invoice-payment' })
+      showToast(getPaymentPersistenceErrorMessage(t, err), 'error')
       return
     }
     setShowPaymentModal(false)
@@ -633,10 +680,21 @@ export function InvoiceDetailRoute({ companySettings, leads, clients = [], invoi
         type: 'Final Payment',
         notes: 'Marked as paid.',
       }
+      const paymentValidation = validateInvoicePayment({
+        invoice: currentInvoice,
+        amount: paymentEntry.amount,
+        projectId: currentInvoice.projectId,
+        payments,
+      })
+      if (paymentValidation) {
+        showToast(t(paymentValidation.code === 'amountExceedsRemaining' ? 'paymentExceedsInvoiceBalance' : 'paymentSaveFailed', { amount: currency.format(paymentValidation.overage || 0) }), 'error')
+        return
+      }
+      const paymentContext = buildInvoicePaymentContext({ invoice: currentInvoice, project: billingProject, lead })
       try {
-        const paymentResponse = await dataProvider.payments.create({ ...paymentEntry, clientId: lead?.clientId || null, invoiceId: currentInvoice.id, leadId: lead?.id, projectId: currentInvoice.projectId }, { contractorId })
+        const paymentResponse = await dataProvider.payments.create({ ...paymentEntry, ...paymentContext }, { contractorId })
         if (paymentResponse?.error) {
-          throw new Error(paymentResponse.error.message || t('paymentSaveFailed'))
+          throw toPaymentPersistenceError(paymentResponse.error, t('paymentSaveFailed'))
         }
 
         const nextPaymentHistory = [paymentEntry, ...(currentInvoice.paymentHistory || [])]
@@ -654,8 +712,8 @@ export function InvoiceDetailRoute({ companySettings, leads, clients = [], invoi
         setSuccessMessage(t('invoiceMarkedPaid'))
         window.setTimeout(() => setSuccessMessage(''), 2500)
       } catch (err) {
-        console.warn('Mark paid failed', err)
-        showToast(err?.message || t('invoiceSaveFailed'), 'error')
+        if (err?.paymentPersistence) logPaymentPersistenceError(err, { operation: 'mark-invoice-paid' })
+        showToast(err?.paymentPersistence ? getPaymentPersistenceErrorMessage(t, err) : t('invoiceSaveFailed'), 'error')
       }
     })
   }
@@ -682,9 +740,15 @@ export function InvoiceDetailRoute({ companySettings, leads, clients = [], invoi
         }
         if (actionMode === 'markPaid') {
           const paymentEntry = { id: `payment-${Date.now()}`, amount: Math.max(Number(currentInvoice.amount || 0) - Number(currentInvoice.amountPaid || 0), 0), date: new Date().toISOString().slice(0, 10), method: 'Other', type: 'Final Payment', notes: 'Marked as paid.' }
-          const paymentResponse = await dataProvider.payments.create({ ...paymentEntry, clientId: lead?.clientId || null, invoiceId: currentInvoice.id, leadId: lead?.id, projectId: currentInvoice.projectId }, { contractorId })
+          const paymentValidation = validateInvoicePayment({ invoice: currentInvoice, amount: paymentEntry.amount, projectId: currentInvoice.projectId, payments })
+          if (paymentValidation) {
+            showToast(t(paymentValidation.code === 'amountExceedsRemaining' ? 'paymentExceedsInvoiceBalance' : 'paymentSaveFailed', { amount: currency.format(paymentValidation.overage || 0) }), 'error')
+            return
+          }
+          const paymentContext = buildInvoicePaymentContext({ invoice: currentInvoice, project: billingProject, lead })
+          const paymentResponse = await dataProvider.payments.create({ ...paymentEntry, ...paymentContext }, { contractorId })
           if (paymentResponse?.error) {
-            throw new Error(paymentResponse.error.message || t('paymentSaveFailed'))
+            throw toPaymentPersistenceError(paymentResponse.error, t('paymentSaveFailed'))
           }
 
           const nextPaymentHistory = [paymentEntry, ...(currentInvoice.paymentHistory || [])]
@@ -702,8 +766,8 @@ export function InvoiceDetailRoute({ companySettings, leads, clients = [], invoi
           window.setTimeout(() => setSuccessMessage(''), 2500)
         }
       } catch (err) {
-        console.warn('Confirm invoice action failed', err)
-        showToast(err?.message || t(actionMode === 'delete' ? 'deleteFailed' : actionMode === 'archive' ? 'archiveFailed' : 'invoiceSaveFailed'), 'error')
+        if (err?.paymentPersistence) logPaymentPersistenceError(err, { operation: 'mark-invoice-paid' })
+        showToast(err?.paymentPersistence ? getPaymentPersistenceErrorMessage(t, err) : t(actionMode === 'delete' ? 'deleteFailed' : actionMode === 'archive' ? 'archiveFailed' : 'invoiceSaveFailed'), 'error')
       } finally {
         setConfirmAction(null)
       }
@@ -1205,6 +1269,11 @@ export function InvoiceDetailRoute({ companySettings, leads, clients = [], invoi
         onSent={async () => {
           return runSingleFlightInvoiceAction('send', async () => {
             try {
+              const billingError = validateInvoiceAgainstBillingCapacity({ capacity: invoiceBillingCapacity, invoiceAmount: invoiceTotal })
+              if (billingError) {
+                showToast(t('invoiceExceedsAvailableToBill', { amount: currency.format(billingError.overage) }), 'error')
+                return false
+              }
               const response = await dataProvider.invoices.update(currentInvoice.id, { status: 'Sent' }, { contractorId: invoicesContractorId })
               if (response?.error) {
                 throw new Error(response.error.message || t('invoiceSaveFailed'))
@@ -1513,26 +1582,32 @@ function InvoicePreviewModal({ isOpen, invoice, client, company, project, onClos
 }
 
 function RecordPaymentModal({ isOpen, remainingBalance, onClose, onSave, t }) {
-  const [payment, setPayment] = useState({ amount: remainingBalance || 0, date: new Date().toISOString().slice(0, 10), method: 'Cash', type: 'Progress Payment', notes: '' })
+  const [payment, setPayment] = useState({ amount: String(remainingBalance || 0), date: new Date().toISOString().slice(0, 10), method: 'Cash', type: 'Progress Payment', notes: '' })
   const [isSubmitting, setIsSubmitting] = useState(false)
   const submitGuardRef = useRef(false)
   useEffect(() => {
     if (!isOpen) return
-    setPayment({ amount: remainingBalance || 0, date: new Date().toISOString().slice(0, 10), method: 'Cash', type: 'Progress Payment', notes: '' })
+    setPayment({ amount: String(remainingBalance || 0), date: new Date().toISOString().slice(0, 10), method: 'Cash', type: 'Progress Payment', notes: '' })
     setIsSubmitting(false)
     submitGuardRef.current = false
   }, [isOpen, remainingBalance])
   if (!isOpen) return null
+
+  async function handleSave() {
+    const { value } = parsePaymentAmount(payment.amount)
+    await onSave?.({ ...payment, amount: value })
+  }
+
   return (
     <ModalShell isOpen={isOpen} onBackdropClick={isSubmitting ? undefined : onClose} panelClassName="sm:max-w-lg">
       <h2 className="text-xl font-bold text-slate-950">{t('recordPayment')}</h2>
       <div className="mt-5 grid gap-4 sm:grid-cols-2">
-        <label className="text-sm font-bold text-slate-700">{t('amount')}<input type="number" value={payment.amount} onChange={(event) => setPayment({ ...payment, amount: event.target.value })} className="mt-2 w-full rounded-2xl border border-slate-200 bg-slate-50 px-4 py-3 outline-none focus:border-blue-500" /></label>
-        <label className="text-sm font-bold text-slate-700">{t('paymentDate')}<input type="date" value={payment.date} onChange={(event) => setPayment({ ...payment, date: event.target.value })} className="mt-2 w-full rounded-2xl border border-slate-200 bg-slate-50 px-4 py-3 outline-none focus:border-blue-500" /></label>
-        <label className="text-sm font-bold text-slate-700">{t('paymentMethod')}<select value={payment.method} onChange={(event) => setPayment({ ...payment, method: event.target.value })} className="mt-2 w-full rounded-2xl border border-slate-200 bg-slate-50 px-4 py-3 outline-none focus:border-blue-500">{paymentMethods.map((method) => <option key={method} value={method}>{t(method)}</option>)}</select></label>
-        <label className="text-sm font-bold text-slate-700">{t('paymentType')}<select value={payment.type} onChange={(event) => setPayment({ ...payment, type: event.target.value })} className="mt-2 w-full rounded-2xl border border-slate-200 bg-slate-50 px-4 py-3 outline-none focus:border-blue-500">{paymentTypes.map((type) => <option key={type} value={type}>{t(type)}</option>)}</select></label>
+        <label className="text-sm font-bold text-slate-700">{t('amount')}<input type="text" inputMode="decimal" value={payment.amount} onChange={(event) => setPayment((current) => ({ ...current, amount: normalizeCurrencyInput(event.target.value) }))} className="mt-2 w-full rounded-2xl border border-slate-200 bg-slate-50 px-4 py-3 outline-none focus:border-blue-500" /></label>
+        <label className="text-sm font-bold text-slate-700">{t('paymentDate')}<input type="date" value={payment.date} onChange={(event) => setPayment((current) => ({ ...current, date: event.target.value }))} className="mt-2 w-full rounded-2xl border border-slate-200 bg-slate-50 px-4 py-3 outline-none focus:border-blue-500" /></label>
+        <label className="text-sm font-bold text-slate-700">{t('paymentMethod')}<select value={payment.method} onChange={(event) => setPayment((current) => ({ ...current, method: event.target.value }))} className="mt-2 w-full rounded-2xl border border-slate-200 bg-slate-50 px-4 py-3 outline-none focus:border-blue-500">{paymentMethods.map((method) => <option key={method} value={method}>{t(method)}</option>)}</select></label>
+        <label className="text-sm font-bold text-slate-700">{t('paymentType')}<select value={payment.type} onChange={(event) => setPayment((current) => ({ ...current, type: event.target.value }))} className="mt-2 w-full rounded-2xl border border-slate-200 bg-slate-50 px-4 py-3 outline-none focus:border-blue-500">{paymentTypes.map((type) => <option key={type} value={type}>{t(type)}</option>)}</select></label>
       </div>
-      <label className="mt-4 block text-sm font-bold text-slate-700">{t('notes')}<textarea value={payment.notes} onChange={(event) => setPayment({ ...payment, notes: event.target.value })} rows={3} className="mt-2 w-full rounded-2xl border border-slate-200 bg-slate-50 px-4 py-3 outline-none focus:border-blue-500" /></label>
+      <label className="mt-4 block text-sm font-bold text-slate-700">{t('notes')}<textarea value={payment.notes} onChange={(event) => setPayment((current) => ({ ...current, notes: event.target.value }))} rows={3} className="mt-2 w-full rounded-2xl border border-slate-200 bg-slate-50 px-4 py-3 outline-none focus:border-blue-500" /></label>
       <div className="mt-5 flex flex-col-reverse gap-3 sm:flex-row sm:justify-end"><button disabled={isSubmitting} onClick={onClose} className="rounded-2xl border border-slate-200 px-4 py-3 text-sm font-bold text-slate-700 hover:bg-slate-50 disabled:cursor-not-allowed disabled:opacity-60">{t('cancel')}</button><button disabled={isSubmitting} onClick={async () => {
         if (submitGuardRef.current) {
           return
@@ -1542,7 +1617,7 @@ function RecordPaymentModal({ isOpen, remainingBalance, onClose, onSave, t }) {
         setIsSubmitting(true)
 
         try {
-          await onSave?.(payment)
+          await handleSave()
         } finally {
           submitGuardRef.current = false
           setIsSubmitting(false)

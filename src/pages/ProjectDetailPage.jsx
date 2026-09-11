@@ -29,12 +29,16 @@ import { formatContractDisplayNumber } from '../utils/contractNumber'
 import { formatEstimateDisplayNumber } from '../utils/estimateNumber'
 import { PROJECT_PHOTO_MAX_FILE_SIZE_BYTES, revokeProjectPhotoPreviewUrl, validateProjectPhotoFile } from '../services/photosService'
 import { calculateProjectPaymentSummary, collectProjectInvoiceIds, dedupePayments, mergeProjectTimeline, normalizePaymentRecord } from '../utils/projectPayments'
+import { calculateProjectFinancialSummary } from '../utils/projectFinancials'
 import { dedupeById, getEstimatesForProject, getSelectedEstimateForProject, resolveLinkedProjectId } from '../utils/projectIdentity'
 import { getRecordDetailsTitleKey } from '../utils/recordDetailsTitle'
 import { sortScheduleEvents } from '../utils/scheduleEvents'
 import { getInvoiceRemainingBalance } from '../utils/invoiceRecords'
 import { buildProjectWorkspaceViewModel, selectProjectWorkspaceInvoices } from '../utils/projectWorkspaceViewModel'
 import { resolveProjectHeroActionIds } from '../utils/projectHeroActions'
+import { buildInvoicePaymentContext, getEligiblePaymentInvoices, validateInvoicePayment, validateProjectPaymentAmount } from '../utils/paymentAllocation'
+import { parsePaymentAmount } from '../utils/paymentAmount'
+import { getPaymentPersistenceErrorMessage, logPaymentPersistenceError } from '../utils/paymentErrors'
 import { withNavigationContext } from '../utils/navigationContext'
 import { canCreateContractFromEstimate } from '../utils/estimateFinalization'
 import projectWorkspaceHeroBackground from '../assets/page-heroes/jobs-bg.png'
@@ -47,6 +51,13 @@ function logProjectDetailDevError(message, error, meta) {
     error,
     ...meta,
   })
+}
+
+function logProjectPaymentDev(event, details) {
+  if (!import.meta.env.DEV) return
+
+  // eslint-disable-next-line no-console
+  console.info(`[dev] Project payment ${event}.`, details)
 }
 
 async function copyTextToClipboard(value) {
@@ -224,26 +235,6 @@ const uuidPattern = /^[0-9a-f]{8}-[0-9a-f]{4}-[1-5][0-9a-f]{3}-[89ab][0-9a-f]{3}
 
 function isUuid(value) {
   return uuidPattern.test(String(value || '').trim())
-}
-
-function getFriendlyPaymentSaveErrorMessage(t, errorMessage = '') {
-  const normalizedMessage = String(errorMessage || '').toLowerCase()
-
-  if (
-    normalizedMessage.includes('payments_project_id_fkey')
-    || (normalizedMessage.includes('foreign key constraint') && normalizedMessage.includes('project_id'))
-  ) {
-    return t('projectRequiredBeforePayment')
-  }
-
-  if (
-    normalizedMessage.includes('payments_lead_id_fkey')
-    || (normalizedMessage.includes('foreign key constraint') && normalizedMessage.includes('lead_id'))
-  ) {
-    return t('paymentSaveFailed')
-  }
-
-  return errorMessage || t('paymentSaveFailed')
 }
 
 function getPaymentTypeLabelKey(payment = {}) {
@@ -518,7 +509,7 @@ function ProjectDetailPageContent({ lead, companySettings, clients = [], estimat
     ...(Array.isArray(lead?.portal?.payments) ? lead.portal.payments : []),
     ...(Array.isArray(lead?.portal?.paymentHistory) ? lead.portal.paymentHistory : []),
   ]), [baseProject, lead])
-  const paymentSummary = useMemo(() => calculateProjectPaymentSummary({
+  const legacyPaymentSummary = useMemo(() => calculateProjectPaymentSummary({
     ...(baseProject || {}),
     id: linkedProjectId || projectId,
     projectId: linkedProjectId || baseProject?.projectId || baseProject?.project_id || null,
@@ -530,6 +521,53 @@ function ProjectDetailPageContent({ lead, companySettings, clients = [], estimat
       contract: resolvedContract || baseProject?.portal?.contract || lead?.portal?.contract || {},
     },
   }, [...paymentRecords, ...localPaymentRecords], { relatedInvoiceIds }), [baseProject, lead, linkedProjectId, localPaymentRecords, paymentRecords, projectId, relatedInvoiceIds, relatedLeadId, resolvedContract])
+  const relatedProjectInvoices = useMemo(() => selectProjectWorkspaceInvoices(invoices, {
+    projectIds: [
+      linkedProjectId,
+      projectId,
+      baseProject?.id,
+      baseProject?.projectId,
+      baseProject?.project_id,
+    ],
+    leadIds: [relatedLeadId, baseProject?.leadId, baseProject?.lead_id, lead?.id],
+    invoiceIds: relatedInvoiceIds,
+  }), [baseProject, invoices, lead?.id, linkedProjectId, projectId, relatedInvoiceIds, relatedLeadId])
+  const projectFinancialSummary = useMemo(() => calculateProjectFinancialSummary({
+    project: {
+      ...(baseProject || {}),
+      id: linkedProjectId || projectId,
+      projectId: linkedProjectId || baseProject?.projectId || baseProject?.project_id || null,
+      selectedEstimateId: baseProject?.selectedEstimateId || baseProject?.selected_estimate_id || null,
+      portal: {
+        ...(baseProject?.portal || {}),
+        ...(lead?.portal || {}),
+      },
+    },
+    estimates: projectEstimateRecords,
+    contracts: resolvedContract ? [resolvedContract] : [],
+    invoices: relatedProjectInvoices,
+    payments: [...paymentRecords, ...localPaymentRecords],
+  }), [baseProject, lead?.portal, linkedProjectId, localPaymentRecords, paymentRecords, projectEstimateRecords, projectId, relatedProjectInvoices, resolvedContract])
+  const paymentSummary = useMemo(() => ({
+    ...legacyPaymentSummary,
+    projectValue: projectFinancialSummary.agreedValue,
+    totalPaid: projectFinancialSummary.totalProjectPaid,
+    amountPaid: projectFinancialSummary.totalProjectPaid,
+    outstandingBalance: projectFinancialSummary.projectBalance ?? legacyPaymentSummary.outstandingBalance,
+    totalProjectPaid: projectFinancialSummary.totalProjectPaid,
+    projectBalance: projectFinancialSummary.projectBalance,
+    totalInvoiced: projectFinancialSummary.totalInvoiced,
+    totalInvoicePaid: projectFinancialSummary.totalInvoicePaid,
+    unappliedProjectPayments: projectFinancialSummary.unappliedProjectPayments,
+    invoiceAssociatedPayments: projectFinancialSummary.invoiceAssociatedPayments,
+    unassociatedProjectPayments: projectFinancialSummary.unassociatedProjectPayments,
+    outstandingInvoiced: projectFinancialSummary.outstandingInvoiced,
+    remainingToBill: projectFinancialSummary.remainingToBill,
+    overbilledAmount: projectFinancialSummary.overbilledAmount,
+    isOverbilled: projectFinancialSummary.isOverbilled,
+    agreedValueSource: projectFinancialSummary.agreedValueSource,
+    agreedValueSourceId: projectFinancialSummary.agreedValueSourceId,
+  }), [legacyPaymentSummary, projectFinancialSummary])
   const portalTimeline = useMemo(() => mergeProjectTimeline(
     baseProject?.portal?.timeline || lead?.portal?.timeline || [],
     paymentSummary.payments
@@ -547,8 +585,8 @@ function ProjectDetailPageContent({ lead, companySettings, clients = [], estimat
     source: baseProject?.source || lead?.source || '',
     priority: baseProject?.priority || lead?.priority || 'Medium',
     estimateId: baseProject?.estimateId || lead?.estimateId || resolvedEstimate?.id || null,
-    value: resolveEstimateTotal(baseProject, resolvedEstimate),
-    estimatedValue: resolveEstimateTotal({ estimatedValue: baseProject?.estimatedValue ?? lead?.estimatedValue }, resolvedEstimate, resolveEstimateTotal(baseProject, resolvedEstimate)),
+    value: paymentSummary.projectValue,
+    estimatedValue: paymentSummary.projectValue,
     paid: paymentSummary.totalPaid,
     amountPaid: paymentSummary.totalPaid,
     remaining: paymentSummary.outstandingBalance,
@@ -636,17 +674,6 @@ function ProjectDetailPageContent({ lead, companySettings, clients = [], estimat
   const hasContract = hasProjectContract(currentLead)
   const hasLeadLink = Boolean(currentLead?.leadId)
   const hasClientLink = Boolean(currentLead?.clientId)
-  const relatedProjectInvoices = useMemo(() => selectProjectWorkspaceInvoices(invoices, {
-    projectIds: [
-      linkedProjectId,
-      projectId,
-      currentLead?.id,
-      currentLead?.projectId,
-      currentLead?.project_id,
-    ],
-    leadIds: [relatedLeadId, currentLead?.leadId, currentLead?.lead_id, lead?.id],
-    invoiceIds: relatedInvoiceIds,
-  }), [currentLead, invoices, lead?.id, linkedProjectId, projectId, relatedInvoiceIds, relatedLeadId])
   const relatedInvoiceById = useMemo(() => new Map(
     relatedProjectInvoices.map((invoice) => [invoice.id, invoice])
   ), [relatedProjectInvoices])
@@ -1315,9 +1342,9 @@ function ProjectDetailPageContent({ lead, companySettings, clients = [], estimat
 
   async function saveProjectPayment(payment) {
     try {
-      const parsedAmount = Number(payment?.amount)
+      const { normalized: normalizedAmount, value: parsedAmount } = parsePaymentAmount(payment?.amount)
 
-      if (!payment?.amount && payment?.amount !== 0) {
+      if (!normalizedAmount) {
         showToast(t('enterPaymentAmount'), 'error')
         return
       }
@@ -1337,16 +1364,87 @@ function ProjectDetailPageContent({ lead, companySettings, clients = [], estimat
         return
       }
 
+      logProjectPaymentDev('before-persistence', {
+        candidateAmount: parsedAmount,
+        agreedValue: projectFinancialSummary.agreedValue,
+        totalProjectPaidBefore: projectFinancialSummary.totalProjectPaid,
+        projectBalanceBefore: projectFinancialSummary.projectBalance,
+      })
+
+      const eligiblePaymentInvoices = getEligiblePaymentInvoices(relatedProjectInvoices, {
+        projectId: persistedProjectId,
+        payments: paymentSummary.payments,
+      })
+      const selectedInvoice = eligiblePaymentInvoices.find((invoice) => String(invoice.id) === String(payment?.invoiceId || '')) || null
+
+      if (payment?.invoiceId && !selectedInvoice) {
+        showToast(t('selectInvoice'), 'error')
+        return
+      }
+
+      if (selectedInvoice) {
+        const paymentValidation = validateInvoicePayment({
+          invoice: selectedInvoice,
+          amount: parsedAmount,
+          projectId: persistedProjectId,
+          payments: paymentSummary.payments,
+        })
+        if (paymentValidation) {
+          const messageKey = paymentValidation.code === 'amountExceedsRemaining'
+            ? 'paymentExceedsInvoiceBalance'
+            : paymentValidation.code === 'amountPrecision'
+              ? 'paymentAmountPrecision'
+              : paymentValidation.code === 'invoiceNotEligible'
+                ? 'invoiceNotEligible'
+                : 'paymentSaveFailed'
+          showToast(t(messageKey, { amount: currency.format(paymentValidation.overage || 0) }), 'error')
+          return
+        }
+      } else {
+        const projectPaymentValidation = validateProjectPaymentAmount({
+          projectValue: paymentSummary.projectValue,
+          projectBalance: editingPayment?.id ? undefined : projectFinancialSummary.projectBalance,
+          amount: parsedAmount,
+          payments: paymentSummary.payments,
+          projectId: persistedProjectId,
+          invoiceIds: relatedProjectInvoices.map((invoice) => invoice.id || invoice.invoiceId || invoice.invoice_id),
+          currentPaymentId: editingPayment?.id,
+        })
+        if (projectPaymentValidation) {
+          logProjectPaymentDev('over-balance-rejected', {
+            candidateAmount: parsedAmount,
+            balanceUsedForValidation: projectPaymentValidation.remaining,
+            excessAmount: projectPaymentValidation.overage,
+          })
+          showToast(t('paymentExceedsProjectBalance', { amount: currency.format(projectPaymentValidation.overage) }), 'error')
+          return
+        }
+      }
+
+      const paymentContext = selectedInvoice
+        ? buildInvoicePaymentContext({ invoice: selectedInvoice, project: currentLead, lead })
+        : {
+            projectId: persistedProjectId,
+            // A general project payment only needs the persisted project link.
+            // Leave secondary UUID relationships null so a stale local draft
+            // cannot turn an otherwise valid first payment into an FK conflict.
+            clientId: null,
+            contractId: null,
+            estimateId: null,
+            leadId: null,
+            invoiceId: null,
+          }
+
       const paymentEntry = normalizePaymentRecord({
         ...(editingPayment || {}),
         ...payment,
         id: editingPayment?.id || `payment-${Date.now()}`,
-        clientId: currentLead.clientId || currentLead.client_id || null,
-        projectId: persistedProjectId,
-        contractId: resolvedContract?.id || currentLead.contractId || currentLead.contract_id || null,
-        estimateId: resolvedEstimate?.id || currentLead.estimateId || currentLead.estimate_id || null,
-        invoiceId: currentLead.invoiceId || currentLead.invoice_id || null,
-        leadId: linkedLeadId || currentLead.leadId || currentLead.lead_id || null,
+        clientId: paymentContext.clientId,
+        projectId: paymentContext.projectId,
+        contractId: paymentContext.contractId,
+        estimateId: paymentContext.estimateId,
+        invoiceId: paymentContext.invoiceId || null,
+        leadId: paymentContext.leadId,
       }, {
         createdAt: editingPayment?.createdAt,
         status: editingPayment?.status || 'Recorded',
@@ -1356,7 +1454,8 @@ function ProjectDetailPageContent({ lead, companySettings, clients = [], estimat
         : await dataProvider.payments.create(paymentEntry, { contractorId })
 
       if (response?.error) {
-        showToast(getFriendlyPaymentSaveErrorMessage(t, response.error.message), 'error')
+        logPaymentPersistenceError(response.error, { operation: editingPayment?.id ? 'update' : 'create' })
+        showToast(getPaymentPersistenceErrorMessage(t, response.error), 'error')
         return
       }
 
@@ -1366,6 +1465,31 @@ function ProjectDetailPageContent({ lead, companySettings, clients = [], estimat
         savedPayment,
         ...current.filter((entry) => entry.id !== savedPayment.id),
       ]))
+      const nextPaymentRecords = dedupePayments([
+        savedPayment,
+        ...paymentSummary.payments.filter((entry) => entry.id !== savedPayment.id),
+      ])
+      const postPersistenceSummary = calculateProjectFinancialSummary({
+        project: {
+          ...(baseProject || {}),
+          id: linkedProjectId || projectId,
+          projectId: linkedProjectId || baseProject?.projectId || baseProject?.project_id || null,
+          selectedEstimateId: baseProject?.selectedEstimateId || baseProject?.selected_estimate_id || null,
+          portal: {
+            ...(baseProject?.portal || {}),
+            ...(lead?.portal || {}),
+          },
+        },
+        estimates: projectEstimateRecords,
+        contracts: resolvedContract ? [resolvedContract] : [],
+        invoices: relatedProjectInvoices,
+        payments: nextPaymentRecords,
+      })
+      logProjectPaymentDev('after-persistence', {
+        candidateAmount: parsedAmount,
+        totalProjectPaidAfter: postPersistenceSummary.totalProjectPaid,
+        projectBalanceAfter: postPersistenceSummary.projectBalance,
+      })
       if (editingPayment?.id) {
         onUpdatePayment?.(savedPayment)
         if (!onUpdatePayment) {
@@ -1379,7 +1503,8 @@ function ProjectDetailPageContent({ lead, companySettings, clients = [], estimat
       }
       closePaymentModal()
     } catch (error) {
-      showToast(getFriendlyPaymentSaveErrorMessage(t, error?.message), 'error')
+      logPaymentPersistenceError(error, { operation: editingPayment?.id ? 'update' : 'create' })
+      showToast(getPaymentPersistenceErrorMessage(t, error), 'error')
       logProjectDetailDevError('[dev] ProjectDetailPage failed to save payment.', error, {
         projectId: baseProject?.id || resolvePersistedProjectId(currentLead) || currentLead.id,
         paymentId: editingPayment?.id || null,
@@ -1957,6 +2082,7 @@ function ProjectDetailPageContent({ lead, companySettings, clients = [], estimat
                     <div className="mt-1 flex flex-wrap items-center gap-x-3 gap-y-1 text-sm text-slate-600">
                       <span>{formatProjectDetailDate(payment.paymentDate, payment.date || '')}</span>
                       {payment.paymentMethod && <span>{t('paymentMethod')}: {payment.paymentMethod}</span>}
+                      {payment.invoiceId ? <span>{t('invoice')}: {relatedInvoiceById.get(payment.invoiceId)?.number || relatedInvoiceById.get(payment.invoiceId)?.invoiceNumber || t('invoice')}</span> : null}
                     </div>
                     {payment.invoiceId && relatedInvoiceById.has(payment.invoiceId) ? (
                       <button type="button" onClick={() => navigate(`/invoices/${payment.invoiceId}`, { state: withNavigationContext({}, `/projects/${currentLead.id}`, 'backToProjectWorkspace') })} className="mt-2 inline-flex min-h-11 items-center gap-2 rounded-xl px-2 text-sm font-bold text-blue-700 transition hover:bg-blue-50 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-blue-500 focus-visible:ring-offset-2">
@@ -2219,8 +2345,11 @@ function ProjectDetailPageContent({ lead, companySettings, clients = [], estimat
       </ModalShell>
       <RecordPaymentModal
         isOpen={showPaymentModal}
-        remainingBalance={portal.outstandingBalance}
+        projectBalance={paymentSummary.projectBalance}
         projectValue={paymentSummary.projectValue}
+        projectId={persistedProjectId}
+        invoices={relatedProjectInvoices}
+        payments={paymentSummary.payments}
         initialPayment={editingPayment}
         onClose={closePaymentModal}
         onSave={saveProjectPayment}
