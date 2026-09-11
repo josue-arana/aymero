@@ -9,7 +9,7 @@ const focusableSelector = [
   '[tabindex]:not([tabindex="-1"])',
 ].join(',')
 
-export function ModalShell({ isOpen, children, className = '', panelClassName = '', onBackdropClick, ariaLabelledBy, ariaDescribedBy }) {
+export function ModalShell({ isOpen, children, className = '', panelClassName = '', onBackdropClick, ariaLabelledBy, ariaDescribedBy, resetScrollOnOpen = false }) {
   const panelRef = useRef(null)
   const onBackdropClickRef = useRef(onBackdropClick)
   onBackdropClickRef.current = onBackdropClick
@@ -19,8 +19,17 @@ export function ModalShell({ isOpen, children, className = '', panelClassName = 
 
     const previouslyFocused = document.activeElement
     const focusFrame = window.requestAnimationFrame(() => {
+      const panelNode = panelRef.current
+      if (resetScrollOnOpen && panelNode) panelNode.scrollTop = 0
       const firstFocusable = panelRef.current?.querySelector(focusableSelector)
-      ;(firstFocusable || panelRef.current)?.focus()
+      const focusTarget = firstFocusable || panelRef.current
+      if (!focusTarget) return
+      try {
+        focusTarget.focus({ preventScroll: resetScrollOnOpen })
+      } catch {
+        focusTarget.focus()
+      }
+      if (resetScrollOnOpen && panelNode) panelNode.scrollTop = 0
     })
 
     function handleKeyDown(event) {
@@ -58,7 +67,7 @@ export function ModalShell({ isOpen, children, className = '', panelClassName = 
         previouslyFocused.focus()
       }
     }
-  }, [isOpen])
+  }, [isOpen, resetScrollOnOpen])
 
   if (!isOpen) return null
 

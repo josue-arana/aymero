@@ -194,7 +194,7 @@ function DocumentPreviewModal({ isOpen, title, onClose, onPrimaryAction, primary
   const showsStandaloneDownload = primaryLabel !== t('downloadPdf')
 
   return (
-    <ModalShell isOpen={isOpen} onBackdropClick={onClose} panelClassName="p-2 sm:max-w-[64rem] sm:p-3 lg:max-w-[68rem]">
+    <ModalShell isOpen={isOpen} onBackdropClick={onClose} resetScrollOnOpen panelClassName="p-2 sm:max-w-[64rem] sm:p-3 lg:max-w-[68rem]">
       <div className="rounded-3xl bg-white text-slate-950">
         <div className="flex items-start justify-between gap-4 px-4 pb-2 pt-4 sm:px-5">
           <div>
