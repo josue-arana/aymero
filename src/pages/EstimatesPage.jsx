@@ -272,7 +272,7 @@ export function EstimatesPage({ leads, estimates = [], projects = [], contracts 
           </SelectField>
         </div>
 
-        <div className="mb-5 flex flex-wrap gap-2">
+        <div className="mb-5 flex flex-nowrap gap-2 overflow-x-auto pb-1">
           {estimateFilters.map((filter) => (
             <FilterChip key={filter} selected={selectedFilter === filter} onClick={() => setSelectedFilter(filter)}>
               {filter === 'All' ? t('all') : filter === 'Archived' ? t('archived') : tStatus(t, filter)}
