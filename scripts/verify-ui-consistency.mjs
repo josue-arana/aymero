@@ -49,6 +49,7 @@ for (const page of [
 }
 
 assert.match(filterChipSource, /min-h-11/)
+assert.match(filterChipSource, /whitespace-nowrap/)
 assert.match(filterChipSource, /aria-pressed=\{selected\}/)
 assert.match(filterChipSource, /focus-visible:ring-2/)
 for (const page of [

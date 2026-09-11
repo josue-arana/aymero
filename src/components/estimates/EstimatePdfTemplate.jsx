@@ -254,10 +254,12 @@ export function EstimateInlineText({ segments = [] }) {
   ))
 }
 
-export function EstimateRichTextBlocks({ blocks = [], flowTextAttribute = 'data-estimate-flow-text' }) {
+export function EstimateRichTextBlocks({ blocks = [], flowTextAttribute = 'data-estimate-flow-text', density = 'normal' }) {
+  const isCompact = density === 'compact'
+
   return blocks.map((block, blockIndex) => {
     if (block?.type === 'lineBreak') {
-      return <div key={`break-${blockIndex}`} style={{ height: '7px' }} aria-hidden="true" />
+      return <div key={`break-${blockIndex}`} style={{ height: isCompact ? '5px' : '7px' }} aria-hidden="true" />
     }
 
     if (block?.type === 'bulletList') {
@@ -265,12 +267,12 @@ export function EstimateRichTextBlocks({ blocks = [], flowTextAttribute = 'data-
         <ul
           key={`bullets-${blockIndex}`}
           data-estimate-rich-list="true"
-          style={{ width: '100%', maxWidth: 'none', minWidth: 0, margin: 0, padding: 0, listStyle: 'none', display: 'grid', gap: '4px' }}
+          style={{ width: '100%', maxWidth: 'none', minWidth: 0, margin: 0, padding: 0, listStyle: 'none', display: 'grid', gap: isCompact ? '2px' : '4px' }}
         >
           {(block.items || []).map((bullet, bulletIndex) => (
             <li key={`${blockIndex}-${bulletIndex}`} style={{ display: 'grid', width: '100%', minWidth: 0, gridTemplateColumns: '5px minmax(0,1fr)', gap: '6px', alignItems: 'start' }}>
               <span aria-hidden="true" style={{ width: '3px', height: '3px', marginTop: '6px', borderRadius: '999px', backgroundColor: colors.ink }} />
-              <span {...{ [flowTextAttribute]: 'true' }} style={{ minWidth: 0, whiteSpace: 'pre-wrap', fontSize: getEstimateTextSizeCss(bullet?.size), lineHeight: 1.48, color: colors.ink, overflowWrap: 'anywhere', wordBreak: 'break-word' }}>
+              <span {...{ [flowTextAttribute]: 'true' }} style={{ minWidth: 0, whiteSpace: 'pre-wrap', fontSize: getEstimateTextSizeCss(bullet?.size), lineHeight: isCompact ? 1.4 : 1.48, color: colors.ink, overflowWrap: 'anywhere', wordBreak: 'break-word' }}>
                 <EstimateInlineText segments={bullet.segments} />
               </span>
             </li>
@@ -281,7 +283,7 @@ export function EstimateRichTextBlocks({ blocks = [], flowTextAttribute = 'data-
 
     if (block?.type === 'paragraph') {
       return (
-        <p {...{ [flowTextAttribute]: 'true' }} key={`paragraph-${blockIndex}`} style={{ width: '100%', maxWidth: 'none', minWidth: 0, margin: 0, whiteSpace: 'pre-wrap', fontSize: getEstimateTextSizeCss(block?.size), lineHeight: 1.5, color: colors.ink, overflowWrap: 'anywhere', wordBreak: 'break-word' }}>
+        <p {...{ [flowTextAttribute]: 'true' }} key={`paragraph-${blockIndex}`} style={{ width: '100%', maxWidth: 'none', minWidth: 0, margin: 0, whiteSpace: 'pre-wrap', fontSize: getEstimateTextSizeCss(block?.size), lineHeight: isCompact ? 1.4 : 1.5, color: colors.ink, overflowWrap: 'anywhere', wordBreak: 'break-word' }}>
           <EstimateInlineText segments={block.segments} />
         </p>
       )
@@ -312,7 +314,7 @@ function WorkBreakdownItem({ item, index, accentColor, accentTextColor, showQuan
         gridTemplateColumns: workBreakdownGridColumns,
         gap: workBreakdownColumnGap,
         alignItems: 'stretch',
-        padding: '13px 0',
+        padding: '7px 0',
         borderTop: index === 0 ? 'none' : `1px solid ${colors.slate200}`,
         breakInside: 'avoid',
         pageBreakInside: 'avoid',
@@ -346,7 +348,7 @@ function WorkBreakdownItem({ item, index, accentColor, accentTextColor, showQuan
           style={{
             margin: 0,
             fontSize: getEstimateTextSizeCss(item?.titleSize),
-            lineHeight: 1.4,
+            lineHeight: 1.3,
             fontWeight: 700,
             color: colors.ink,
             overflowWrap: 'anywhere',
@@ -358,11 +360,11 @@ function WorkBreakdownItem({ item, index, accentColor, accentTextColor, showQuan
             : t('item')}
         </p>
         {descriptionBlocks.length ? (
-          <div style={{ width: '100%', maxWidth: 'none', minWidth: 0, marginTop: '5px', display: 'grid', gap: '3px' }}>
-            <EstimateRichTextBlocks blocks={descriptionBlocks} />
+          <div style={{ width: '100%', maxWidth: 'none', minWidth: 0, marginTop: '3px', display: 'grid', gap: '2px' }}>
+            <EstimateRichTextBlocks blocks={descriptionBlocks} density="compact" />
           </div>
         ) : null}
-        <div style={{ marginTop: descriptionBlocks.length ? '8px' : '5px' }}>
+        <div style={{ marginTop: descriptionBlocks.length ? '4px' : '3px' }}>
           <MaterialTag materialsStatus={item?.materialsStatus} accentColor={accentColor} accentTextColor={accentTextColor} t={t} />
         </div>
       </div>

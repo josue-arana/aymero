@@ -1551,7 +1551,7 @@ export function EstimateBuilderPage({ lead, clientRecord = null, t, appLanguage 
           <button type="button" onClick={() => { setShowSentEditConfirmation(false); setIsEditing(true) }} className="min-h-12 rounded-2xl bg-slate-950 px-5 py-3 text-sm font-bold text-white hover:bg-slate-800">{t('continueEditing')}</button>
         </div>
       </ModalShell>
-      <ModalShell isOpen={showPreviewModal} onBackdropClick={() => setShowPreviewModal(false)} panelClassName="p-2 sm:max-w-[64rem] sm:p-3 lg:max-w-[68rem]">
+      <ModalShell isOpen={showPreviewModal} onBackdropClick={() => setShowPreviewModal(false)} resetScrollOnOpen panelClassName="p-2 sm:max-w-[64rem] sm:p-3 lg:max-w-[68rem]">
         <div className="rounded-3xl bg-white text-slate-950">
           <div className="p-1">
             <PaginatedEstimatePreview uiT={t}>
