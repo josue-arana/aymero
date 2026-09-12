@@ -1,6 +1,5 @@
 import { useMemo, useState } from 'react'
 import { AlertTriangle, BriefcaseBusiness, CalendarDays, CalendarPlus, Check, CheckCircle2, ChevronRight, CreditCard, Sparkles, UserRoundPlus, X } from 'lucide-react'
-import { MetricCard } from '../components/ui/MetricCard'
 import { StatusBadge } from '../components/ui/StatusBadge'
 import { PipelineBoard } from '../components/pipeline/PipelineBoard'
 import { useAnalyticsMode } from '../contexts/SimpleModeContext'
@@ -8,38 +7,21 @@ import { tStatus } from '../translations'
 import { currency, formatDisplayDate } from '../utils/formatters'
 import { getLeadNextStepKey, getLeadPipelineStage, leadPipelineStageOrder, leadPipelineStages } from '../utils/leadPipeline'
 import { calculateOutstandingInvoiceBalance, getInvoiceRemainingBalance, isCollectibleInvoice } from '../utils/invoiceRecords'
-import { calculateProjectPaymentSummary } from '../utils/projectPayments'
 import { isRecordArchived } from '../utils/archiveLifecycle'
-import { isClientVisibleScheduleEvent } from '../utils/scheduleEvents'
 import { findRelatedClient } from '../utils/clients'
 import {
   deriveDashboardProjectStatus,
   findDashboardLinkedLead,
-  getDashboardProjectPayments,
+  getDashboardProjectFinancialSummary,
   isDashboardPendingEstimate,
+  selectDashboardContractAttentionRecords,
+  selectDashboardPaymentActivityRecords,
   selectDashboardActiveProjects,
   selectDashboardPendingEstimates,
   selectDashboardProjectRecords,
   selectDashboardTodayEvents,
+  selectDashboardUpcomingEvents,
 } from '../utils/dashboardConsistency'
-import heroBackground from '../assets/portal/blue-bg.png'
-
-function buildDateKey(value = new Date()) {
-  const date = value instanceof Date ? value : new Date(value)
-
-  if (Number.isNaN(date.getTime())) return ''
-
-  const year = date.getFullYear()
-  const month = String(date.getMonth() + 1).padStart(2, '0')
-  const day = String(date.getDate()).padStart(2, '0')
-  return `${year}-${month}-${day}`
-}
-
-function addDays(date, days) {
-  const next = new Date(date)
-  next.setDate(next.getDate() + days)
-  return next
-}
 
 function toTimestamp(value) {
   if (!value) return 0
@@ -47,12 +29,8 @@ function toTimestamp(value) {
   return Number.isNaN(parsed.getTime()) ? 0 : parsed.getTime()
 }
 
-function resolveEventDateKey(event = {}) {
-  if (event?.date && /^\d{4}-\d{2}-\d{2}$/.test(String(event.date).trim())) {
-    return String(event.date).trim()
-  }
-
-  return buildDateKey(event?.startsAt || event?.starts_at || event?.displayDate || event?.createdAt || event?.created_at)
+function normalizeStatus(value) {
+  return String(value || '').trim().toLowerCase().replace(/[^a-z0-9]+/g, '_').replace(/^_|_$/g, '')
 }
 
 function resolveEventTime(event = {}) {
@@ -67,9 +45,9 @@ function resolveClientName(lead, fallback = '') {
   return lead?.client || lead?.clientName || lead?.customerName || fallback
 }
 
-function DashboardSection({ title, icon: Icon, emptyText, items = [], renderItem }) {
+function DashboardSection({ title, icon: Icon, emptyText, items = [], totalCount = items.length, renderItem, onToggleMore, showAll = false, t, emphasis = false }) {
   return (
-    <section className="flex max-h-[24rem] flex-col overflow-hidden rounded-[1.75rem] border border-slate-200 bg-white p-4 shadow-sm sm:p-5 md:max-h-[26rem]">
+    <section className={`min-w-0 rounded-[1.75rem] border bg-white p-4 shadow-sm sm:p-5 ${emphasis ? 'border-amber-200 shadow-[0_10px_28px_rgba(245,158,11,0.12)]' : 'border-slate-200'}`}>
       <div className="mb-4 flex items-center justify-between gap-3">
         <div className="flex items-center gap-3">
           <span className="flex h-11 w-11 items-center justify-center rounded-2xl bg-cyan-50 text-cyan-700">
@@ -78,7 +56,7 @@ function DashboardSection({ title, icon: Icon, emptyText, items = [], renderItem
           <h2 className="text-lg font-bold text-slate-950 sm:text-xl">{title}</h2>
         </div>
         <span className="inline-flex min-w-10 items-center justify-center rounded-full bg-slate-100 px-3 py-1 text-sm font-bold text-slate-600">
-          {items.length}
+          {totalCount}
         </span>
       </div>
 
@@ -87,10 +65,15 @@ function DashboardSection({ title, icon: Icon, emptyText, items = [], renderItem
           {emptyText}
         </div>
       ) : (
-        <div className="min-h-0 flex-1 space-y-3 overflow-y-auto pr-1 overscroll-contain">
+        <div className="space-y-3">
           {items.map(renderItem)}
         </div>
       )}
+      {onToggleMore && totalCount > items.length ? (
+        <button type="button" onClick={onToggleMore} aria-expanded={showAll} className="mt-4 min-h-11 w-full rounded-xl border border-slate-200 bg-slate-50 px-4 py-2 text-sm font-bold text-blue-700 hover:bg-blue-50 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-blue-500 focus-visible:ring-offset-2">
+          {showAll ? t('showLess') : t('showMore')}
+        </button>
+      ) : null}
     </section>
   )
 }
@@ -125,9 +108,9 @@ function QuickAction({ icon: Icon, label, meta = '', onClick }) {
     <button
       type="button"
       onClick={onClick}
-      className="group flex min-h-20 min-w-0 items-center gap-3 rounded-2xl border border-slate-200 bg-white p-4 text-left shadow-sm transition hover:-translate-y-0.5 hover:border-blue-200 hover:shadow-md focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-blue-500 focus-visible:ring-offset-2"
+      className="group flex min-h-14 min-w-0 items-center gap-3 rounded-2xl border border-slate-200 bg-white px-3 py-3 text-left transition hover:border-blue-200 hover:bg-blue-50/30 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-blue-500 focus-visible:ring-offset-2"
     >
-      <span className="flex h-11 w-11 shrink-0 items-center justify-center rounded-2xl bg-blue-50 text-blue-700 transition group-hover:bg-blue-600 group-hover:text-white">
+      <span className="flex h-9 w-9 shrink-0 items-center justify-center rounded-xl bg-blue-50 text-blue-700 transition group-hover:bg-blue-600 group-hover:text-white">
         <Icon className="h-5 w-5" aria-hidden="true" />
       </span>
       <span className="min-w-0">
@@ -138,63 +121,49 @@ function QuickAction({ icon: Icon, label, meta = '', onClick }) {
   )
 }
 
-function AgendaCard({ title, items, emptyText, t }) {
-  return (
-    <section className="min-w-0 rounded-[1.75rem] border border-slate-200 bg-white p-4 shadow-sm sm:p-5" aria-labelledby="dashboard-agenda-title">
-      <div className="flex items-center justify-between gap-3">
-        <div className="flex min-w-0 items-center gap-3">
-          <span className="flex h-11 w-11 shrink-0 items-center justify-center rounded-2xl bg-blue-50 text-blue-700">
-            <CalendarDays className="h-5 w-5" aria-hidden="true" />
-          </span>
-          <h2 id="dashboard-agenda-title" className="break-words text-lg font-bold text-slate-950 sm:text-xl">{title}</h2>
-        </div>
-        <span className="inline-flex min-w-10 items-center justify-center rounded-full bg-slate-100 px-3 py-1 text-sm font-bold text-slate-600">{items.length}</span>
-      </div>
+function ScheduleOverviewCard({ todayItems, upcomingItems, t }) {
+  const renderItems = (items, emptyText) => items.length ? (
+    <div className="divide-y divide-slate-100 overflow-hidden rounded-2xl border border-slate-200">
+      {items.map((item) => (
+        <article key={item.id} className="grid min-w-0 gap-3 bg-white p-4 sm:grid-cols-[90px_minmax(0,1.2fr)_minmax(0,1fr)_auto] sm:items-center">
+          <div><p className="text-[11px] font-bold uppercase tracking-[0.14em] text-slate-400">{t('time')}</p><p className="mt-1 break-words text-sm font-bold text-slate-950">{item.time || t('notAdded')}</p></div>
+          <div className="min-w-0"><p className="text-[11px] font-bold uppercase tracking-[0.14em] text-slate-400">{t('event')}</p><p className="mt-1 break-words text-sm font-bold text-slate-950">{item.title}</p>{item.customer ? <p className="mt-1 break-words text-xs text-slate-500">{item.customer}</p> : null}</div>
+          <div className="min-w-0"><p className="text-[11px] font-bold uppercase tracking-[0.14em] text-slate-400">{t('location')}</p><p className="mt-1 break-words text-sm text-slate-700">{item.location || t('notAdded')}</p></div>
+          {item.onClick ? <button type="button" onClick={item.onClick} className="inline-flex min-h-11 items-center justify-center rounded-xl border border-slate-200 bg-slate-50 px-3 py-2 text-sm font-bold text-blue-700 hover:bg-blue-50 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-blue-500 focus-visible:ring-offset-2">{item.actionLabel}</button> : null}
+        </article>
+      ))}
+    </div>
+  ) : <div className="rounded-2xl border border-dashed border-slate-200 bg-slate-50 px-4 py-5 text-sm font-semibold text-slate-500">{emptyText}</div>
 
-      {items.length ? (
-        <div className="mt-5 divide-y divide-slate-100 overflow-hidden rounded-2xl border border-slate-200">
-          {items.map((item) => (
-            <article key={item.id} className="grid min-w-0 gap-3 bg-white p-4 sm:grid-cols-[90px_minmax(0,1.2fr)_minmax(0,1fr)_auto] sm:items-center">
-              <div className="min-w-0">
-                <p className="text-[11px] font-bold uppercase tracking-[0.14em] text-slate-400">{t('time')}</p>
-                <p className="mt-1 break-words text-sm font-bold text-slate-950">{item.time || t('notAdded')}</p>
-              </div>
-              <div className="min-w-0">
-                <p className="text-[11px] font-bold uppercase tracking-[0.14em] text-slate-400">{t('event')}</p>
-                <p className="mt-1 break-words text-sm font-bold text-slate-950">{item.title}</p>
-                {item.customer ? <p className="mt-1 break-words text-xs text-slate-500">{item.customer}</p> : null}
-              </div>
-              <div className="min-w-0">
-                <p className="text-[11px] font-bold uppercase tracking-[0.14em] text-slate-400">{t('location')}</p>
-                <p className="mt-1 break-words text-sm text-slate-700">{item.location || t('notAdded')}</p>
-              </div>
-              {item.onClick ? (
-                <button type="button" onClick={item.onClick} className="inline-flex min-h-11 items-center justify-center rounded-xl border border-slate-200 bg-slate-50 px-3 py-2 text-sm font-bold text-blue-700 transition hover:bg-blue-50 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-blue-500 focus-visible:ring-offset-2">
-                  {item.actionLabel}
-                </button>
-              ) : null}
-            </article>
-          ))}
-        </div>
-      ) : (
-        <div className="mt-5 rounded-2xl border border-dashed border-slate-200 bg-slate-50 px-5 py-8 text-center">
-          <CalendarDays className="mx-auto h-6 w-6 text-slate-300" aria-hidden="true" />
-          <p className="mt-3 text-sm font-semibold text-slate-500">{emptyText}</p>
-        </div>
-      )}
-    </section>
-  )
+  return <section className="min-w-0 rounded-[1.75rem] border border-slate-200 bg-white p-4 shadow-sm sm:p-5" aria-labelledby="dashboard-schedule-title">
+    <div className="flex items-center gap-3"><span className="flex h-11 w-11 shrink-0 items-center justify-center rounded-2xl bg-blue-50 text-blue-700"><CalendarDays className="h-5 w-5" aria-hidden="true" /></span><h2 id="dashboard-schedule-title" className="text-lg font-bold text-slate-950 sm:text-xl">{t('todaysAgenda')}</h2></div>
+    {todayItems.length === 0 && upcomingItems.length === 0 ? (
+      <div className="mt-4 rounded-2xl border border-dashed border-slate-200 bg-slate-50 px-4 py-4 text-sm font-semibold text-slate-500">{t('noTodayOrUpcomingEvents')}</div>
+    ) : (
+      <div className="mt-5 space-y-5">
+        <div><div className="mb-2 flex items-center justify-between"><h3 className="text-sm font-bold uppercase tracking-[0.14em] text-slate-500">{t('today')}</h3><span className="rounded-full bg-blue-50 px-3 py-1 text-xs font-bold text-blue-700">{todayItems.length}</span></div>{renderItems(todayItems, t('noEventsScheduledForToday'))}</div>
+        <div><div className="mb-2 flex items-center justify-between"><h3 className="text-sm font-bold uppercase tracking-[0.14em] text-slate-500">{t('upcoming')}</h3><span className="rounded-full bg-slate-100 px-3 py-1 text-xs font-bold text-slate-600">{upcomingItems.length}</span></div>{renderItems(upcomingItems, t('noUpcomingEvents'))}</div>
+      </div>
+    )}
+  </section>
 }
 
-function RecentProjectsCard({ projects, onOpenProject, showFinancials = false, t }) {
+function FinancialSnapshotCard({ metrics, t }) {
+  return <section className="min-w-0 rounded-[1.75rem] border border-slate-200 bg-white p-4 shadow-sm sm:p-5" aria-labelledby="financial-snapshot-title">
+    <div><h2 id="financial-snapshot-title" className="text-lg font-bold text-slate-950 sm:text-xl">{t('financialSnapshot')}</h2></div>
+    <dl className="mt-4 grid gap-3 sm:grid-cols-3">{metrics.map((metric) => <div key={metric.label} className="min-w-0 rounded-2xl bg-slate-50 p-4"><dt className="text-xs font-bold uppercase tracking-[0.12em] text-slate-500">{metric.label}</dt><dd className="mt-2 break-words text-xl font-bold text-slate-950">{currency.format(metric.value)}</dd></div>)}</dl>
+  </section>
+}
+
+function ActiveProjectsCard({ projects, totalCount, onOpenProject, onViewAll, showFinancials = false, t }) {
   return (
-    <section className="min-w-0 rounded-[1.75rem] border border-slate-200 bg-white p-4 shadow-sm sm:p-5" aria-labelledby="recent-projects-title">
+    <section className="min-w-0 rounded-[1.75rem] border border-slate-200 bg-white p-4 shadow-sm sm:p-5" aria-labelledby="active-projects-title">
       <div className="flex items-center justify-between gap-3">
         <div>
-          <h2 id="recent-projects-title" className="text-lg font-bold text-slate-950 sm:text-xl">{t('recentProjects')}</h2>
-          <p className="mt-1 text-sm text-slate-500">{t('recentProjectsHelp')}</p>
+          <h2 id="active-projects-title" className="text-lg font-bold text-slate-950 sm:text-xl">{t('openProjects')}</h2>
+          <p className="mt-1 text-sm text-slate-500">{t('openProjectsHelp')}</p>
         </div>
-        <span className="inline-flex min-w-10 items-center justify-center rounded-full bg-slate-100 px-3 py-1 text-sm font-bold text-slate-600">{projects.length}</span>
+        <span className="inline-flex min-w-10 items-center justify-center rounded-full bg-slate-100 px-3 py-1 text-sm font-bold text-slate-600">{totalCount}</span>
       </div>
 
       {projects.length ? (
@@ -227,9 +196,10 @@ function RecentProjectsCard({ projects, onOpenProject, showFinancials = false, t
       ) : (
         <div className="mt-5 rounded-2xl border border-dashed border-slate-200 bg-slate-50 px-5 py-8 text-center">
           <BriefcaseBusiness className="mx-auto h-6 w-6 text-slate-300" aria-hidden="true" />
-          <p className="mt-3 text-sm font-semibold text-slate-500">{t('noRecentProjects')}</p>
+          <p className="mt-3 text-sm font-semibold text-slate-500">{t('noOpenProjects')}</p>
         </div>
       )}
+      {totalCount > projects.length && onViewAll ? <button type="button" onClick={onViewAll} className="mt-4 min-h-11 w-full rounded-xl border border-slate-200 bg-slate-50 px-4 py-2 text-sm font-bold text-blue-700 hover:bg-blue-50">{t('viewAllProjects')}</button> : null}
     </section>
   )
 }
@@ -326,6 +296,7 @@ export function DashboardPage({
   moveLead,
   onLeadClick,
   onOpenProject,
+  onViewAllProjects,
   onOpenEstimate,
   onOpenContract,
   onOpenInvoice,
@@ -344,8 +315,8 @@ export function DashboardPage({
 }) {
   const { isAnalyticsMode } = useAnalyticsMode()
   const [isReminderDismissed, setIsReminderDismissed] = useState(false)
+  const [showAllAttention, setShowAllAttention] = useState(false)
   const firstName = (userProfile?.name || '').trim().split(/\s+/)[0] || t('userName')
-  const todayKey = buildDateKey(new Date())
 
   const leadsById = useMemo(() => new Map(leads.map((lead) => [lead.id, lead])), [leads])
 
@@ -370,12 +341,26 @@ export function DashboardPage({
               : null,
         }
       })
-  ), [leads, leadsById, onLeadClick, onOpenProject, scheduleEvents, t, todayKey])
+  ), [leads, leadsById, onLeadClick, onOpenProject, scheduleEvents, t])
+
+  const upcomingScheduleItems = useMemo(() => (
+    selectDashboardUpcomingEvents(scheduleEvents, new Date(), 3).map((event) => {
+      const linkedLead = leadsById.get(event.leadId || event.lead_id) || findDashboardLinkedLead(leads, event)
+      const eventProjectId = event.projectId || event.project_id || linkedLead?.projectId || linkedLead?.project_id || ''
+      return {
+        id: event.id || `${event.leadId}-${event.date}-${event.title}`,
+        title: event.title || event.type || t('calendar'), time: resolveEventTime(event),
+        customer: resolveClientName(linkedLead, event.clientName || ''), location: event.location || linkedLead?.address || linkedLead?.location || '',
+        actionLabel: eventProjectId ? t('viewProject') : t('viewLead'),
+        onClick: eventProjectId ? () => onOpenProject?.(eventProjectId) : linkedLead ? () => onLeadClick?.(linkedLead.id) : null,
+      }
+    })
+  ), [leads, leadsById, onLeadClick, onOpenProject, scheduleEvents, t])
 
   const needsAttentionItems = useMemo(() => {
     const items = []
     const handledEstimateIds = new Set()
-    const upcomingWindowEnd = addDays(new Date(), 3)
+    const handledContractIds = new Set()
 
     leads.forEach((lead) => {
       const stage = getLeadPipelineStage(lead)
@@ -388,6 +373,7 @@ export function DashboardPage({
       if (estimate?.id) handledEstimateIds.add(String(estimate.id))
       const estimateStatus = String(estimate?.status || '').trim().toLowerCase()
       const contract = lead?.portal?.contract
+      if (contract?.id) handledContractIds.add(String(contract.id))
       const contractStatus = String(contract?.status || '').trim().toLowerCase()
       const hasContract = Boolean(
         contract?.id
@@ -415,6 +401,7 @@ export function DashboardPage({
           priority: requiresFollowUp ? 25 : 30,
           timestamp: toTimestamp(estimate?.updatedAt || estimate?.updated_at || estimate?.dateCreated || estimate?.createdAt || estimate?.created_at || lead?.createdAt || lead?.created_at),
           onClick: onOpenEstimate ? () => onOpenEstimate(lead.id, estimate) : goToLeadOrProject,
+          groupKey: `estimate:${lead.projectId || lead.project_id || lead.id}`,
         })
       } else if (estimate && !isRecordArchived(estimate) && estimateStatus === 'approved' && !hasContract) {
         items.push({
@@ -454,6 +441,29 @@ export function DashboardPage({
       }
     })
 
+    selectDashboardContractAttentionRecords({
+      contracts,
+      projects,
+      leads,
+      archivedProjectIds,
+    }).forEach(({ contract, linkedProject, linkedLead, projectId }) => {
+      if (contract?.id && handledContractIds.has(String(contract.id))) return
+
+      const projectTitle = resolveDisplayTitle(linkedProject || linkedLead || contract, t('project'))
+      const clientName = resolveClientName(linkedLead || linkedProject || contract, t('client'))
+      const routeId = linkedLead?.id || projectId || contract?.projectId || contract?.project_id || contract?.id
+      items.push({
+        id: `contract-unsigned-${contract.id}`,
+        eyebrow: t('contract'),
+        title: projectTitle,
+        description: clientName,
+        meta: normalizeStatus(contract?.status) === 'sent' ? t('contractNeedsSignature') : t('sendContract'),
+        priority: 20,
+        timestamp: toTimestamp(contract?.updatedAt || contract?.updated_at || contract?.createdAt || contract?.created_at),
+        onClick: onOpenContract ? () => onOpenContract(routeId, { projectId }) : null,
+      })
+    })
+
     estimates.forEach((estimate) => {
       if (!estimate?.id || handledEstimateIds.has(String(estimate.id)) || isRecordArchived(estimate)) return
 
@@ -487,41 +497,7 @@ export function DashboardPage({
         priority: statusPresentation.priority,
         timestamp: toTimestamp(statusPresentation.timestamp || estimate.updatedAt || estimate.updated_at || estimate.createdAt || estimate.created_at),
         onClick: onOpenEstimate ? () => onOpenEstimate(estimate.leadId || estimate.lead_id || estimateProjectId || estimate.id, routeEstimate) : null,
-      })
-    })
-
-    scheduleEvents.forEach((event) => {
-      if (!isClientVisibleScheduleEvent(event)) return
-
-      const eventDateKey = resolveEventDateKey(event)
-      const eventDate = eventDateKey ? new Date(`${eventDateKey}T00:00:00`) : null
-
-      if (!eventDate || Number.isNaN(eventDate.getTime())) return
-      if (eventDateKey <= todayKey) return
-      if (eventDate.getTime() > upcomingWindowEnd.getTime()) return
-
-      const linkedLead = leadsById.get(event.leadId || event.lead_id) || findDashboardLinkedLead(leads, event)
-      const eventProjectId = event.projectId || event.project_id || linkedLead?.projectId || linkedLead?.project_id || ''
-      const hasProject = Boolean(eventProjectId)
-      const detailParts = [
-        formatDisplayDate(eventDateKey, event.displayDate || eventDateKey),
-        resolveEventTime(event),
-        event.location || linkedLead?.address || '',
-      ].filter(Boolean)
-
-      items.push({
-        id: `upcoming-event-${event.id || `${event.leadId}-${eventDateKey}`}`,
-        eyebrow: t('upcomingVisits'),
-        title: event.title || tStatus(t, event.type || t('scheduled')),
-        description: [resolveClientName(linkedLead, event.clientName || ''), resolveDisplayTitle(linkedLead, event.projectTitle || '')].filter(Boolean).join(' · '),
-        meta: detailParts.join(' · '),
-        priority: 40,
-        timestamp: eventDate.getTime(),
-        onClick: hasProject
-          ? () => onOpenProject?.(eventProjectId)
-          : linkedLead
-            ? () => onLeadClick?.(linkedLead.id)
-            : null,
+        groupKey: estimateStatus === 'sent' ? `estimate:${estimateProjectId || linkedLead?.id || estimate.leadId || estimate.lead_id || estimate.id}` : null,
       })
     })
 
@@ -546,6 +522,14 @@ export function DashboardPage({
     })
 
     return items
+      .reduce((grouped, item) => {
+        if (!item.groupKey || !item.eyebrow || item.eyebrow !== t('estimate')) return [...grouped, item]
+        const existing = grouped.find((candidate) => candidate.groupKey === item.groupKey)
+        if (!existing) return [...grouped, item]
+        existing.estimateCount = (existing.estimateCount || 1) + 1
+        existing.meta = t('estimatesNeedReview', { count: existing.estimateCount })
+        return grouped
+      }, [])
       .sort((left, right) => {
         if (left.priority !== right.priority) return left.priority - right.priority
         if (!left.timestamp && !right.timestamp) return left.title.localeCompare(right.title)
@@ -553,8 +537,9 @@ export function DashboardPage({
         if (!right.timestamp) return -1
         return left.timestamp - right.timestamp
       })
-      .slice(0, 6)
-  }, [archivedLeadIds, archivedProjectIds, contracts, estimates, invoices, leads, leadsById, onLeadClick, onOpenContract, onOpenEstimate, onOpenInvoice, onOpenProject, projects, scheduleEvents, t, todayKey])
+  }, [archivedLeadIds, archivedProjectIds, contracts, estimates, invoices, leads, leadsById, onLeadClick, onOpenContract, onOpenEstimate, onOpenInvoice, onOpenProject, projects, t])
+
+  const visibleNeedsAttentionItems = showAllAttention ? needsAttentionItems : needsAttentionItems.slice(0, 6)
 
   const recentActivityItems = useMemo(() => {
     const items = []
@@ -594,21 +579,32 @@ export function DashboardPage({
       }
     })
 
-    invoices.forEach((invoice) => {
-      const paymentHistory = Array.isArray(invoice.paymentHistory) ? invoice.paymentHistory : []
-      paymentHistory.forEach((payment, index) => {
-        const paymentTimestamp = toTimestamp(payment.date || payment.paymentDate || payment.createdAt)
-        if (!paymentTimestamp) return
+    const invoiceById = new Map(invoices.map((invoice) => [String(invoice?.id || ''), invoice]))
+    const projectById = new Map(projects.map((project) => [String(project?.id || project?.projectId || project?.project_id || ''), project]))
+    selectDashboardPaymentActivityRecords({ payments, invoices }).forEach((payment) => {
+      const paymentTimestamp = toTimestamp(payment.paymentDate || payment.date || payment.createdAt)
+      if (!paymentTimestamp) return
 
-        items.push({
-          id: `activity-payment-${invoice.id}-${payment.id || index}`,
-          eyebrow: t('invoice'),
-          title: t('paymentRecordedTimelineTitle'),
-          description: `${invoice.client || t('client')} · ${invoice.projectTitle || invoice.number || t('invoice')}`,
-          meta: `${currency.format(Number(payment.amount) || 0)} · ${formatDisplayDate(payment.date || payment.paymentDate || payment.createdAt)}`,
-          timestamp: paymentTimestamp,
-          onClick: onOpenInvoice ? () => onOpenInvoice(invoice.id) : null,
-        })
+      const invoice = invoiceById.get(String(payment.invoiceId || ''))
+      const project = projectById.get(String(payment.projectId || invoice?.projectId || invoice?.project_id || ''))
+      const linkedLead = findDashboardLinkedLead(leads, payment)
+        || (project ? findDashboardLinkedLead(leads, project) : null)
+      const projectTitle = resolveDisplayTitle(project || linkedLead, invoice?.projectTitle || invoice?.number || t('project'))
+      const clientName = resolveClientName(linkedLead || project || invoice || payment, t('client'))
+      const projectId = payment.projectId || invoice?.projectId || invoice?.project_id || project?.id || project?.projectId || project?.project_id || ''
+
+      items.push({
+        id: `activity-payment-${payment.id || `${payment.invoiceId || projectId}-${paymentTimestamp}-${payment.amount}`}`,
+        eyebrow: t('payments'),
+        title: t('paymentRecordedTimelineTitle'),
+        description: `${clientName} · ${projectTitle}`,
+        meta: `${currency.format(Number(payment.amount) || 0)} · ${formatDisplayDate(payment.paymentDate || payment.date || payment.createdAt)}`,
+        timestamp: paymentTimestamp,
+        onClick: projectId && onOpenProject
+          ? () => onOpenProject(projectId)
+          : invoice?.id && onOpenInvoice
+            ? () => onOpenInvoice(invoice.id)
+            : null,
       })
     })
 
@@ -645,7 +641,7 @@ export function DashboardPage({
       })
       .sort((left, right) => right.timestamp - left.timestamp)
       .slice(0, 6)
-  }, [invoices, leads, leadsById, onLeadClick, onOpenInvoice, onOpenProject, scheduleEvents, t])
+  }, [invoices, leads, leadsById, onLeadClick, onOpenInvoice, onOpenProject, payments, projects, scheduleEvents, t])
 
   const dashboardSummary = useMemo(() => {
     const outstandingBalance = calculateOutstandingInvoiceBalance(invoices)
@@ -673,18 +669,18 @@ export function DashboardPage({
     }
   }, [archivedLeadIds, archivedProjectIds, contracts, estimates, invoices, leads, metrics, payments, projects, scheduleEvents, t, todaysScheduleItems.length])
 
-  const financialSnapshotMetrics = useMemo(() => metrics.filter((metric) => (
-    metric.label === t('metricRevenuePipeline')
-  )), [metrics, t])
-
-  const recentProjects = useMemo(() => selectDashboardProjectRecords({
+  const dashboardProjectRecords = useMemo(() => selectDashboardProjectRecords({
     projects,
     leads,
     archivedProjectIds,
   })
     .map((project) => {
-      const projectPayments = getDashboardProjectPayments(payments, project)
-      const paymentSummary = calculateProjectPaymentSummary(project, projectPayments)
+      const paymentSummary = getDashboardProjectFinancialSummary(project, {
+        estimates,
+        contracts,
+        invoices,
+        payments,
+      })
       const relatedClient = findRelatedClient(clients, project)
 
       return {
@@ -698,75 +694,36 @@ export function DashboardPage({
           payments,
           events: scheduleEvents,
         }),
-        total: paymentSummary.projectValue,
-        balance: paymentSummary.outstandingBalance,
+        total: paymentSummary.agreedValue,
+        balance: paymentSummary.projectBalance ?? 0,
         timestamp: toTimestamp(project.updatedAt || project.updated_at || project.createdAt || project.created_at),
+        source: project,
       }
     })
-    .sort((left, right) => right.timestamp - left.timestamp)
-    .slice(0, 4), [archivedProjectIds, clients, contracts, leads, payments, projects, scheduleEvents, t])
+    .sort((left, right) => right.timestamp - left.timestamp), [archivedProjectIds, clients, contracts, estimates, invoices, leads, payments, projects, scheduleEvents, t])
+
+  const activeProjectIds = useMemo(() => new Set(selectDashboardActiveProjects({ projects, leads, contracts, payments, events: scheduleEvents, archivedProjectIds }).map((project) => project.dashboardProjectId)), [archivedProjectIds, contracts, leads, payments, projects, scheduleEvents])
+  const activeProjects = dashboardProjectRecords.filter((project) => activeProjectIds.has(project.id)).slice(0, 4)
+  const financialSnapshotMetrics = useMemo(() => {
+    const summaries = dashboardProjectRecords.map((project) => getDashboardProjectFinancialSummary(project.source || project, { estimates, contracts, invoices, payments }))
+    return [
+      { label: t('paymentsReceived'), value: summaries.reduce((sum, summary) => sum + (summary.totalProjectPaid || 0), 0) },
+      { label: t('projectBalance'), value: summaries.reduce((sum, summary) => sum + (summary.projectBalance || 0), 0) },
+      { label: t('invoiceOutstanding'), value: calculateOutstandingInvoiceBalance(invoices) },
+    ]
+  }, [contracts, dashboardProjectRecords, estimates, invoices, payments, t])
 
   return (
     <div className="mx-auto w-full max-w-7xl space-y-6 overflow-x-hidden">
-      <section className="overflow-hidden rounded-[2rem] border border-slate-800 bg-slate-950 shadow-[0_24px_60px_rgba(15,23,42,0.18)]">
-        <div
-          className="relative overflow-hidden bg-slate-950 p-5 text-white sm:p-7 lg:p-8"
-          style={{
-            backgroundImage: `linear-gradient(135deg, rgba(2, 6, 23, 0.88), rgba(15, 23, 42, 0.45)), url(${heroBackground})`,
-            backgroundSize: 'cover',
-            backgroundPosition: 'center',
-          }}
-        >
-          <div className="absolute inset-0 bg-gradient-to-r from-slate-950/60 via-slate-950/25 to-transparent" />
-          <div className="relative grid min-w-0 gap-7 lg:grid-cols-[minmax(0,1.15fr)_minmax(340px,0.85fr)] lg:items-end lg:gap-10">
-            <div className="min-w-0">
-              <p className="text-xs font-bold uppercase tracking-[0.24em] text-blue-200 sm:text-sm">{t('dashboard')}</p>
-              <h1 className="mt-3 break-words text-3xl font-bold leading-tight tracking-tight sm:text-4xl lg:text-5xl">{t('welcomeBack', { name: firstName })}</h1>
-              <p className="mt-4 max-w-2xl text-sm leading-6 text-slate-300 sm:text-base">{t('dashboardWorkspaceHelp')}</p>
-            </div>
-            <dl className={`grid min-w-0 grid-cols-2 gap-px overflow-hidden rounded-2xl border border-white/10 bg-white/10 backdrop-blur-sm ${isAnalyticsMode ? '' : 'sm:grid-cols-3'}`}>
-              <div className="min-w-0 bg-slate-950/35 p-4"><dt className="text-[0.68rem] font-bold uppercase tracking-[0.14em] text-slate-400">{t('activeJobs')}</dt><dd className="mt-2 break-words text-2xl font-bold text-white">{dashboardSummary.activeJobs}</dd></div>
-              <div className="min-w-0 bg-slate-950/35 p-4"><dt className="text-[0.68rem] font-bold uppercase tracking-[0.14em] text-slate-400">{t('pendingEstimates')}</dt><dd className="mt-2 break-words text-2xl font-bold text-white">{dashboardSummary.pendingEstimates}</dd></div>
-              {isAnalyticsMode ? <div className="min-w-0 bg-slate-950/35 p-4"><dt className="text-[0.68rem] font-bold uppercase tracking-[0.14em] text-slate-400">{t('outstandingBalance')}</dt><dd className="mt-2 break-words text-xl font-bold text-white">{currency.format(dashboardSummary.outstandingBalance)}</dd></div> : null}
-              <div className={`min-w-0 bg-slate-950/35 p-4 ${isAnalyticsMode ? '' : 'col-span-2 sm:col-span-1'}`}><dt className="text-[0.68rem] font-bold uppercase tracking-[0.14em] text-slate-400">{t('upcomingVisitsToday')}</dt><dd className="mt-2 break-words text-2xl font-bold text-white">{dashboardSummary.visitsToday}</dd></div>
-            </dl>
-          </div>
-        </div>
+      <section className="rounded-[1.75rem] border border-slate-800 bg-slate-950 p-5 text-white shadow-sm sm:p-6">
+        <p className="text-xs font-bold uppercase tracking-[0.24em] text-blue-200">{t('dashboard')}</p>
+        <h1 className="mt-2 break-words text-2xl font-bold leading-tight tracking-tight sm:text-3xl">{t('welcomeBack', { name: firstName })}</h1>
+        <p className="mt-2 max-w-2xl text-sm leading-6 text-slate-300">{t('dashboardWorkspaceHelp')}</p>
       </section>
-
-      {showOnboardingReminder && !isReminderDismissed ? (
-        <section className="flex flex-col gap-4 rounded-3xl border border-blue-200 bg-gradient-to-r from-blue-50 to-cyan-50 p-4 shadow-sm sm:flex-row sm:items-center sm:justify-between sm:p-5" aria-label={t('onboardingReminderTitle')}>
-          <div className="flex min-w-0 items-start gap-3">
-            <span className="mt-0.5 flex h-10 w-10 shrink-0 items-center justify-center rounded-2xl bg-blue-600 text-white"><Sparkles className="h-5 w-5" /></span>
-            <div>
-              <h2 className="font-bold text-slate-950">{t('onboardingReminderTitle')}</h2>
-              <p className="mt-1 text-sm leading-6 text-slate-600">{t('onboardingReminderBody')}</p>
-            </div>
-          </div>
-          <div className="flex items-center gap-2 pl-13 sm:pl-0">
-            <button type="button" onClick={onResumeOnboarding} className="min-h-11 flex-1 rounded-xl bg-blue-600 px-4 text-sm font-bold text-white hover:bg-blue-700 sm:flex-none">{t('onboardingResumeSetup')}</button>
-            <button type="button" onClick={() => setIsReminderDismissed(true)} aria-label={t('onboardingDismissReminder')} className="flex h-11 w-11 shrink-0 items-center justify-center rounded-xl text-slate-500 hover:bg-white focus:outline-none focus:ring-4 focus:ring-blue-100"><X className="h-4 w-4" /></button>
-          </div>
-        </section>
-      ) : null}
-
-      <SampleWorkspaceGuide
-        guide={sampleGuide}
-        onOpenItem={onOpenSampleGuideItem}
-        onDismiss={onDismissSampleGuide}
-        onCreateLead={onCreateLeadClick}
-        t={t}
-      />
-
-      {successMessage && (
-        <div className="rounded-2xl border border-emerald-200 bg-emerald-50 px-4 py-3 text-sm font-bold text-emerald-700">
-          {successMessage}
-        </div>
-      )}
 
       <section aria-labelledby="dashboard-quick-actions-title">
         <h2 id="dashboard-quick-actions-title" className="text-lg font-bold text-slate-950 sm:text-xl">{t('quickActions')}</h2>
-        <div className="mt-4 grid gap-3 sm:grid-cols-2 xl:grid-cols-4">
+        <div className="mt-3 grid gap-2 grid-cols-2 sm:grid-cols-4">
           <QuickAction icon={UserRoundPlus} label={t('createLead')} meta={`${t('metricNewLeads')}: ${dashboardSummary.newLeads}`} onClick={onCreateLeadClick} />
           <QuickAction icon={BriefcaseBusiness} label={t('createJob')} onClick={onCreateJob} />
           <QuickAction icon={CreditCard} label={t('recordPayment')} onClick={onRecordPayment} />
@@ -774,37 +731,13 @@ export function DashboardPage({
         </div>
       </section>
 
-      <AgendaCard title={t('todaysAgenda')} items={todaysScheduleItems} emptyText={t('noEventsScheduledForToday')} t={t} />
+      <DashboardSection title={t('needsAttention')} icon={AlertTriangle} emphasis emptyText={t('nothingNeedsAttentionRightNow')} items={visibleNeedsAttentionItems} totalCount={needsAttentionItems.length} onToggleMore={() => setShowAllAttention((value) => !value)} showAll={showAllAttention} renderItem={(item) => <DashboardActionItem key={item.id} item={item} />} t={t} />
 
-      <section className={`grid gap-6 ${isAnalyticsMode ? 'xl:grid-cols-2 xl:items-start' : ''}`}>
-        <DashboardSection
-          title={t('needsAttention')}
-          icon={AlertTriangle}
-          emptyText={t('nothingNeedsAttentionRightNow')}
-          items={needsAttentionItems}
-          renderItem={(item) => <DashboardActionItem key={item.id} item={item} />}
-        />
-        {isAnalyticsMode && (
-          <DashboardSection
-            title={t('recentActivity')}
-            icon={Sparkles}
-            emptyText={t('noRecentActivity')}
-            items={recentActivityItems}
-            renderItem={(item) => <DashboardActionItem key={item.id} item={item} />}
-          />
-        )}
-      </section>
+      <ScheduleOverviewCard todayItems={todaysScheduleItems} upcomingItems={upcomingScheduleItems} t={t} />
 
-      {isAnalyticsMode && financialSnapshotMetrics.length ? (
-        <section aria-labelledby="financial-snapshot-title">
-          <h2 id="financial-snapshot-title" className="text-lg font-bold text-slate-950 sm:text-xl">{t('financialSnapshot')}</h2>
-          <div className="mt-4 grid gap-4 sm:grid-cols-2">
-            {financialSnapshotMetrics.map((metric) => <MetricCard key={metric.label} {...metric} />)}
-          </div>
-        </section>
-      ) : null}
+      <FinancialSnapshotCard metrics={financialSnapshotMetrics} t={t} />
 
-      <RecentProjectsCard projects={recentProjects} onOpenProject={onOpenProject} showFinancials={isAnalyticsMode} t={t} />
+      <ActiveProjectsCard projects={activeProjects} totalCount={activeProjectIds.size} onOpenProject={onOpenProject} onViewAll={onViewAllProjects} showFinancials={isAnalyticsMode} t={t} />
 
       <PipelineBoard
         leads={leads}
@@ -815,8 +748,20 @@ export function DashboardPage({
         selectedMobileStage={selectedMobileStage}
         setSelectedMobileStage={setSelectedMobileStage}
         onLeadClick={onLeadClick}
+        pipelineValue={metrics.find((metric) => metric.label === t('metricRevenuePipeline'))?.value ?? 0}
         t={t}
       />
+
+      <DashboardSection title={t('recentActivity')} icon={Sparkles} emptyText={t('noRecentActivity')} items={recentActivityItems} renderItem={(item) => <DashboardActionItem key={item.id} item={item} />} t={t} />
+
+      {showOnboardingReminder && !isReminderDismissed ? (
+        <section className="flex flex-col gap-4 rounded-3xl border border-blue-200 bg-gradient-to-r from-blue-50 to-cyan-50 p-4 shadow-sm sm:flex-row sm:items-center sm:justify-between sm:p-5" aria-label={t('onboardingReminderTitle')}>
+          <div className="flex min-w-0 items-start gap-3"><span className="mt-0.5 flex h-10 w-10 shrink-0 items-center justify-center rounded-2xl bg-blue-600 text-white"><Sparkles className="h-5 w-5" /></span><div><h2 className="font-bold text-slate-950">{t('onboardingReminderTitle')}</h2><p className="mt-1 text-sm leading-6 text-slate-600">{t('onboardingReminderBody')}</p></div></div>
+          <div className="flex items-center gap-2 pl-13 sm:pl-0"><button type="button" onClick={onResumeOnboarding} className="min-h-11 flex-1 rounded-xl bg-blue-600 px-4 text-sm font-bold text-white hover:bg-blue-700 sm:flex-none">{t('onboardingResumeSetup')}</button><button type="button" onClick={() => setIsReminderDismissed(true)} aria-label={t('onboardingDismissReminder')} className="flex h-11 w-11 shrink-0 items-center justify-center rounded-xl text-slate-500 hover:bg-white focus:outline-none focus:ring-4 focus:ring-blue-100"><X className="h-4 w-4" /></button></div>
+        </section>
+      ) : null}
+      <SampleWorkspaceGuide guide={sampleGuide} onOpenItem={onOpenSampleGuideItem} onDismiss={onDismissSampleGuide} onCreateLead={onCreateLeadClick} t={t} />
+      {successMessage ? <div className="rounded-2xl border border-emerald-200 bg-emerald-50 px-4 py-3 text-sm font-bold text-emerald-700">{successMessage}</div> : null}
     </div>
   )
 }
