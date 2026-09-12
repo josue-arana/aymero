@@ -1,4 +1,4 @@
-import { useMemo, useState } from 'react'
+import { useMemo, useRef, useState } from 'react'
 import { AlertTriangle, BriefcaseBusiness, CalendarDays, CalendarPlus, Check, CheckCircle2, ChevronRight, CreditCard, Sparkles, UserRoundPlus, X } from 'lucide-react'
 import { StatusBadge } from '../components/ui/StatusBadge'
 import { PipelineBoard } from '../components/pipeline/PipelineBoard'
@@ -45,9 +45,9 @@ function resolveClientName(lead, fallback = '') {
   return lead?.client || lead?.clientName || lead?.customerName || fallback
 }
 
-function DashboardSection({ title, icon: Icon, emptyText, items = [], totalCount = items.length, renderItem, onToggleMore, showAll = false, t, emphasis = false }) {
+function DashboardSection({ title, icon: Icon, emptyText, items = [], totalCount = items.length, renderItem, onToggleMore, showAll = false, t, emphasis = false, sectionRef, sectionId }) {
   return (
-    <section className={`min-w-0 rounded-[1.75rem] border bg-white p-4 shadow-sm sm:p-5 ${emphasis ? 'border-amber-200 shadow-[0_10px_28px_rgba(245,158,11,0.12)]' : 'border-slate-200'}`}>
+    <section ref={sectionRef} id={sectionId} className={`scroll-mt-6 min-w-0 rounded-[1.75rem] border bg-white p-4 shadow-sm sm:p-5 ${emphasis ? 'border-amber-200 shadow-[0_10px_28px_rgba(245,158,11,0.12)]' : 'border-slate-200'}`}>
       <div className="mb-4 flex items-center justify-between gap-3">
         <div className="flex items-center gap-3">
           <span className="flex h-11 w-11 items-center justify-center rounded-2xl bg-cyan-50 text-cyan-700">
@@ -121,7 +121,7 @@ function QuickAction({ icon: Icon, label, meta = '', onClick }) {
   )
 }
 
-function ScheduleOverviewCard({ todayItems, upcomingItems, t }) {
+function ScheduleOverviewCard({ todayItems, upcomingItems, t, sectionRef }) {
   const renderItems = (items, emptyText) => items.length ? (
     <div className="divide-y divide-slate-100 overflow-hidden rounded-2xl border border-slate-200">
       {items.map((item) => (
@@ -135,7 +135,7 @@ function ScheduleOverviewCard({ todayItems, upcomingItems, t }) {
     </div>
   ) : <div className="rounded-2xl border border-dashed border-slate-200 bg-slate-50 px-4 py-5 text-sm font-semibold text-slate-500">{emptyText}</div>
 
-  return <section className="min-w-0 rounded-[1.75rem] border border-slate-200 bg-white p-4 shadow-sm sm:p-5" aria-labelledby="dashboard-schedule-title">
+  return <section ref={sectionRef} id="dashboard-schedule" className="scroll-mt-6 min-w-0 rounded-[1.75rem] border border-slate-200 bg-white p-4 shadow-sm sm:p-5" aria-labelledby="dashboard-schedule-title">
     <div className="flex items-center gap-3"><span className="flex h-11 w-11 shrink-0 items-center justify-center rounded-2xl bg-blue-50 text-blue-700"><CalendarDays className="h-5 w-5" aria-hidden="true" /></span><h2 id="dashboard-schedule-title" className="text-lg font-bold text-slate-950 sm:text-xl">{t('todaysAgenda')}</h2></div>
     {todayItems.length === 0 && upcomingItems.length === 0 ? (
       <div className="mt-4 rounded-2xl border border-dashed border-slate-200 bg-slate-50 px-4 py-4 text-sm font-semibold text-slate-500">{t('noTodayOrUpcomingEvents')}</div>
@@ -155,9 +155,9 @@ function FinancialSnapshotCard({ metrics, t }) {
   </section>
 }
 
-function ActiveProjectsCard({ projects, totalCount, onOpenProject, onViewAll, showFinancials = false, t }) {
+function ActiveProjectsCard({ projects, totalCount, onOpenProject, onViewAll, showFinancials = false, t, sectionRef }) {
   return (
-    <section className="min-w-0 rounded-[1.75rem] border border-slate-200 bg-white p-4 shadow-sm sm:p-5" aria-labelledby="active-projects-title">
+    <section ref={sectionRef} id="dashboard-open-projects" className="scroll-mt-6 min-w-0 rounded-[1.75rem] border border-slate-200 bg-white p-4 shadow-sm sm:p-5" aria-labelledby="active-projects-title">
       <div className="flex items-center justify-between gap-3">
         <div>
           <h2 id="active-projects-title" className="text-lg font-bold text-slate-950 sm:text-xl">{t('openProjects')}</h2>
@@ -200,6 +200,34 @@ function ActiveProjectsCard({ projects, totalCount, onOpenProject, onViewAll, sh
         </div>
       )}
       {totalCount > projects.length && onViewAll ? <button type="button" onClick={onViewAll} className="mt-4 min-h-11 w-full rounded-xl border border-slate-200 bg-slate-50 px-4 py-2 text-sm font-bold text-blue-700 hover:bg-blue-50">{t('viewAllProjects')}</button> : null}
+    </section>
+  )
+}
+
+function DashboardHero({ firstName, attentionCount, todayCount, openProjectCount, onAttentionClick, onTodayClick, onProjectsClick, t }) {
+  const metrics = [
+    { label: t('needsAttention'), value: attentionCount, onClick: onAttentionClick },
+    { label: t('todaysAgenda'), value: todayCount, onClick: onTodayClick },
+    { label: t('openProjects'), value: openProjectCount, onClick: onProjectsClick },
+  ]
+
+  return (
+    <section className="overflow-hidden rounded-[2rem] border border-slate-800 bg-slate-950 p-5 text-white shadow-[0_18px_42px_rgba(15,23,42,0.16)] sm:p-7 lg:p-8">
+      <div className="grid min-w-0 gap-7 lg:grid-cols-[minmax(0,1.15fr)_minmax(340px,0.85fr)] lg:items-center lg:gap-10">
+        <div className="min-w-0">
+          <p className="text-xs font-bold uppercase tracking-[0.24em] text-blue-200 sm:text-sm">{t('dashboard')}</p>
+          <h1 className="mt-3 break-words text-3xl font-bold leading-tight tracking-tight sm:text-4xl">{t('welcomeBack', { name: firstName })}</h1>
+          <p className="mt-3 max-w-2xl text-sm leading-6 text-slate-300 sm:text-base">{t('dashboardWorkspaceHelp')}</p>
+        </div>
+        <div className="grid min-w-0 grid-cols-3 overflow-hidden rounded-2xl border border-white/10 bg-white/10 backdrop-blur-sm">
+          {metrics.map((metric) => (
+            <button key={metric.label} type="button" onClick={metric.onClick} className="min-w-0 border-r border-white/10 bg-slate-950/30 p-3 text-left last:border-r-0 hover:bg-white/10 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-blue-300 focus-visible:ring-inset sm:p-4">
+              <span className="block break-words text-[0.62rem] font-bold uppercase leading-4 tracking-[0.12em] text-slate-400 sm:text-[0.68rem]">{metric.label}</span>
+              <span className="mt-2 block text-2xl font-bold text-white sm:text-3xl">{metric.value}</span>
+            </button>
+          ))}
+        </div>
+      </div>
     </section>
   )
 }
@@ -316,6 +344,9 @@ export function DashboardPage({
   const { isAnalyticsMode } = useAnalyticsMode()
   const [isReminderDismissed, setIsReminderDismissed] = useState(false)
   const [showAllAttention, setShowAllAttention] = useState(false)
+  const attentionRef = useRef(null)
+  const scheduleRef = useRef(null)
+  const projectsRef = useRef(null)
   const firstName = (userProfile?.name || '').trim().split(/\s+/)[0] || t('userName')
 
   const leadsById = useMemo(() => new Map(leads.map((lead) => [lead.id, lead])), [leads])
@@ -540,6 +571,7 @@ export function DashboardPage({
   }, [archivedLeadIds, archivedProjectIds, contracts, estimates, invoices, leads, leadsById, onLeadClick, onOpenContract, onOpenEstimate, onOpenInvoice, onOpenProject, projects, t])
 
   const visibleNeedsAttentionItems = showAllAttention ? needsAttentionItems : needsAttentionItems.slice(0, 6)
+  const scrollTo = (ref) => ref.current?.scrollIntoView({ behavior: 'smooth', block: 'start' })
 
   const recentActivityItems = useMemo(() => {
     const items = []
@@ -715,11 +747,7 @@ export function DashboardPage({
 
   return (
     <div className="mx-auto w-full max-w-7xl space-y-6 overflow-x-hidden">
-      <section className="rounded-[1.75rem] border border-slate-800 bg-slate-950 p-5 text-white shadow-sm sm:p-6">
-        <p className="text-xs font-bold uppercase tracking-[0.24em] text-blue-200">{t('dashboard')}</p>
-        <h1 className="mt-2 break-words text-2xl font-bold leading-tight tracking-tight sm:text-3xl">{t('welcomeBack', { name: firstName })}</h1>
-        <p className="mt-2 max-w-2xl text-sm leading-6 text-slate-300">{t('dashboardWorkspaceHelp')}</p>
-      </section>
+      <DashboardHero firstName={firstName} attentionCount={needsAttentionItems.length} todayCount={todaysScheduleItems.length} openProjectCount={activeProjectIds.size} onAttentionClick={() => scrollTo(attentionRef)} onTodayClick={() => scrollTo(scheduleRef)} onProjectsClick={() => scrollTo(projectsRef)} t={t} />
 
       <section aria-labelledby="dashboard-quick-actions-title">
         <h2 id="dashboard-quick-actions-title" className="text-lg font-bold text-slate-950 sm:text-xl">{t('quickActions')}</h2>
@@ -731,13 +759,13 @@ export function DashboardPage({
         </div>
       </section>
 
-      <DashboardSection title={t('needsAttention')} icon={AlertTriangle} emphasis emptyText={t('nothingNeedsAttentionRightNow')} items={visibleNeedsAttentionItems} totalCount={needsAttentionItems.length} onToggleMore={() => setShowAllAttention((value) => !value)} showAll={showAllAttention} renderItem={(item) => <DashboardActionItem key={item.id} item={item} />} t={t} />
+      <DashboardSection sectionRef={attentionRef} sectionId="dashboard-needs-attention" title={t('needsAttention')} icon={AlertTriangle} emphasis emptyText={t('nothingNeedsAttentionRightNow')} items={visibleNeedsAttentionItems} totalCount={needsAttentionItems.length} onToggleMore={() => setShowAllAttention((value) => !value)} showAll={showAllAttention} renderItem={(item) => <DashboardActionItem key={item.id} item={item} />} t={t} />
 
-      <ScheduleOverviewCard todayItems={todaysScheduleItems} upcomingItems={upcomingScheduleItems} t={t} />
+      <ScheduleOverviewCard sectionRef={scheduleRef} todayItems={todaysScheduleItems} upcomingItems={upcomingScheduleItems} t={t} />
 
       <FinancialSnapshotCard metrics={financialSnapshotMetrics} t={t} />
 
-      <ActiveProjectsCard projects={activeProjects} totalCount={activeProjectIds.size} onOpenProject={onOpenProject} onViewAll={onViewAllProjects} showFinancials={isAnalyticsMode} t={t} />
+      <ActiveProjectsCard sectionRef={projectsRef} projects={activeProjects} totalCount={activeProjectIds.size} onOpenProject={onOpenProject} onViewAll={onViewAllProjects} showFinancials={isAnalyticsMode} t={t} />
 
       <PipelineBoard
         leads={leads}
