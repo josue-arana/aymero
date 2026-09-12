@@ -16,6 +16,8 @@ const stageAccentClasses = {
   ARCHIVED: 'border-t-slate-400',
 }
 
+// Backlog: add a Dashboard Compact Pipeline summary without replacing this full working Kanban.
+
 export function PipelineBoard({
   leads,
   statuses,
@@ -25,6 +27,7 @@ export function PipelineBoard({
   onLeadClick,
   selectedMobileStage,
   setSelectedMobileStage,
+  pipelineValue,
   t = (key) => key,
 }) {
   const { isAnalyticsMode } = useAnalyticsMode()
@@ -38,9 +41,7 @@ export function PipelineBoard({
           <p className="hidden text-sm text-slate-500 lg:block">{t('dragCardsHelp')}</p>
           <p className="text-sm text-slate-500 lg:hidden">{t('chooseStageHelp')}</p>
         </div>
-        <p className="text-sm font-medium text-slate-500">
-          {leads.length} {isAnalyticsMode ? t('activeOpportunities') : t('leads').toLowerCase()}
-        </p>
+        <div className="text-right"><p className="text-sm font-medium text-slate-500">{leads.length} {isAnalyticsMode ? t('activeOpportunities') : t('leads').toLowerCase()}</p>{isAnalyticsMode && Number.isFinite(Number(pipelineValue)) ? <p className="mt-1 text-sm font-bold text-slate-900">{t('metricRevenuePipeline')}: {currency.format(Number(pipelineValue))}</p> : null}</div>
       </div>
 
       <div className="lg:hidden">

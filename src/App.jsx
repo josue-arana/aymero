@@ -78,6 +78,8 @@ import { buildContractWorkBreakdownFromEstimate, isGeneratedContractScopeText } 
 import { canCreateContractFromEstimate, normalizeEstimateFinalizationStatus } from './utils/estimateFinalization'
 import { resolveNavigationContext, withNavigationContext } from './utils/navigationContext'
 import { SAMPLE_GUIDE_ITEM_KEYS, SAMPLE_WORKSPACE_VERSION, createSampleWorkspace, removeSampleWorkspace, updateSampleWorkspaceGuide, upgradeSampleWorkspace as upgradeSampleWorkspaceRecords } from './services/sampleWorkspaceService'
+import { calculateDashboardPipelineValue, getDashboardLeadValue, getDashboardProjectFinancialSummary, selectDashboardOverdueInvoices, selectDashboardTodayEvents } from './utils/dashboardConsistency'
+import { getLeadEstimateRecords } from './utils/leadLifecycle'
 
 const emptyArchiveState = {
   leadIds: [],
@@ -144,15 +146,6 @@ function buildDateKey(value = new Date()) {
   const month = String(date.getMonth() + 1).padStart(2, '0')
   const day = String(date.getDate()).padStart(2, '0')
   return `${year}-${month}-${day}`
-}
-
-function toDateKey(value) {
-  if (!value) return ''
-  if (typeof value === 'string' && /^\d{4}-\d{2}-\d{2}$/.test(value.trim())) {
-    return value.trim()
-  }
-
-  return buildDateKey(value)
 }
 
 function resolvePaymentProjectId(record = {}) {
@@ -379,7 +372,7 @@ function withLeadPipelineStage(lead) {
   }
 }
 
-function hydrateLeadEstimateData(lead) {
+function hydrateLeadEstimateData(lead, estimateRecords = null) {
   if (!lead) return lead
 
   const linkedEstimate = hasEstimateData(lead?.portal?.estimate)
@@ -391,12 +384,14 @@ function hydrateLeadEstimateData(lead) {
     return withLeadPipelineStage(attachContractToLeadState(lead, linkedContract))
   }
 
-  const estimateTotal = resolveEstimateTotal(lead, linkedEstimate)
+  const estimateTotal = Array.isArray(estimateRecords)
+    ? getDashboardLeadValue({ lead, estimates: estimateRecords })
+    : resolveEstimateTotal(lead, linkedEstimate)
 
   return withLeadPipelineStage(attachContractToLeadState({
     ...lead,
     estimateId: lead.estimateId || linkedEstimate.id || null,
-    value: estimateTotal,
+    value: estimateTotal === null ? 0 : estimateTotal,
     estimatedValue: estimateTotal,
     portal: {
       ...(lead.portal || {}),
@@ -453,12 +448,20 @@ function matchesLinkedContract(lead, contract, estimate = null) {
 function mergePersistedDocumentsIntoLead(lead, persistedEstimates = [], persistedContracts = []) {
   if (!lead) return lead
 
-  const persistedEstimate = persistedEstimates.find((estimate) => matchesLinkedEstimate(lead, estimate))
+  const linkedEstimateDraft = readLinkedEstimateDraft(lead)
+  const relatedEstimateRecords = getLeadEstimateRecords({
+    lead,
+    estimates: [
+      ...persistedEstimates.filter((estimate) => matchesLinkedEstimate(lead, estimate)),
+      ...(linkedEstimateDraft ? [linkedEstimateDraft] : []),
+    ],
+  })
+  const persistedEstimate = relatedEstimateRecords.find((estimate) => persistedEstimates.includes(estimate))
   const linkedEstimate = hasEstimateData(persistedEstimate)
     ? persistedEstimate
-    : hasEstimateData(lead?.portal?.estimate)
-      ? lead.portal.estimate
-      : readLinkedEstimateDraft(lead)
+      : hasEstimateData(lead?.portal?.estimate)
+        ? lead.portal.estimate
+      : linkedEstimateDraft
   const persistedContract = persistedContracts.find((contract) => matchesLinkedContract(lead, contract, linkedEstimate))
   const linkedContract = hasContractData(persistedContract)
     ? persistedContract
@@ -480,7 +483,7 @@ function mergePersistedDocumentsIntoLead(lead, persistedEstimates = [], persiste
     },
   }
 
-  return hydrateLeadEstimateData(nextLead)
+  return hydrateLeadEstimateData(nextLead, relatedEstimateRecords)
 }
 
 const defaultUserProfile = {
@@ -1492,7 +1495,6 @@ function ContractorFlowApp() {
   const clients = useMemo(() => buildClientProfiles(visibleLeads, customClients, financialProjects)
     .filter((client) => !archives.deletedClientIds.includes(client.id)), [archives.deletedClientIds, customClients, financialProjects, visibleLeads])
   const mobileTodaySummary = useMemo(() => {
-    const todayKey = buildDateKey(new Date())
     const findLeadByAnyId = (...ids) => {
       const normalizedIds = ids.map((id) => String(id || '').trim()).filter(Boolean)
       if (normalizedIds.length === 0) return null
@@ -1513,10 +1515,7 @@ function ContractorFlowApp() {
         || ''
     }
 
-    const todayEvent = activeScheduleEvents.find((event) => {
-      const eventDate = toDateKey(event?.date || event?.eventDate || event?.event_date || event?.startsAt || event?.starts_at)
-      return eventDate === todayKey
-    })
+    const todayEvent = selectDashboardTodayEvents(activeScheduleEvents, new Date())[0]
 
     if (todayEvent) {
       const projectRouteId = resolveProjectRouteId(todayEvent)
@@ -1584,19 +1583,10 @@ function ContractorFlowApp() {
       }
     }
 
-    const overdueInvoice = activeInvoices.find((invoice) => {
-      const remainingBalance = Math.max(Number(invoice?.amount || 0) - Number(invoice?.amountPaid || 0), 0)
-      if (remainingBalance <= 0) return false
-
-      const invoiceStatus = String(invoice?.status || '').trim().toLowerCase()
-      if (invoiceStatus === 'overdue') return true
-
-      const dueDate = new Date(invoice?.dueDate || '')
-      return !Number.isNaN(dueDate.getTime()) && buildDateKey(dueDate) < todayKey
-    })
+    const overdueInvoice = selectDashboardOverdueInvoices(activeInvoices, new Date())[0]
 
     if (overdueInvoice) {
-      const remainingBalance = Math.max(Number(overdueInvoice?.amount || 0) - Number(overdueInvoice?.amountPaid || 0), 0)
+      const remainingBalance = overdueInvoice.remainingBalance
       const customerName = overdueInvoice.client || findLeadByAnyId(overdueInvoice.leadId, overdueInvoice.projectId)?.client || t('client')
 
       return {
@@ -1607,35 +1597,32 @@ function ContractorFlowApp() {
       }
     }
 
-    const outstandingProject = activeDashboardLeads
-      .map((lead) => {
-        const outstandingBalance = Math.max(
-          Number(
-            lead?.portal?.outstandingBalance
-            ?? lead?.remainingBalance
-            ?? lead?.remaining
-            ?? ((lead?.portal?.contractAmount || lead?.contractValue || lead?.value || 0) - (lead?.portal?.amountPaid || 0))
-          ) || 0,
-          0,
-        )
-
-        return {
-          lead,
-          outstandingBalance,
-        }
-      })
-      .find((record) => record.outstandingBalance > 0)
+    const knownProjectIds = new Set(persistedProjects.map((project) => String(project?.id || project?.projectId || project?.project_id || '')))
+    const outstandingProject = [
+      ...persistedProjects,
+      ...activeDashboardLeads.filter((lead) => !knownProjectIds.has(String(lead?.projectId || lead?.project_id || ''))),
+    ]
+      .map((project) => ({
+        project,
+        financialSummary: getDashboardProjectFinancialSummary(project, {
+          estimates: persistedEstimates,
+          contracts: persistedContracts,
+          invoices: activeInvoices,
+          payments: persistedPayments,
+        }),
+      }))
+      .find((record) => Number(record.financialSummary.projectBalance) > 0)
 
     if (outstandingProject) {
       return {
         title: t('today'),
         headline: t('todayOutstandingBalance'),
         supporting: t('todayCustomerAmountLine', {
-          name: outstandingProject.lead.client || t('client'),
-          amount: currency.format(outstandingProject.outstandingBalance),
+          name: outstandingProject.project.client || outstandingProject.project.clientName || t('client'),
+          amount: currency.format(outstandingProject.financialSummary.projectBalance),
           suffix: t('todayRemainingSuffix'),
         }),
-        to: `/projects/${outstandingProject.lead.id}`,
+        to: `/projects/${outstandingProject.project.id || outstandingProject.project.projectId || outstandingProject.project.project_id || outstandingProject.project.leadId || outstandingProject.project.lead_id}`,
       }
     }
 
@@ -1645,17 +1632,21 @@ function ContractorFlowApp() {
       supporting: t('todayNothingRequiresAttention'),
       to: appRoutes.dashboard,
     }
-  }, [activeDashboardLeads, activeInvoices, activeScheduleEvents, archives.leadIds, t])
+  }, [activeDashboardLeads, activeInvoices, activeScheduleEvents, archives.leadIds, persistedContracts, persistedEstimates, persistedPayments, persistedProjects, t])
 
   const metrics = useMemo(() => {
     const newLeads = activeDashboardLeads.filter((lead) => getLeadPipelineStage(lead) === leadPipelineStages.NEW_LEAD).length
-    const pipelineValue = activeDashboardLeads.reduce((sum, lead) => sum + lead.value, 0)
+    const pipelineValue = calculateDashboardPipelineValue({
+      leads: activeDashboardLeads,
+      estimates: persistedEstimates,
+      archivedLeadIds: archives.leadIds,
+    })
 
     return [
-      { label: t('metricNewLeads'), value: newLeads, helper: t('metricNewLeadsHelper'), icon: Users, tone: 'blue' },
+      { label: t('metricNewLeads'), value: newLeads, helper: '', icon: Users, tone: 'blue' },
       { label: t('metricRevenuePipeline'), value: currency.format(pipelineValue), helper: t('metricRevenuePipelineHelper'), icon: DollarSign, tone: 'emerald' },
     ]
-  }, [activeDashboardLeads, t])
+  }, [activeDashboardLeads, archives.leadIds, persistedEstimates, t])
 
   function addNotification(titleKey, messageKey) {
     setNotifications((current) => [
@@ -4940,8 +4931,9 @@ function buildWorkspaceJobRecord(job, clientRecord = null) {
       moveLead={moveLead}
       onLeadClick={openLead}
       onOpenProject={openProject}
+      onViewAllProjects={() => navigate(appRoutes.jobs)}
       onOpenEstimate={openEstimateForLead}
-      onOpenContract={(leadId) => openContractForLead(leadId, { source: 'dashboard' })}
+      onOpenContract={(leadId, options = {}) => openContractForLead(leadId, { source: 'dashboard', ...options })}
       onOpenInvoice={(invoiceId) => navigate(`/invoices/${invoiceId}`)}
       onCreateLeadClick={() => setIsDashboardLeadModalOpen(true)}
       onCreateJob={() => openJobModal({ origin: 'dashboard' })}
