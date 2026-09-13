@@ -149,6 +149,8 @@ assert.match(appSource, /invoices=\{activeInvoices\}/)
 assert.match(scheduleCardSource, /upcomingEvents/)
 assert.match(scheduleCardSource, /historyEvents/)
 assert.match(scheduleCardSource, /min-h-11/)
+assert.match(scheduleCardSource, /grid min-w-0 gap-5 xl:grid-cols-2 xl:items-start/)
+assert.match(scheduleCardSource, /px-4 py-4[\s\S]*noProjectSchedule/)
 
 const scheduleIndex = projectSource.indexOf('<ProjectScheduleCard')
 const documentsIndex = projectSource.indexOf("t('projectDocuments')", scheduleIndex)
