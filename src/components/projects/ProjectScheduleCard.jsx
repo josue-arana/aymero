@@ -76,29 +76,31 @@ export function ProjectScheduleCard({
         ) : null}
       </div>
 
-      {upcomingEvents.length > 0 ? (
-        <div>
+      <div className="grid min-w-0 gap-5 xl:grid-cols-2 xl:items-start">
+        <div className="min-w-0">
           <h3 className="text-xs font-bold uppercase tracking-[0.18em] text-blue-700">{t('upcoming')}</h3>
-          <div className="mt-3 space-y-3">
-            {upcomingEvents.map((event) => <ActiveEventCard key={event.id} event={event} isUpcoming fallbackLocation={fallbackLocation} onExportEvent={onExportEvent} onEditEvent={onEditEvent} onArchiveEvent={onArchiveEvent} t={t} />)}
-          </div>
+          {upcomingEvents.length > 0 ? (
+            <div className="mt-3 space-y-3">
+              {upcomingEvents.map((event) => <ActiveEventCard key={event.id} event={event} isUpcoming fallbackLocation={fallbackLocation} onExportEvent={onExportEvent} onEditEvent={onEditEvent} onArchiveEvent={onArchiveEvent} t={t} />)}
+            </div>
+          ) : (
+            <div className="mt-3 rounded-2xl border border-dashed border-slate-300 bg-slate-50 px-4 py-4">
+              <p className="font-bold text-slate-900">{t('noProjectSchedule')}</p>
+              <p className="mt-1 text-sm text-slate-500">{t('noProjectScheduleHelp')}</p>
+            </div>
+          )}
         </div>
-      ) : (
-        <div className="rounded-2xl border border-dashed border-slate-300 bg-slate-50 p-6 text-center">
-          <p className="font-bold text-slate-900">{t('noProjectSchedule')}</p>
-          <p className="mt-1 text-sm text-slate-500">{t('noProjectScheduleHelp')}</p>
-        </div>
-      )}
 
-      {historyEvents.length > 0 ? (
-        <div className="mt-5 border-t border-slate-200 pt-5">
-          <h3 className="text-xs font-bold uppercase tracking-[0.18em] text-slate-500">{t('projectScheduleHistory')}</h3>
-          <p className="mt-1 text-sm text-slate-500">{t('projectScheduleHistoryHelp')}</p>
-          <div className="mt-3 space-y-3">
-            {historyEvents.map((event) => <ActiveEventCard key={event.id} event={event} fallbackLocation={fallbackLocation} onExportEvent={onExportEvent} onEditEvent={onEditEvent} onArchiveEvent={onArchiveEvent} t={t} />)}
+        {historyEvents.length > 0 ? (
+          <div className="min-w-0">
+            <h3 className="text-xs font-bold uppercase tracking-[0.18em] text-slate-500">{t('projectScheduleHistory')}</h3>
+            <p className="mt-1 text-sm text-slate-500">{t('projectScheduleHistoryHelp')}</p>
+            <div className="mt-3 space-y-3">
+              {historyEvents.map((event) => <ActiveEventCard key={event.id} event={event} fallbackLocation={fallbackLocation} onExportEvent={onExportEvent} onEditEvent={onEditEvent} onArchiveEvent={onArchiveEvent} t={t} />)}
+            </div>
           </div>
-        </div>
-      ) : null}
+        ) : null}
+      </div>
 
       {archivedEvents.length > 0 ? (
         <div className="mt-5 space-y-3 border-t border-slate-200 pt-5">
