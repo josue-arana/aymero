@@ -45,7 +45,7 @@ function resolveClientName(lead, fallback = '') {
   return lead?.client || lead?.clientName || lead?.customerName || fallback
 }
 
-function DashboardSection({ title, icon: Icon, emptyText, items = [], totalCount = items.length, renderItem, onToggleMore, showAll = false, t, emphasis = false, sectionRef, sectionId }) {
+function DashboardSection({ title, icon: Icon, emptyText, items = [], totalCount = items.length, renderItem, onToggleMore, showAll = false, t, emphasis = false, sectionRef, sectionId, gridItems = false }) {
   return (
     <section ref={sectionRef} id={sectionId} className={`scroll-mt-6 min-w-0 rounded-[1.75rem] border bg-white p-4 shadow-sm sm:p-5 ${emphasis ? 'border-amber-200 shadow-[0_10px_28px_rgba(245,158,11,0.12)]' : 'border-slate-200'}`}>
       <div className="mb-4 flex items-center justify-between gap-3">
@@ -65,7 +65,7 @@ function DashboardSection({ title, icon: Icon, emptyText, items = [], totalCount
           {emptyText}
         </div>
       ) : (
-        <div className="space-y-3">
+        <div className={gridItems ? 'grid gap-3 xl:grid-cols-2' : 'space-y-3'}>
           {items.map(renderItem)}
         </div>
       )}
@@ -759,7 +759,7 @@ export function DashboardPage({
         </div>
       </section>
 
-      <DashboardSection sectionRef={attentionRef} sectionId="dashboard-needs-attention" title={t('needsAttention')} icon={AlertTriangle} emphasis emptyText={t('nothingNeedsAttentionRightNow')} items={visibleNeedsAttentionItems} totalCount={needsAttentionItems.length} onToggleMore={() => setShowAllAttention((value) => !value)} showAll={showAllAttention} renderItem={(item) => <DashboardActionItem key={item.id} item={item} />} t={t} />
+      <DashboardSection sectionRef={attentionRef} sectionId="dashboard-needs-attention" title={t('needsAttention')} icon={AlertTriangle} emphasis gridItems emptyText={t('nothingNeedsAttentionRightNow')} items={visibleNeedsAttentionItems} totalCount={needsAttentionItems.length} onToggleMore={() => setShowAllAttention((value) => !value)} showAll={showAllAttention} renderItem={(item) => <DashboardActionItem key={item.id} item={item} />} t={t} />
 
       <ScheduleOverviewCard sectionRef={scheduleRef} todayItems={todaysScheduleItems} upcomingItems={upcomingScheduleItems} t={t} />
 
