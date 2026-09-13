@@ -1845,7 +1845,7 @@ function ProjectDetailPageContent({ lead, companySettings, clients = [], estimat
               </div>
             </dl>
 
-            {isAnalyticsMode && hasFinancialSummary ? (
+            {hasFinancialSummary ? (
               <dl className="grid min-w-0 grid-cols-1 gap-px border-t border-white/10 bg-white/10 min-[380px]:grid-cols-3">
                 <div className="min-w-0 bg-slate-950/45 p-4">
                   <dt className="text-[0.68rem] font-bold uppercase tracking-[0.14em] text-slate-400">{t('projectValue')}</dt>
