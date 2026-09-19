@@ -3,6 +3,7 @@ import { USE_SUPABASE_LEADS } from '../config/backendConfig'
 import { useAuth } from '../contexts/AuthContext'
 import dataProvider from '../services/dataProvider'
 import { getLeadsContractorId } from '../services/system/leadsRuntimeService'
+import { COLLECTION_STATUS } from '../utils/collectionLoading'
 
 function warnDev(message, meta) {
   if (!import.meta.env.DEV) return
@@ -17,7 +18,7 @@ function warnDev(message, meta) {
   console.warn(message, meta)
 }
 
-export function useLeadsBootstrap(setLeads) {
+export function useLeadsBootstrap(setLeads, onStatusChange) {
   const { contractor, company, contractorAccess, session } = useAuth()
   const contractorId = getLeadsContractorId({ contractor, company, session })
 
@@ -29,16 +30,19 @@ export function useLeadsBootstrap(setLeads) {
     }
 
     async function loadLeads() {
+      onStatusChange?.(COLLECTION_STATUS.LOADING)
       const response = await dataProvider.leads.list({ contractorId, includeArchived: true })
 
       if (isCancelled) return
 
       if (response?.error) {
         warnDev('[dev] Failed to load leads from Supabase during bootstrap.', response.error)
+        onStatusChange?.(COLLECTION_STATUS.LOADED)
         return
       }
 
       setLeads(Array.isArray(response?.data) ? response.data : [])
+      onStatusChange?.(COLLECTION_STATUS.LOADED)
     }
 
     loadLeads()
@@ -46,7 +50,7 @@ export function useLeadsBootstrap(setLeads) {
     return () => {
       isCancelled = true
     }
-  }, [contractorAccess?.membershipStatus, contractorId, setLeads])
+  }, [contractorAccess?.membershipStatus, contractorId, onStatusChange, setLeads])
 }
 
 export default useLeadsBootstrap

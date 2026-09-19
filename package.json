@@ -15,6 +15,7 @@
     "verify:language-ownership": "node scripts/verify-language-ownership.mjs",
     "verify:document-print-layout": "node scripts/verify-document-print-layout.mjs",
     "verify:aymero-loader": "node scripts/verify-aymero-loader.mjs",
+    "verify:first-invite-hardening": "node scripts/verify-first-invite-hardening.mjs",
     "verify:archive-workflow": "node scripts/verify-archive-workflow.mjs",
     "verify:lead-lifecycle": "node scripts/verify-lead-lifecycle.mjs",
     "verify:lead-detail-layout": "node scripts/verify-lead-detail-layout.mjs",

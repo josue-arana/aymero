@@ -17,6 +17,8 @@ import { buildHeroBackgroundStyle } from '../utils/heroBackground'
 import { resolveEstimateArchiveState } from '../utils/archiveLifecycle'
 import { canCreateContractFromEstimate, canEditEstimate, normalizeEstimateFinalizationStatus } from '../utils/estimateFinalization'
 import { sumUnambiguousEstimateValues } from '../utils/estimateAlternatives'
+import { AymeroLoader } from '../components/common/AymeroLoader'
+import { isCollectionInitialLoading } from '../utils/collectionLoading'
 
 const estimateFilters = ['All', 'Archived', 'Draft', 'Saved', 'Sent', 'Approved', 'Rejected', 'Converted to Contract']
 
@@ -31,8 +33,9 @@ function getEstimateStatus(lead) {
   return 'Draft'
 }
 
-export function EstimatesPage({ leads, estimates = [], projects = [], contracts = [], archivedIds = [], onOpenEstimate, onConvertEstimate, onArchiveEstimate, onRestoreEstimate, onDeleteEstimate, t }) {
+export function EstimatesPage({ leads, estimates = [], projects = [], contracts = [], archivedIds = [], onOpenEstimate, onConvertEstimate, onArchiveEstimate, onRestoreEstimate, onDeleteEstimate, t, collectionStatus = 'loaded' }) {
   const [selectedFilter, setSelectedFilter] = useState('Draft')
+  const isInitialLoading = isCollectionInitialLoading(collectionStatus)
   const [confirmAction, setConfirmAction] = useState(null)
   const { isAnalyticsMode } = useAnalyticsMode()
 
@@ -280,6 +283,9 @@ export function EstimatesPage({ leads, estimates = [], projects = [], contracts 
           ))}
         </div>
 
+        {isInitialLoading ? (
+          <AymeroLoader variant="section" title={t('loadingEstimate')} accessibleLabel={t('loadingEstimate')} className="rounded-2xl border border-slate-200 bg-slate-50" />
+        ) : <>
         <div className="hidden overflow-hidden rounded-2xl border border-slate-200 xl:block">
           <table className="w-full border-collapse text-left text-sm">
             <thead className="bg-slate-50 text-xs font-bold uppercase tracking-wide text-slate-500">
@@ -361,6 +367,7 @@ export function EstimatesPage({ leads, estimates = [], projects = [], contracts 
             <div className="rounded-3xl border border-dashed border-slate-300 bg-slate-50 p-5 text-sm text-slate-500">{t('noEstimates')}</div>
           )}
         </div>
+        </>}
       </section>
       <ConfirmRecordModal isOpen={Boolean(confirmAction)} mode={confirmAction?.mode} title={confirmAction?.mode === 'delete' ? t('confirmPermanentDelete') : t('confirmArchive')} message={confirmAction?.mode === 'delete' ? t('permanentDeleteHelp') : t('archiveHelp')} confirmLabel={confirmAction?.mode === 'delete' ? t('deletePermanently') : t('archive')} onCancel={() => setConfirmAction(null)} onConfirm={runConfirmAction} t={t} />
     </div>

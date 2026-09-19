@@ -30,6 +30,9 @@ import { normalizeDocumentLanguageOverride, resolveClientFacingLanguage } from '
 import { ESTIMATE_PAPER_MARGIN } from '../utils/estimatePagination'
 import { archiveMenuItemClasses } from '../utils/buttonStyles'
 import { resolveNavigationContext } from '../utils/navigationContext'
+import { AymeroLoader } from '../components/common/AymeroLoader'
+import { LoadingButton } from '../components/common/LoadingButton'
+import { isCollectionInitialLoading } from '../utils/collectionLoading'
 
 function formatContractDate(value, language = 'en') {
   const locale = language === 'es' ? 'es-ES' : 'en-US'
@@ -430,7 +433,7 @@ export function ContractPreviewPage({ lead, clientRecord = null, t, appLanguage 
         </div>
         <div className="mb-6 grid gap-3 sm:grid-cols-2 xl:grid-cols-6">
           {isEditing ? (
-            <button disabled={isSavingContract} onClick={saveContract} className="rounded-2xl bg-blue-600 px-4 py-3 text-sm font-bold text-white disabled:cursor-not-allowed disabled:bg-blue-400">{isSavingContract ? t('saving') : t('saveContract')}</button>
+            <LoadingButton loading={isSavingContract} loadingLabel={t('saving')} onClick={saveContract} className="rounded-2xl bg-blue-600 px-4 py-3 text-sm font-bold text-white disabled:cursor-not-allowed disabled:bg-blue-400">{t('saveContract')}</LoadingButton>
           ) : (
             <button onClick={() => setIsEditing(true)} className="rounded-2xl border border-slate-200 px-4 py-3 text-sm font-bold">{t('editContract')}</button>
           )}
@@ -844,10 +847,11 @@ export function ContractRoute({ companySettings, leads, clients = [], projects =
   )
 }
 
-export function ContractsPage({ leads, contracts = [], onViewContract, onRestoreContract, onDeleteContract, t }) {
+export function ContractsPage({ leads, contracts = [], onViewContract, onRestoreContract, onDeleteContract, t, collectionStatus = 'loaded' }) {
   const [selectedFilter, setSelectedFilter] = useState('Active')
   const [confirmAction, setConfirmAction] = useState(null)
   const usesSupabaseContracts = USE_SUPABASE || USE_SUPABASE_CONTRACTS
+  const isInitialLoading = isCollectionInitialLoading(collectionStatus)
   const contractRows = usesSupabaseContracts && contracts.length > 0
     ? dedupeById(
       contracts,
@@ -904,7 +908,7 @@ export function ContractsPage({ leads, contracts = [], onViewContract, onRestore
       <section className="rounded-3xl bg-gradient-to-br from-slate-950 to-slate-800 p-6 text-white shadow-xl">
         <p className="text-sm font-semibold uppercase tracking-[0.25em] text-blue-200">{t('contracts')}</p>
         <h1 className="mt-2 text-3xl font-bold">{t('contracts')}</h1>
-        <p className="mt-2 text-sm text-slate-300">{t('contractsComingDescription')}</p>
+        <p className="mt-2 text-sm text-slate-300">{t('contractsDescription')}</p>
       </section>
       <section className="grid gap-4">
         <div className="flex gap-2 overflow-x-auto pb-1">
@@ -914,6 +918,9 @@ export function ContractsPage({ leads, contracts = [], onViewContract, onRestore
             </FilterChip>
           ))}
         </div>
+        {isInitialLoading ? (
+          <AymeroLoader variant="section" title={t('loading')} accessibleLabel={t('loading')} className="rounded-3xl border border-slate-200 bg-slate-50" />
+        ) : <>
         {filteredContracts.map((contract) => (
           <article key={contract.id} className="rounded-3xl border border-slate-200 bg-white p-5 shadow-sm">
             <div className="flex flex-col justify-between gap-4 sm:flex-row sm:items-center">
@@ -956,6 +963,7 @@ export function ContractsPage({ leads, contracts = [], onViewContract, onRestore
         {!filteredContracts.length ? (
           <div className="rounded-3xl border border-dashed border-slate-300 bg-slate-50 p-6 text-center text-sm text-slate-500">{t('noContracts')}</div>
         ) : null}
+        </>}
       </section>
       <ConfirmRecordModal
         isOpen={Boolean(confirmAction)}

@@ -1,4 +1,4 @@
-import { Component, useEffect, useMemo, useState } from 'react'
+import { Component, useEffect, useMemo, useRef, useState } from 'react'
 import { Archive, CalendarDays, Camera, CheckCircle2, ChevronLeft, ChevronRight, Copy, Edit3, ExternalLink, FileText, MapPin, MoreVertical, Share2, DollarSign, Trash2, Undo2, X } from 'lucide-react'
 import { useLocation, useNavigate, useParams } from 'react-router-dom'
 import { ActionMenu } from '../components/common/ActionMenu'
@@ -400,7 +400,7 @@ class ProjectDetailErrorBoundary extends Component {
   }
 }
 
-function ProjectDetailPageContent({ lead, companySettings, clients = [], estimates = [], invoices = [], scheduleEvents = [], archivedScheduleEventIds = [], isArchived = false, onBack, onOpenPortal, onOpenContract, onConvertEstimate, onCreateInvoice, onMarkProjectComplete, onUpdateLead, onRecordPayment, onUpdatePayment, onDeletePayment, onUploadPhotos, onScheduleEvent, onEditScheduleEvent, onExportEvent, onArchiveScheduleEvent, onRestoreScheduleEvent, onDeleteScheduleEvent, onArchiveProject, onRestoreProject, onDeleteProject, onCreateEstimateOption, onDuplicateEstimateOption, onSelectEstimate, onClearEstimateSelection, language = 'en', t }) {
+function ProjectDetailPageContent({ lead, openRecordPaymentOnLoad = false, companySettings, clients = [], estimates = [], invoices = [], scheduleEvents = [], archivedScheduleEventIds = [], isArchived = false, onBack, onOpenPortal, onOpenContract, onConvertEstimate, onCreateInvoice, onMarkProjectComplete, onUpdateLead, onRecordPayment, onUpdatePayment, onDeletePayment, onUploadPhotos, onScheduleEvent, onEditScheduleEvent, onExportEvent, onArchiveScheduleEvent, onRestoreScheduleEvent, onDeleteScheduleEvent, onArchiveProject, onRestoreProject, onDeleteProject, onCreateEstimateOption, onDuplicateEstimateOption, onSelectEstimate, onClearEstimateSelection, language = 'en', t }) {
   const { id, leadId } = useParams()
   const location = useLocation()
   const navigate = useNavigate()
@@ -423,6 +423,7 @@ function ProjectDetailPageContent({ lead, companySettings, clients = [], estimat
   const [isEditOpen, setIsEditOpen] = useState(false)
   const [confirmAction, setConfirmAction] = useState(null)
   const [showPaymentModal, setShowPaymentModal] = useState(false)
+  const openedPaymentFromRouteRef = useRef(false)
   const [editingPayment, setEditingPayment] = useState(null)
   const [paymentConfirmAction, setPaymentConfirmAction] = useState(null)
   const [showPhotoModal, setShowPhotoModal] = useState(false)
@@ -647,6 +648,13 @@ function ProjectDetailPageContent({ lead, companySettings, clients = [], estimat
     return projectCandidates.find((candidateId) => isUuid(candidateId)) || ''
   }, [baseProject, currentLead, fallbackLinkedProjectId, linkedProjectId, project, requiresPersistedProjectLink])
   const canRecordPayment = Boolean(persistedProjectId)
+  useEffect(() => {
+    if (!openRecordPaymentOnLoad || openedPaymentFromRouteRef.current || !hasLoadedProject || !currentLead || !canRecordPayment) return
+
+    openedPaymentFromRouteRef.current = true
+    setEditingPayment(null)
+    setShowPaymentModal(true)
+  }, [canRecordPayment, currentLead, hasLoadedProject, openRecordPaymentOnLoad])
   const fallbackProjectPhotos = useMemo(() => {
     const hiddenIds = new Set(hiddenFallbackPhotoIds)
     const scopedProjectId = linkedProjectId || resolvePersistedProjectId(currentLead) || currentLead?.id || projectId
@@ -1845,7 +1853,7 @@ function ProjectDetailPageContent({ lead, companySettings, clients = [], estimat
               </div>
             </dl>
 
-            {isAnalyticsMode && hasFinancialSummary ? (
+            {hasFinancialSummary ? (
               <dl className="grid min-w-0 grid-cols-1 gap-px border-t border-white/10 bg-white/10 min-[380px]:grid-cols-3">
                 <div className="min-w-0 bg-slate-950/45 p-4">
                   <dt className="text-[0.68rem] font-bold uppercase tracking-[0.14em] text-slate-400">{t('projectValue')}</dt>
@@ -2167,14 +2175,22 @@ function ProjectDetailPageContent({ lead, companySettings, clients = [], estimat
           {t('projectPhotoFileHelp', { size: Math.round(PROJECT_PHOTO_MAX_FILE_SIZE_BYTES / (1024 * 1024)) })}
         </div>
 
-        {isLoadingPhotos ? (
+        {isLoadingPhotos && galleryPhotos.length === 0 ? (
           <AymeroLoader
             variant="section"
             title={t('loading')}
             accessibleLabel={t('loading')}
             className="rounded-2xl border border-dashed border-slate-300 bg-slate-50"
           />
-        ) : galleryPhotos.length > 0 ? (
+        ) : (
+          <>
+          {isLoadingPhotos ? (
+            <div aria-hidden="true" className="mb-3 flex items-center gap-2 text-xs font-semibold text-slate-500">
+              <AymeroLoader variant="inline" accessibleLabel={t('loading')} />
+              {t('loading')}
+            </div>
+          ) : null}
+          {galleryPhotos.length > 0 ? (
           <div className="grid gap-3 [grid-template-columns:repeat(auto-fit,minmax(min(100%,9rem),1fr))]">
             {galleryPhotos.map((photo) => {
               const photoLoadFailed = failedPhotoIds.includes(photo.id)
@@ -2221,11 +2237,13 @@ function ProjectDetailPageContent({ lead, companySettings, clients = [], estimat
               )
             })}
           </div>
-        ) : (
+          ) : (
           <div className="rounded-2xl border border-dashed border-slate-300 bg-slate-50 p-6 text-center">
             <p className="font-bold text-slate-900">{t('projectPhotos')}</p>
             <p className="mt-1 text-sm text-slate-500">{t('noPhotosUploadedYet')}</p>
           </div>
+          )}
+          </>
         )}
       </section> : null}
 

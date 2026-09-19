@@ -20,6 +20,8 @@ import { getEstimatedValueForLead } from '../utils/estimateLinks'
 import { getLeadEstimateValue, hasAmbiguousLeadEstimateValue } from '../utils/leadLifecycle'
 import leadsHeroBackground from '../assets/page-heroes/leads-bg.png'
 import { buildHeroBackgroundStyle } from '../utils/heroBackground'
+import { AymeroLoader } from '../components/common/AymeroLoader'
+import { isCollectionInitialLoading } from '../utils/collectionLoading'
 
 const leadFilters = ['All', 'New Lead', 'Contacted', 'Estimate Sent', 'Won', 'Archived']
 
@@ -32,7 +34,7 @@ function isLeadArchived(lead, archivedIds = []) {
   )
 }
 
-export function LeadsPage({ leads, clients = [], estimates = [], archivedIds = [], onViewLead, onCreateLead, onArchiveLead, onRestoreLead, onDeleteLead, language = 'en', t }) {
+export function LeadsPage({ leads, clients = [], estimates = [], archivedIds = [], onViewLead, onCreateLead, onArchiveLead, onRestoreLead, onDeleteLead, language = 'en', t, collectionStatus = 'loaded' }) {
   const [searchTerm, setSearchTerm] = useState('')
   const [selectedFilter, setSelectedFilter] = useState('New Lead')
   const [isCreateOpen, setIsCreateOpen] = useState(false)
@@ -43,6 +45,7 @@ export function LeadsPage({ leads, clients = [], estimates = [], archivedIds = [
   const { contractor, company, session } = useAuth()
   const { isAnalyticsMode } = useAnalyticsMode()
   const contractorId = getLeadsContractorId({ contractor, company, session })
+  const isInitialLoading = isCollectionInitialLoading(collectionStatus)
 
   const leadsWithEstimatedValues = useMemo(() => leads.map((lead) => {
     const relatedEstimates = estimates.filter((estimate) => (
@@ -305,6 +308,9 @@ export function LeadsPage({ leads, clients = [], estimates = [], archivedIds = [
           ))}
         </div>
 
+        {isInitialLoading ? (
+          <AymeroLoader variant="section" title={t('loading')} accessibleLabel={t('loading')} className="rounded-2xl border border-slate-200 bg-slate-50" />
+        ) : <>
         <div className="hidden overflow-hidden rounded-2xl border border-slate-200 md:block">
           <table className="w-full border-collapse text-left text-sm">
             <thead className="bg-slate-50 text-xs font-bold uppercase tracking-wide text-slate-500">
@@ -383,6 +389,7 @@ export function LeadsPage({ leads, clients = [], estimates = [], archivedIds = [
         </div>
 
         {filteredLeads.length === 0 && <div className="rounded-2xl border border-dashed border-slate-300 bg-slate-50 p-8 text-center"><p className="font-bold text-slate-900">{t('noLeadsFound')}</p><p className="mt-2 text-sm text-slate-500">{t('noLeadsFoundHelp')}</p></div>}
+        </>}
       </section>
 
       <LeadFormModal isOpen={isCreateOpen} mode="create" clients={clients} defaultClientLanguage={language} onClose={() => setIsCreateOpen(false)} onSave={handleCreateLead} t={t} />

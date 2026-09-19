@@ -566,11 +566,19 @@ export function PortalSummary({
 
         {showPhotos ? <div className="lg:col-span-2">
           <InfoCard title={<SectionTitle icon={Images} tone="purple">{t('projectPhotos')}</SectionTitle>}>
-            {isLoadingPhotos ? (
+            {isLoadingPhotos && projectPhotos.length === 0 ? (
               <AymeroLoader variant="section" title={t('loading')} accessibleLabel={t('loading')} />
-            ) : photosLoadFailed ? (
+            ) : (
+              <>
+              {isLoadingPhotos ? (
+                <div aria-hidden="true" className="mb-3 flex items-center gap-2 text-xs font-semibold text-slate-500">
+                  <AymeroLoader variant="inline" accessibleLabel={t('loading')} />
+                  {t('loading')}
+                </div>
+              ) : null}
+              {photosLoadFailed ? (
               <CalloutEmptyState icon={CircleAlert} message={t('unableToLoadProjectPhotos')} />
-            ) : hasProjectPhotos ? (
+              ) : hasProjectPhotos ? (
               <div className="grid grid-cols-2 gap-3 sm:grid-cols-3 lg:grid-cols-4">
                 {projectPhotos.map((photo, index) => (
                   <article key={photo.id} className="group overflow-hidden rounded-2xl border border-slate-200 bg-slate-50">
@@ -594,8 +602,10 @@ export function PortalSummary({
                   </article>
                 ))}
               </div>
-            ) : (
+              ) : (
               <CenteredEmptyState icon={Images} message={t('noProjectPhotosUploadedYet')} tone="purple" />
+              )}
+              </>
             )}
           </InfoCard>
         </div> : null}

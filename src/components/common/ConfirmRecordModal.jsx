@@ -1,5 +1,6 @@
 import { useEffect, useRef, useState } from 'react'
 import { ModalShell } from './ModalShell'
+import { LoadingButton } from './LoadingButton'
 
 export function ConfirmRecordModal({ isOpen, mode = 'archive', title, message, confirmLabel, submittingLabel, cancelLabel, onCancel, onConfirm, t }) {
   const [isSubmitting, setIsSubmitting] = useState(false)
@@ -39,12 +40,17 @@ export function ConfirmRecordModal({ isOpen, mode = 'archive', title, message, c
         <p className="mt-2 text-sm leading-6">{message}</p>
       </div>
       <div className="flex flex-col-reverse gap-3 sm:flex-row sm:justify-end">
-        <button disabled={isSubmitting} onClick={onCancel} className="rounded-2xl border border-slate-200 px-4 py-3 text-sm font-bold text-slate-700 hover:bg-slate-50 disabled:cursor-not-allowed disabled:opacity-60">
+        <button type="button" disabled={isSubmitting} onClick={onCancel} className="rounded-2xl border border-slate-200 px-4 py-3 text-sm font-bold text-slate-700 hover:bg-slate-50 disabled:cursor-not-allowed disabled:opacity-60">
           {cancelLabel || t('cancel')}
         </button>
-        <button disabled={isSubmitting} onClick={handleConfirm} className={`rounded-2xl px-4 py-3 text-sm font-bold text-white disabled:cursor-not-allowed disabled:opacity-60 ${isDelete ? 'bg-red-600 hover:bg-red-700 disabled:bg-red-400' : 'bg-slate-950 hover:bg-slate-800 disabled:bg-slate-400'}`}>
-          {isSubmitting ? (submittingLabel || t('saving')) : confirmLabel}
-        </button>
+        <LoadingButton
+          loading={isSubmitting}
+          loadingLabel={submittingLabel || t('saving')}
+          onClick={handleConfirm}
+          className={`rounded-2xl px-4 py-3 text-sm font-bold text-white disabled:cursor-not-allowed disabled:opacity-60 ${isDelete ? 'bg-red-600 hover:bg-red-700 disabled:bg-red-400' : 'bg-slate-950 hover:bg-slate-800 disabled:bg-slate-400'}`}
+        >
+          {confirmLabel}
+        </LoadingButton>
       </div>
     </ModalShell>
   )

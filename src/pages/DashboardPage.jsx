@@ -9,6 +9,7 @@ import { getLeadNextStepKey, getLeadPipelineStage, leadPipelineStageOrder, leadP
 import { calculateOutstandingInvoiceBalance, getInvoiceRemainingBalance, isCollectibleInvoice } from '../utils/invoiceRecords'
 import { isRecordArchived } from '../utils/archiveLifecycle'
 import { findRelatedClient } from '../utils/clients'
+import { AymeroLoader } from '../components/common/AymeroLoader'
 import {
   deriveDashboardProjectStatus,
   findDashboardLinkedLead,
@@ -340,6 +341,7 @@ export function DashboardPage({
   onDismissSampleGuide,
   t,
   userProfile,
+  isInitialLoading = false,
 }) {
   const { isAnalyticsMode } = useAnalyticsMode()
   const [isReminderDismissed, setIsReminderDismissed] = useState(false)
@@ -747,6 +749,9 @@ export function DashboardPage({
 
   return (
     <div className="mx-auto w-full max-w-7xl space-y-6 overflow-x-hidden">
+      {isInitialLoading ? (
+        <AymeroLoader variant="section" title={t('loading')} accessibleLabel={t('loading')} className="rounded-3xl border border-slate-200 bg-white shadow-sm" />
+      ) : <>
       <DashboardHero firstName={firstName} attentionCount={needsAttentionItems.length} todayCount={todaysScheduleItems.length} openProjectCount={activeProjectIds.size} onAttentionClick={() => scrollTo(attentionRef)} onTodayClick={() => scrollTo(scheduleRef)} onProjectsClick={() => scrollTo(projectsRef)} t={t} />
 
       <section aria-labelledby="dashboard-quick-actions-title">
@@ -790,6 +795,7 @@ export function DashboardPage({
       ) : null}
       <SampleWorkspaceGuide guide={sampleGuide} onOpenItem={onOpenSampleGuideItem} onDismiss={onDismissSampleGuide} onCreateLead={onCreateLeadClick} t={t} />
       {successMessage ? <div className="rounded-2xl border border-emerald-200 bg-emerald-50 px-4 py-3 text-sm font-bold text-emerald-700">{successMessage}</div> : null}
+      </>}
     </div>
   )
 }

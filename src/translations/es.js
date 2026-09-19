@@ -20,6 +20,7 @@ export const es = {
   "estimates": "Estimados",
   "jobs": "Trabajos",
   "contracts": "Contratos",
+  "contractsDescription": "Revisa, edita y envía los contratos conectados con tus proyectos.",
   "payments": "Pagos",
   "customerPortal": "Portal del cliente",
   "calendar": "Calendario",
@@ -156,6 +157,9 @@ export const es = {
   "reviewLead": "Revisar cliente potencial",
   "openContract": "Abrir contrato",
   "recordPayment": "Registrar pago",
+  "chooseProjectForPayment": "Elige el proyecto que debe recibir este pago.",
+  "noProjectsForPayment": "No hay proyectos abiertos listos para recibir un pago.",
+  "noProjectsForPaymentHelp": "Crea un trabajo o abre Trabajos para elegir el proyecto antes de registrar el dinero recibido.",
   "deposit": "Depósito",
   "uploadPhotos": "Subir fotos",
   "openCustomerPortal": "Abrir portal del cliente",
@@ -312,6 +316,7 @@ export const es = {
   "totalPrice": "Precio total",
   "saveEstimate": "Guardar estimado",
   "saving": "Guardando...",
+  "sending": "Enviando...",
   "unsavedChanges": "Cambios sin guardar",
   "changesSaved": "Cambios guardados",
   "estimateNotSavedYet": "Aún no se ha guardado",
@@ -2107,7 +2112,7 @@ export const es = {
   ,"onboardingGoToDashboard": "Ir al panel"
   ,"onboardingSaving": "Guardando…"
   ,"onboardingSaved": "Todos los cambios guardados"
-  ,"onboardingSaveError": "No pudimos guardar tu configuración. Revisa tu conexión e inténtalo de nuevo."
+  ,"onboardingSaveError": "No pudimos completar tu configuración. Tu información sigue disponible. Inténtalo de nuevo y contacta a soporte si el problema continúa."
   ,"onboardingCompleteToast": "Tu espacio de trabajo Aymero está listo."
   ,"onboardingReminderTitle": "Termina de personalizar tu espacio"
   ,"onboardingReminderBody": "Completa Configuración de la compañía cuando quieras. Tu progreso guardado te espera."

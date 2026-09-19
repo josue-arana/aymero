@@ -467,7 +467,7 @@ export function AuthOnboardingPage({
                     </button>
                   ) : null}
                   <button type="button" onClick={continueFlow} disabled={isSaving} className="inline-flex min-h-12 items-center justify-center gap-2 rounded-2xl bg-slate-950 px-6 text-sm font-bold text-white shadow-lg shadow-slate-950/15 transition hover:-translate-y-0.5 hover:bg-blue-700 disabled:translate-y-0 disabled:cursor-not-allowed disabled:opacity-60">
-                    {isSaving ? t('onboardingSaving') : step === 1 ? t('onboardingGetStarted') : t('continue')}
+                    {isSaving ? t('onboardingSaving') : errorMessage ? t('retry') : step === 1 ? t('onboardingGetStarted') : t('continue')}
                     {!isSaving ? <ArrowRight className="h-4 w-4" /> : null}
                   </button>
                 </div>

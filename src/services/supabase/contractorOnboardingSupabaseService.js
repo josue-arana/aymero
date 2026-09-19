@@ -22,9 +22,12 @@ function readSingleRow(data) {
 }
 
 function normalizeError(error, fallbackMessage) {
+  const technicalMessage = error?.message || fallbackMessage
+
   if (error?.status === 403) {
     return {
-      message: 'Automatic beta onboarding is blocked by Supabase permissions. Check the onboarding RPC and grants.',
+      message: fallbackMessage,
+      technicalMessage: 'Automatic beta onboarding is blocked by Supabase permissions. Check the onboarding RPC and grants.',
       details: error?.details || null,
       code: error?.code || 'ONBOARDING_PERMISSION_DENIED',
       status: error?.status || null,
@@ -32,7 +35,8 @@ function normalizeError(error, fallbackMessage) {
   }
 
   return {
-    message: error?.message || fallbackMessage,
+    message: fallbackMessage,
+    technicalMessage,
     details: error?.details || null,
     code: error?.code || null,
     status: error?.status || null,
@@ -90,6 +94,11 @@ export async function completeBetaContractorOnboarding({
   } catch (error) {
     const normalizedError = normalizeError(error, 'Unable to complete contractor onboarding.')
     setOnboardingRuntimeStatus('error', normalizedError)
+
+    if (import.meta.env.DEV) {
+      // eslint-disable-next-line no-console
+      console.error('[dev] Contractor onboarding failed.', normalizedError)
+    }
 
     return {
       data: null,

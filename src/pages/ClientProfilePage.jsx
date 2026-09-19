@@ -25,6 +25,8 @@ import { ActionMenu } from '../components/common/ActionMenu'
 import { RecordBackButton } from '../components/common/RecordBackButton'
 import { deriveProjectStatus } from '../utils/projectLifecycle'
 import { resolveClientContactActions } from '../utils/clientContactActions'
+import { AymeroLoader } from '../components/common/AymeroLoader'
+import { isCollectionInitialLoading } from '../utils/collectionLoading'
 
 function isClientArchived(client, archivedClientIds = []) {
   return Boolean(
@@ -148,7 +150,7 @@ function formatRelativeTimestamp(value, t = (key) => key) {
   return weeks === 1 ? `1 ${t('weekAgo')}` : `${weeks} ${t('weeksAgo')}`
 }
 
-export function ClientProfilePage({ leads, customClients = [], projects = [], archivedClientIds = [], onBack, onOpenProject, onOpenLead, onOpenEstimate, onOpenContract, onCreateJob, onUpdateClient, onArchiveClient, onRestoreClient, onDeleteClient, language = 'en', t }) {
+export function ClientProfilePage({ leads, customClients = [], projects = [], archivedClientIds = [], onBack, onOpenProject, onOpenLead, onOpenEstimate, onOpenContract, onCreateJob, onUpdateClient, onArchiveClient, onRestoreClient, onDeleteClient, language = 'en', t, collectionStatus = 'loaded' }) {
   const { clientId } = useParams()
   const [isEditOpen, setIsEditOpen] = useState(false)
   const [confirmAction, setConfirmAction] = useState(null)
@@ -158,6 +160,7 @@ export function ClientProfilePage({ leads, customClients = [], projects = [], ar
   const contractorRuntimeId = getClientsContractorId({ contractor, company, session })
   const showAnalyticsSections = isAnalyticsMode
   const showDocumentInsightSections = isAnalyticsMode
+  const isInitialLoading = isCollectionInitialLoading(collectionStatus)
   const clients = useMemo(() => buildClientProfiles(leads, customClients, projects), [leads, customClients, projects])
   const client = clients.find((item) => item.id === clientId)
   const isArchived = isClientArchived(client, archivedClientIds)
@@ -417,6 +420,10 @@ export function ClientProfilePage({ leads, customClients = [], projects = [], ar
 
     return Array.from(contractsByKey.values())
   }, [projectCards, t])
+
+  if (isInitialLoading) {
+    return <AymeroLoader variant="section" title={t('loading')} accessibleLabel={t('loading')} className="rounded-3xl border border-slate-200 bg-white shadow-sm" />
+  }
 
   if (!client) {
     return (

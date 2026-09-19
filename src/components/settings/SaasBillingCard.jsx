@@ -2,6 +2,7 @@ import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
 import { CreditCard, LoaderCircle, RefreshCw, TriangleAlert } from 'lucide-react'
 import { useToast } from '../common/ToastProvider'
 import { AymeroLoader } from '../common/AymeroLoader'
+import { LoadingButton } from '../common/LoadingButton'
 import { useAuth } from '../../contexts/AuthContext'
 import {
   AYMERO_MANAGED_PLAN_KEY,
@@ -370,16 +371,18 @@ export function SaasBillingCard({ language, t }) {
             {hasAuthoritativeResult && subscription && !canStartNewSubscription && !loadError ? (
               <div className="w-full md:w-56">
                 {canManageBilling ? (
-                  <button
+                  <LoadingButton
                     type="button"
                     onClick={openSubscriptionManagement}
-                    disabled={isOpeningPortal || !accessToken}
+                    loading={isOpeningPortal}
+                    loadingLabel={t('billingOpeningPortal')}
+                    disabled={!accessToken}
                     aria-busy={isOpeningPortal}
                     className="inline-flex min-h-12 w-full items-center justify-center gap-2 rounded-2xl bg-blue-600 px-5 text-center text-sm font-bold text-white transition hover:bg-blue-700 focus-visible:outline-none focus-visible:ring-4 focus-visible:ring-blue-100 disabled:cursor-not-allowed disabled:opacity-60"
                   >
-                    {isOpeningPortal ? <LoaderCircle className="h-4 w-4 animate-spin" aria-hidden="true" /> : <CreditCard className="h-4 w-4" aria-hidden="true" />}
-                    {isOpeningPortal ? t('billingOpeningPortal') : t('manageSubscription')}
-                  </button>
+                    <CreditCard className="h-4 w-4" aria-hidden="true" />
+                    {t('manageSubscription')}
+                  </LoadingButton>
                 ) : (
                   <p className="rounded-2xl border border-slate-200 bg-slate-50 p-4 text-sm leading-6 text-slate-600">{t('billingManageOwnerAdminOnly')}</p>
                 )}
@@ -387,18 +390,18 @@ export function SaasBillingCard({ language, t }) {
             ) : hasAuthoritativeResult && canStartNewSubscription && !isSyncPending && !isSyncDelayed && !loadError ? (
               <div className="w-full md:w-56">
                 {canManageBilling ? (
-                  <button
+                  <LoadingButton
                     type="button"
                     onClick={startCheckout}
-                    disabled={isStartingCheckout || !accessToken}
+                    loading={isStartingCheckout}
+                    loadingLabel={t('billingOpeningCheckout')}
+                    disabled={!accessToken}
                     aria-busy={isStartingCheckout}
                     className="inline-flex min-h-12 w-full items-center justify-center gap-2 rounded-2xl bg-blue-600 px-5 text-sm font-bold text-white transition hover:bg-blue-700 focus-visible:outline-none focus-visible:ring-4 focus-visible:ring-blue-100 disabled:cursor-not-allowed disabled:opacity-60"
                   >
-                    {isStartingCheckout ? <LoaderCircle className="h-4 w-4 animate-spin" aria-hidden="true" /> : <CreditCard className="h-4 w-4" aria-hidden="true" />}
-                    {isStartingCheckout
-                      ? t('billingOpeningCheckout')
-                      : t(subscription?.status === 'canceled' ? 'billingSubscribeAgain' : 'billingSubscribeWithStripe')}
-                  </button>
+                    <CreditCard className="h-4 w-4" aria-hidden="true" />
+                    {t(subscription?.status === 'canceled' ? 'billingSubscribeAgain' : 'billingSubscribeWithStripe')}
+                  </LoadingButton>
                 ) : (
                   <p className="rounded-2xl border border-slate-200 bg-slate-50 p-4 text-sm leading-6 text-slate-600">{t('billingOwnerAdminOnly')}</p>
                 )}
