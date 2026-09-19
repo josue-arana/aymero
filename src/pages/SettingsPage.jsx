@@ -16,6 +16,7 @@ import {
   serializeAcceptedPaymentMethods,
 } from '../utils/acceptedPaymentMethods'
 import { ConfirmRecordModal } from '../components/common/ConfirmRecordModal'
+import { LoadingButton } from '../components/common/LoadingButton'
 import {
   hasCompleteSampleWorkspaceManifest,
   hasSampleWorkspace,
@@ -689,9 +690,9 @@ export function SettingsPage({ settings, onSaveSettings, onOpenCompanySetup, onC
                 <p className="mt-1 text-xs leading-5 text-slate-500">{t('settingsSaveHelp')}</p>
               </div>
             </div>
-            <button type="button" onClick={saveSettings} disabled={isSaving} aria-busy={isSaving} className="mt-4 inline-flex min-h-12 w-full items-center justify-center gap-2 rounded-2xl bg-blue-600 px-5 text-sm font-bold text-white transition hover:bg-blue-700 focus-visible:outline-none focus-visible:ring-4 focus-visible:ring-blue-100 disabled:cursor-not-allowed disabled:opacity-60">
-              <Save className="h-4 w-4" aria-hidden="true" /> {isSaving ? t('saving') : t('saveSettings')}
-            </button>
+            <LoadingButton type="button" onClick={saveSettings} loading={isSaving} loadingLabel={t('saving')} className="mt-4 inline-flex min-h-12 w-full items-center justify-center gap-2 rounded-2xl bg-blue-600 px-5 text-sm font-bold text-white transition hover:bg-blue-700 focus-visible:outline-none focus-visible:ring-4 focus-visible:ring-blue-100 disabled:cursor-not-allowed disabled:opacity-60">
+              <Save className="h-4 w-4" aria-hidden="true" /> {t('saveSettings')}
+            </LoadingButton>
           </section>
         </aside>
       </section>

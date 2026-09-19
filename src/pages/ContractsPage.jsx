@@ -31,6 +31,7 @@ import { ESTIMATE_PAPER_MARGIN } from '../utils/estimatePagination'
 import { archiveMenuItemClasses } from '../utils/buttonStyles'
 import { resolveNavigationContext } from '../utils/navigationContext'
 import { AymeroLoader } from '../components/common/AymeroLoader'
+import { LoadingButton } from '../components/common/LoadingButton'
 import { isCollectionInitialLoading } from '../utils/collectionLoading'
 
 function formatContractDate(value, language = 'en') {
@@ -432,7 +433,7 @@ export function ContractPreviewPage({ lead, clientRecord = null, t, appLanguage 
         </div>
         <div className="mb-6 grid gap-3 sm:grid-cols-2 xl:grid-cols-6">
           {isEditing ? (
-            <button disabled={isSavingContract} onClick={saveContract} className="rounded-2xl bg-blue-600 px-4 py-3 text-sm font-bold text-white disabled:cursor-not-allowed disabled:bg-blue-400">{isSavingContract ? t('saving') : t('saveContract')}</button>
+            <LoadingButton loading={isSavingContract} loadingLabel={t('saving')} onClick={saveContract} className="rounded-2xl bg-blue-600 px-4 py-3 text-sm font-bold text-white disabled:cursor-not-allowed disabled:bg-blue-400">{t('saveContract')}</LoadingButton>
           ) : (
             <button onClick={() => setIsEditing(true)} className="rounded-2xl border border-slate-200 px-4 py-3 text-sm font-bold">{t('editContract')}</button>
           )}

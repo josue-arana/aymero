@@ -1,6 +1,7 @@
 import { useEffect, useState } from 'react'
 import { ImagePlus, Upload, X } from 'lucide-react'
 import { ModalShell } from './ModalShell'
+import { LoadingButton } from './LoadingButton'
 
 const ACCEPTED_PROJECT_PHOTO_TYPES = '.jpg,.jpeg,.png,.webp'
 
@@ -110,13 +111,15 @@ export function PhotoUploadModal({ isOpen, isSaving = false, onClose, onSave, t 
           >
             {t('cancel')}
           </button>
-          <button
+          <LoadingButton
+            loading={isSaving}
+            loadingLabel={t('saving')}
             type="submit"
-            disabled={!files.length || isSaving}
+            disabled={!files.length}
             className="rounded-2xl bg-blue-600 px-4 py-3 text-sm font-bold text-white hover:bg-blue-700 disabled:cursor-not-allowed disabled:bg-slate-300"
           >
-            {isSaving ? t('loading') : t('savePhotos')}
-          </button>
+            {t('savePhotos')}
+          </LoadingButton>
         </div>
       </form>
     </ModalShell>

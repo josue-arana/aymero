@@ -312,6 +312,7 @@ export const en = {
   "totalPrice": "Total Price",
   "saveEstimate": "Save Estimate",
   "saving": "Saving...",
+  "sending": "Sending...",
   "unsavedChanges": "Unsaved changes",
   "changesSaved": "Changes saved",
   "estimateNotSavedYet": "Not saved yet",

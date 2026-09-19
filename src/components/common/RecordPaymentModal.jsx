@@ -1,5 +1,6 @@
 import { useEffect, useMemo, useRef, useState } from 'react'
 import { ModalShell } from './ModalShell'
+import { LoadingButton } from './LoadingButton'
 import { SelectField } from '../ui/SelectField'
 import { currency } from '../../utils/formatters'
 import { getEligiblePaymentInvoices, getInvoicePaymentRemaining } from '../../utils/paymentAllocation'
@@ -188,16 +189,17 @@ export function RecordPaymentModal({ isOpen, projectBalance = null, projectValue
       ) : null}
 
       <div className="mt-5 flex flex-col-reverse gap-3 sm:flex-row sm:justify-end">
-        <button disabled={isSubmitting} onClick={onClose} className="rounded-2xl border border-slate-200 px-4 py-3 text-sm font-bold text-slate-700 hover:bg-slate-50 disabled:cursor-not-allowed disabled:opacity-60">
+        <button type="button" disabled={isSubmitting} onClick={onClose} className="rounded-2xl border border-slate-200 px-4 py-3 text-sm font-bold text-slate-700 hover:bg-slate-50 disabled:cursor-not-allowed disabled:opacity-60">
           {t('cancel')}
         </button>
-        <button
-          disabled={isSubmitting}
+        <LoadingButton
+          loading={isSubmitting}
+          loadingLabel={t('saving')}
           onClick={handleSave}
           className="rounded-2xl bg-blue-600 px-4 py-3 text-sm font-bold text-white hover:bg-blue-700 disabled:cursor-not-allowed disabled:bg-blue-400"
         >
-          {isSubmitting ? t('saving') : t(isEditing ? 'saveChanges' : 'savePayment')}
-        </button>
+          {t(isEditing ? 'saveChanges' : 'savePayment')}
+        </LoadingButton>
       </div>
     </ModalShell>
   )

@@ -312,6 +312,7 @@ export const es = {
   "totalPrice": "Precio total",
   "saveEstimate": "Guardar estimado",
   "saving": "Guardando...",
+  "sending": "Enviando...",
   "unsavedChanges": "Cambios sin guardar",
   "changesSaved": "Cambios guardados",
   "estimateNotSavedYet": "Aún no se ha guardado",

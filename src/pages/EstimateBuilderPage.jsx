@@ -14,6 +14,7 @@ import { currency, formatDisplayDate } from '../utils/formatters'
 import { getPortalData, resolvePublicEstimateShare, resolvePublicEstimateShareUrl } from '../utils/portal'
 import { ESTIMATE_SHARE_RESOLUTION } from '../utils/estimateShare'
 import { ConfirmRecordModal } from '../components/common/ConfirmRecordModal'
+import { LoadingButton } from '../components/common/LoadingButton'
 import { SendToCustomerModal } from '../components/common/SendToCustomerModal'
 import { ModalShell } from '../components/common/ModalShell'
 import { RecordBackButton } from '../components/common/RecordBackButton'
@@ -1491,7 +1492,7 @@ export function EstimateBuilderPage({ lead, clientRecord = null, t, appLanguage 
                 </span>
                 <span className="shrink-0 text-[0.68rem] font-bold uppercase tracking-[0.14em] text-slate-400">{t('estimate')}</span>
               </div>
-              <button disabled={isSavingEstimate} onClick={saveEstimate} className="w-full min-h-12 rounded-xl border border-slate-200 bg-slate-50 px-4 py-3 text-sm font-bold text-slate-800 hover:bg-white disabled:cursor-not-allowed disabled:opacity-60">{isSavingEstimate ? t('saving') : t('saveEstimate')}</button>
+              <LoadingButton loading={isSavingEstimate} loadingLabel={t('saving')} onClick={saveEstimate} className="w-full min-h-12 rounded-xl border border-slate-200 bg-slate-50 px-4 py-3 text-sm font-bold text-slate-800 hover:bg-white disabled:cursor-not-allowed disabled:opacity-60">{t('saveEstimate')}</LoadingButton>
             </div>
           )}
           <button onClick={() => setShowPreviewModal(true)} className="w-full min-h-12 rounded-2xl border border-slate-200 bg-white px-4 py-3 text-sm font-bold text-slate-800 hover:bg-slate-50 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-blue-500 focus-visible:ring-offset-2">{t('previewPdf')}</button>

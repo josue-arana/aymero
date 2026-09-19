@@ -13,6 +13,7 @@ import { useToast } from '../components/common/ToastProvider'
 import ActionMenu from '../components/common/ActionMenu'
 import { RecordBackButton } from '../components/common/RecordBackButton'
 import { AymeroLoader } from '../components/common/AymeroLoader'
+import { LoadingButton } from '../components/common/LoadingButton'
 import dataProvider from '../services/dataProvider'
 import { useAuth } from '../contexts/AuthContext'
 import { getInvoicesContractorId } from '../services/system/invoicesRuntimeService'
@@ -1052,15 +1053,17 @@ export function InvoiceDetailRoute({ companySettings, leads, clients = [], proje
                   >
                     {t('cancel')}
                   </button>
-                  <button
+                  <LoadingButton
                     type="button"
-                    disabled={isInvoiceActionPending}
+                    loading={isSavingInvoice}
+                    loadingLabel={t('saving')}
+                    disabled={isRunningInvoiceAction}
                     onClick={saveInvoice}
                     className="inline-flex min-h-11 items-center justify-center gap-2 rounded-2xl bg-blue-600 px-4 py-2.5 text-sm font-bold text-white transition hover:bg-blue-700 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-blue-500 focus-visible:ring-offset-2 disabled:cursor-not-allowed disabled:bg-blue-400"
                   >
                     <Save className="h-4 w-4" aria-hidden="true" />
-                    {isSavingInvoice ? t('saving') : t('save')}
-                  </button>
+                    {t('save')}
+                  </LoadingButton>
                 </div>
               ) : (
                 <button
@@ -1608,7 +1611,7 @@ function RecordPaymentModal({ isOpen, remainingBalance, onClose, onSave, t }) {
         <label className="text-sm font-bold text-slate-700">{t('paymentType')}<select value={payment.type} onChange={(event) => setPayment((current) => ({ ...current, type: event.target.value }))} className="mt-2 w-full rounded-2xl border border-slate-200 bg-slate-50 px-4 py-3 outline-none focus:border-blue-500">{paymentTypes.map((type) => <option key={type} value={type}>{t(type)}</option>)}</select></label>
       </div>
       <label className="mt-4 block text-sm font-bold text-slate-700">{t('notes')}<textarea value={payment.notes} onChange={(event) => setPayment((current) => ({ ...current, notes: event.target.value }))} rows={3} className="mt-2 w-full rounded-2xl border border-slate-200 bg-slate-50 px-4 py-3 outline-none focus:border-blue-500" /></label>
-      <div className="mt-5 flex flex-col-reverse gap-3 sm:flex-row sm:justify-end"><button disabled={isSubmitting} onClick={onClose} className="rounded-2xl border border-slate-200 px-4 py-3 text-sm font-bold text-slate-700 hover:bg-slate-50 disabled:cursor-not-allowed disabled:opacity-60">{t('cancel')}</button><button disabled={isSubmitting} onClick={async () => {
+      <div className="mt-5 flex flex-col-reverse gap-3 sm:flex-row sm:justify-end"><button type="button" disabled={isSubmitting} onClick={onClose} className="rounded-2xl border border-slate-200 px-4 py-3 text-sm font-bold text-slate-700 hover:bg-slate-50 disabled:cursor-not-allowed disabled:opacity-60">{t('cancel')}</button><LoadingButton loading={isSubmitting} loadingLabel={t('saving')} onClick={async () => {
         if (submitGuardRef.current) {
           return
         }
@@ -1622,7 +1625,7 @@ function RecordPaymentModal({ isOpen, remainingBalance, onClose, onSave, t }) {
           submitGuardRef.current = false
           setIsSubmitting(false)
         }
-      }} className="rounded-2xl bg-blue-600 px-4 py-3 text-sm font-bold text-white hover:bg-blue-700 disabled:cursor-not-allowed disabled:bg-blue-400">{isSubmitting ? t('saving') : t('savePayment')}</button></div>
+      }} className="rounded-2xl bg-blue-600 px-4 py-3 text-sm font-bold text-white hover:bg-blue-700 disabled:cursor-not-allowed disabled:bg-blue-400">{t('savePayment')}</LoadingButton></div>
     </ModalShell>
   )
 }

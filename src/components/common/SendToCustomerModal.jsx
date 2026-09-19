@@ -1,5 +1,6 @@
 import { useEffect, useMemo, useRef, useState } from 'react'
 import { ModalShell } from './ModalShell'
+import { LoadingButton } from './LoadingButton'
 import { normalizePortalShareUrl } from '../../utils/portal'
 import { buildCustomerDeliveryContent, getCustomerDeliveryAvailability } from '../../utils/customerDelivery'
 
@@ -36,9 +37,6 @@ export function SendToCustomerModal({ isOpen, documentType = 'invoice', customer
       hasEmail ? { id: 'email', label: t('email') } : null,
     ].filter(Boolean)
   ), [hasEmail, hasPhone, t])
-  const primaryActionLabel = channel === 'email'
-    ? (isSubmitting ? t('saving') : hasEmail ? t('sendEmailNow') : t('noEmailOnFile'))
-    : (isSubmitting ? t('saving') : hasPhone ? t('sendTextNow') : t('noPhoneOnFile'))
   const messageContent = useMemo(() => {
     return buildCustomerDeliveryContent({
       documentType,
@@ -161,14 +159,16 @@ export function SendToCustomerModal({ isOpen, documentType = 'invoice', customer
       </div> : null}
 
       <div className="mt-5 grid gap-3 sm:grid-cols-2">
-        <button
+        <LoadingButton
           type="button"
+          loading={isSubmitting}
+          loadingLabel={t('sending')}
           disabled={isSubmitting || !deliveryAvailability[channel]}
           onClick={channel === 'email' ? sendEmail : sendText}
           className="rounded-2xl bg-blue-600 px-4 py-4 text-sm font-bold text-white hover:bg-blue-700 disabled:cursor-not-allowed disabled:bg-slate-300"
         >
-          {primaryActionLabel}
-        </button>
+          {channel === 'email' ? (hasEmail ? t('sendEmailNow') : t('noEmailOnFile')) : (hasPhone ? t('sendTextNow') : t('noPhoneOnFile'))}
+        </LoadingButton>
         <button
           type="button"
           disabled={isSubmitting}
