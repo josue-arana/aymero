@@ -17,6 +17,8 @@ import dataProvider from '../services/dataProvider'
 import { getClientsContractorId } from '../services/system/clientsRuntimeService'
 import clientsHeroBackground from '../assets/page-heroes/clients-bg.png'
 import { buildHeroBackgroundStyle } from '../utils/heroBackground'
+import { AymeroLoader } from '../components/common/AymeroLoader'
+import { isCollectionInitialLoading } from '../utils/collectionLoading'
 
 const clientFilters = ['Active', 'Archived']
 
@@ -29,7 +31,7 @@ function isClientArchived(client, archivedClientIds = []) {
   )
 }
 
-export function ClientsPage({ leads, customClients = [], archivedClientIds = [], onOpenClient, onCreateClient, onArchiveClient, onRestoreClient, onDeleteClient, language = 'en', t }) {
+export function ClientsPage({ leads, customClients = [], archivedClientIds = [], onOpenClient, onCreateClient, onArchiveClient, onRestoreClient, onDeleteClient, language = 'en', t, collectionStatus = 'loaded' }) {
   const location = useLocation()
   const navigate = useNavigate()
   const [searchTerm, setSearchTerm] = useState('')
@@ -42,6 +44,7 @@ export function ClientsPage({ leads, customClients = [], archivedClientIds = [],
   const { contractor, company, session } = useAuth()
   const { isAnalyticsMode } = useAnalyticsMode()
   const contractorId = getClientsContractorId({ contractor, company, session })
+  const isInitialLoading = isCollectionInitialLoading(collectionStatus)
 
   useEffect(() => {
     if (!location.state?.createClient) return
@@ -286,6 +289,9 @@ export function ClientsPage({ leads, customClients = [], archivedClientIds = [],
           ))}
         </div>
 
+        {isInitialLoading ? (
+          <AymeroLoader variant="section" title={t('loading')} accessibleLabel={t('loading')} className="rounded-2xl border border-slate-200 bg-slate-50" />
+        ) : <>
         <div className="hidden overflow-hidden rounded-2xl border border-slate-200 md:block">
           <table className="w-full border-collapse text-left text-sm">
             <thead className="bg-slate-50 text-xs font-bold uppercase tracking-wide text-slate-500">
@@ -348,6 +354,7 @@ export function ClientsPage({ leads, customClients = [], archivedClientIds = [],
         </div>
 
         {filteredClients.length === 0 && <div className="rounded-2xl border border-dashed border-slate-300 bg-slate-50 p-8 text-center"><p className="font-bold text-slate-900">{t('noClientsFound')}</p><p className="mt-2 text-sm text-slate-500">{t('noClientsFoundHelp')}</p></div>}
+        </>}
       </section>
       <ClientFormModal
         isOpen={isCreateOpen}

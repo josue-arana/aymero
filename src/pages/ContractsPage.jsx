@@ -30,6 +30,8 @@ import { normalizeDocumentLanguageOverride, resolveClientFacingLanguage } from '
 import { ESTIMATE_PAPER_MARGIN } from '../utils/estimatePagination'
 import { archiveMenuItemClasses } from '../utils/buttonStyles'
 import { resolveNavigationContext } from '../utils/navigationContext'
+import { AymeroLoader } from '../components/common/AymeroLoader'
+import { isCollectionInitialLoading } from '../utils/collectionLoading'
 
 function formatContractDate(value, language = 'en') {
   const locale = language === 'es' ? 'es-ES' : 'en-US'
@@ -844,10 +846,11 @@ export function ContractRoute({ companySettings, leads, clients = [], projects =
   )
 }
 
-export function ContractsPage({ leads, contracts = [], onViewContract, onRestoreContract, onDeleteContract, t }) {
+export function ContractsPage({ leads, contracts = [], onViewContract, onRestoreContract, onDeleteContract, t, collectionStatus = 'loaded' }) {
   const [selectedFilter, setSelectedFilter] = useState('Active')
   const [confirmAction, setConfirmAction] = useState(null)
   const usesSupabaseContracts = USE_SUPABASE || USE_SUPABASE_CONTRACTS
+  const isInitialLoading = isCollectionInitialLoading(collectionStatus)
   const contractRows = usesSupabaseContracts && contracts.length > 0
     ? dedupeById(
       contracts,
@@ -914,6 +917,9 @@ export function ContractsPage({ leads, contracts = [], onViewContract, onRestore
             </FilterChip>
           ))}
         </div>
+        {isInitialLoading ? (
+          <AymeroLoader variant="section" title={t('loading')} accessibleLabel={t('loading')} className="rounded-3xl border border-slate-200 bg-slate-50" />
+        ) : <>
         {filteredContracts.map((contract) => (
           <article key={contract.id} className="rounded-3xl border border-slate-200 bg-white p-5 shadow-sm">
             <div className="flex flex-col justify-between gap-4 sm:flex-row sm:items-center">
@@ -956,6 +962,7 @@ export function ContractsPage({ leads, contracts = [], onViewContract, onRestore
         {!filteredContracts.length ? (
           <div className="rounded-3xl border border-dashed border-slate-300 bg-slate-50 p-6 text-center text-sm text-slate-500">{t('noContracts')}</div>
         ) : null}
+        </>}
       </section>
       <ConfirmRecordModal
         isOpen={Boolean(confirmAction)}

@@ -2167,14 +2167,22 @@ function ProjectDetailPageContent({ lead, companySettings, clients = [], estimat
           {t('projectPhotoFileHelp', { size: Math.round(PROJECT_PHOTO_MAX_FILE_SIZE_BYTES / (1024 * 1024)) })}
         </div>
 
-        {isLoadingPhotos ? (
+        {isLoadingPhotos && galleryPhotos.length === 0 ? (
           <AymeroLoader
             variant="section"
             title={t('loading')}
             accessibleLabel={t('loading')}
             className="rounded-2xl border border-dashed border-slate-300 bg-slate-50"
           />
-        ) : galleryPhotos.length > 0 ? (
+        ) : (
+          <>
+          {isLoadingPhotos ? (
+            <div aria-hidden="true" className="mb-3 flex items-center gap-2 text-xs font-semibold text-slate-500">
+              <AymeroLoader variant="inline" accessibleLabel={t('loading')} />
+              {t('loading')}
+            </div>
+          ) : null}
+          {galleryPhotos.length > 0 ? (
           <div className="grid gap-3 [grid-template-columns:repeat(auto-fit,minmax(min(100%,9rem),1fr))]">
             {galleryPhotos.map((photo) => {
               const photoLoadFailed = failedPhotoIds.includes(photo.id)
@@ -2221,11 +2229,13 @@ function ProjectDetailPageContent({ lead, companySettings, clients = [], estimat
               )
             })}
           </div>
-        ) : (
+          ) : (
           <div className="rounded-2xl border border-dashed border-slate-300 bg-slate-50 p-6 text-center">
             <p className="font-bold text-slate-900">{t('projectPhotos')}</p>
             <p className="mt-1 text-sm text-slate-500">{t('noPhotosUploadedYet')}</p>
           </div>
+          )}
+          </>
         )}
       </section> : null}
 

@@ -22,6 +22,8 @@ import { findRelatedClient } from '../utils/clients'
 import { getLanguageLocale, resolveClientFacingLanguage } from '../utils/language'
 import { isRecordArchived } from '../utils/archiveLifecycle'
 import { calculateInvoiceBillingCapacity, validateInvoiceAgainstBillingCapacity } from '../utils/invoiceBilling'
+import { AymeroLoader } from '../components/common/AymeroLoader'
+import { isCollectionInitialLoading } from '../utils/collectionLoading'
 
 const invoiceFilters = ['All', 'Archived', 'Draft', 'Sent', 'Paid', 'Overdue', 'Canceled']
 
@@ -40,7 +42,7 @@ function formatLocalizedInvoiceDate(value, language = 'en') {
   })
 }
 
-export function InvoicesPage({ leads, clients = [], projects = [], estimates = [], contracts = [], payments = [], invoices: invoiceRecords = [], archivedIds = [], deletedIds = [], onCreateInvoice, onViewInvoice, onRecordPayment, onArchiveInvoice, onRestoreInvoice, onDeleteInvoice, onInvoiceSent, t, appLanguage = 'en' }) {
+export function InvoicesPage({ leads, clients = [], projects = [], estimates = [], contracts = [], payments = [], invoices: invoiceRecords = [], archivedIds = [], deletedIds = [], onCreateInvoice, onViewInvoice, onRecordPayment, onArchiveInvoice, onRestoreInvoice, onDeleteInvoice, onInvoiceSent, t, appLanguage = 'en', collectionStatus = 'loaded' }) {
   const [selectedFilter, setSelectedFilter] = useState('All')
   const [confirmAction, setConfirmAction] = useState(null)
   const [sendInvoice, setSendInvoice] = useState(null)
@@ -50,6 +52,7 @@ export function InvoicesPage({ leads, clients = [], projects = [], estimates = [
   const { isAnalyticsMode } = useAnalyticsMode()
   const { contractor, company, session } = useAuth()
   const contractorId = getInvoicesContractorId({ contractor, company, session })
+  const isInitialLoading = isCollectionInitialLoading(collectionStatus)
 
   const invoices = useMemo(() => invoiceRecords.filter((invoice) => !deletedIds.includes(invoice.id)).map((invoice) => {
     const lead = findRelatedLeadForInvoice(leads, invoice)
@@ -274,6 +277,9 @@ export function InvoicesPage({ leads, clients = [], projects = [], estimates = [
           ))}
         </div>
 
+        {isInitialLoading ? (
+          <AymeroLoader variant="section" title={t('loading')} accessibleLabel={t('loading')} className="rounded-2xl border border-slate-200 bg-slate-50" />
+        ) : <>
         <div className="hidden overflow-hidden rounded-2xl border border-slate-200 lg:block">
           <table className="w-full border-collapse text-left text-sm">
             <thead className="bg-slate-50 text-xs font-bold uppercase tracking-wide text-slate-500">
@@ -326,6 +332,7 @@ export function InvoicesPage({ leads, clients = [], projects = [], estimates = [
             </article>
           ))}
         </div>
+        </>}
       </section>
       <ConfirmRecordModal isOpen={Boolean(confirmAction)} mode={confirmAction?.mode} title={confirmAction?.mode === 'delete' ? t('confirmPermanentDelete') : t('confirmArchive')} message={confirmAction?.mode === 'delete' ? t('permanentDeleteHelp') : t('archiveHelp')} confirmLabel={confirmAction?.mode === 'delete' ? t('deletePermanently') : t('archive')} onCancel={() => setConfirmAction(null)} onConfirm={runConfirmAction} t={t} />
       <SendToCustomerModal

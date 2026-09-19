@@ -14,6 +14,8 @@ import { scheduleEventTypes } from '../data/mockScheduleEvents'
 import { tStatus } from '../translations'
 import calendarHeroBackground from '../assets/page-heroes/calendar-bg.png'
 import { buildHeroBackgroundStyle } from '../utils/heroBackground'
+import { AymeroLoader } from '../components/common/AymeroLoader'
+import { isCollectionInitialLoading } from '../utils/collectionLoading'
 
 function toDateKey(date) {
   const year = date.getFullYear()
@@ -76,7 +78,7 @@ function getEventStatus(event) {
   return event.status || 'Scheduled'
 }
 
-export function CalendarPage({ leads, scheduleEvents = [], onCreateEvent, onExportEvent, onViewProject, onViewLead, onMarkComplete, t, language = 'en' }) {
+export function CalendarPage({ leads, scheduleEvents = [], onCreateEvent, onExportEvent, onViewProject, onViewLead, onMarkComplete, t, language = 'en', collectionStatus = 'loaded' }) {
   const [selectedFilter, setSelectedFilter] = useState('All')
   const [selectedMonth, setSelectedMonth] = useState(() => new Date(currentDate.getFullYear(), currentDate.getMonth(), 1))
   const [completingEventIds, setCompletingEventIds] = useState([])
@@ -85,6 +87,7 @@ export function CalendarPage({ leads, scheduleEvents = [], onCreateEvent, onExpo
   const { contractor, company, session } = useAuth()
   const { isAnalyticsMode } = useAnalyticsMode()
   const contractorId = getEventsContractorId({ contractor, company, session })
+  const isInitialLoading = isCollectionInitialLoading(collectionStatus)
 
   const events = useMemo(() => scheduleEvents.map((event) => {
     const lead = leads.find((item) => item.id === event.leadId)
@@ -183,6 +186,10 @@ export function CalendarPage({ leads, scheduleEvents = [], onCreateEvent, onExpo
         </section>
       )}
 
+      {isInitialLoading ? (
+        <AymeroLoader variant="section" title={t('loading')} accessibleLabel={t('loading')} className="rounded-3xl border border-slate-200 bg-white shadow-sm" />
+      ) : (
+      <>
       <section className="rounded-3xl border border-slate-200 bg-white p-4 shadow-sm sm:p-5">
         <div className="mb-5 flex flex-col justify-between gap-4 lg:flex-row lg:items-center">
           <div>
@@ -341,6 +348,8 @@ export function CalendarPage({ leads, scheduleEvents = [], onCreateEvent, onExpo
           ))}
         </div>
       </section>
+      </>
+      )}
 
       <ScheduleEventModal isOpen={isScheduleOpen} leads={leads} onClose={() => setIsScheduleOpen(false)} onSave={async (event) => {
         try {

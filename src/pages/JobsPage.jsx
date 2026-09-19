@@ -1,4 +1,4 @@
-import { useEffect, useMemo, useRef, useState } from 'react'
+import { useMemo, useRef, useState } from 'react'
 import { Archive, BriefcaseBusiness, CalendarDays, CheckCircle2, DollarSign, MoreVertical, Trash2, Undo2, Zap } from 'lucide-react'
 import { MetricCard } from '../components/ui/MetricCard'
 import { SelectField } from '../components/ui/SelectField'
@@ -21,15 +21,11 @@ import jobsHeroBackground from '../assets/page-heroes/jobs-bg.png'
 import { buildHeroBackgroundStyle } from '../utils/heroBackground'
 import { useToast } from '../components/common/ToastProvider'
 import { deriveProjectStatus } from '../utils/projectLifecycle'
+import { isCollectionInitialLoading } from '../utils/collectionLoading'
 
-export function JobsPage({ leads, projectRecords = [], clients = [], archivedIds = [], sampleWorkspace, onViewJob, onViewLead, onCreateJob, onArchiveJob, onRestoreJob, onDeleteJob, t }) {
+export function JobsPage({ leads, projectRecords = [], projectPayments = [], projectContracts = [], projectEvents = [], clients = [], archivedIds = [], deletedIds = [], sampleWorkspace, onViewJob, onViewLead, onCreateJob, onArchiveJob, onRestoreJob, onDeleteJob, t, collectionStatus = 'loaded' }) {
   const [selectedFilter, setSelectedFilter] = useState('All')
   const [confirmAction, setConfirmAction] = useState(null)
-  const [projects, setProjects] = useState([])
-  const [projectPayments, setProjectPayments] = useState([])
-  const [projectContracts, setProjectContracts] = useState([])
-  const [projectEvents, setProjectEvents] = useState([])
-  const [isLoadingProjects, setIsLoadingProjects] = useState(false)
   const [activeJobActionId, setActiveJobActionId] = useState('')
   const jobActionGuardRef = useRef(false)
   const { contractor, company, session } = useAuth()
@@ -37,61 +33,18 @@ export function JobsPage({ leads, projectRecords = [], clients = [], archivedIds
   const { isAnalyticsMode } = useAnalyticsMode()
   const contractorId = getProjectsContractorId({ contractor, company, session })
   const jobFilters = ['All', 'Archived', 'Contract Draft', 'Signed', 'In Progress', 'Completed']
+  const isInitialLoading = isCollectionInitialLoading(collectionStatus)
   const isArchivedJob = (job) => Boolean(job?.isArchived || job?.archivedAt || archivedIds.includes(job?.id))
+  const isDeletedJob = (job) => Boolean(deletedIds.includes(job?.id) || deletedIds.includes(job?.projectId || job?.project_id))
   const clientNameById = useMemo(() => new Map(
     clients.map((client) => [client.id, client.displayName || client.name || ''])
   ), [clients])
 
-  useEffect(() => {
-    let isCancelled = false
-
-    if (!USE_SUPABASE_PROJECTS) {
-      setProjects([])
-      setProjectPayments([])
-      setProjectContracts([])
-      setProjectEvents([])
-      return undefined
-    }
-
-    async function loadProjects() {
-      setIsLoadingProjects(true)
-
-      try {
-        const [projectsResponse, paymentsResponse, contractsResponse, eventsResponse] = await Promise.all([
-          dataProvider.projects.list({ contractorId, includeArchived: true }),
-          dataProvider.payments.list({ contractorId, includeArchived: true }),
-          dataProvider.contracts.list({ contractorId, includeArchived: true }),
-          dataProvider.events.list({ contractorId, includeArchived: true }),
-        ])
-
-        if (isCancelled) return
-
-        const nextProjects = Array.isArray(projectsResponse?.data) ? projectsResponse.data : []
-        const nextPayments = Array.isArray(paymentsResponse?.data) ? paymentsResponse.data : []
-        const nextContracts = Array.isArray(contractsResponse?.data) ? contractsResponse.data : []
-        const nextEvents = Array.isArray(eventsResponse?.data) ? eventsResponse.data : []
-        setProjects(nextProjects)
-        setProjectPayments(nextPayments)
-        setProjectContracts(nextContracts)
-        setProjectEvents(nextEvents)
-      } finally {
-        if (!isCancelled) {
-          setIsLoadingProjects(false)
-        }
-      }
-    }
-
-    loadProjects()
-
-    return () => {
-      isCancelled = true
-    }
-  }, [contractorId, leads.length])
-
   const jobs = useMemo(() => {
-    const sourceRecords = USE_SUPABASE_PROJECTS ? projects : (projectRecords.length ? projectRecords : leads)
+    const sourceRecords = USE_SUPABASE_PROJECTS ? projectRecords : (projectRecords.length ? projectRecords : leads)
 
     return sourceRecords
+      .filter((record) => !isDeletedJob(record))
       .filter((lead) => (
         USE_SUPABASE_PROJECTS
           ? Boolean(lead?.id)
@@ -187,7 +140,7 @@ export function JobsPage({ leads, projectRecords = [], clients = [], archivedIds
           nextStep: lead.nextStep || lead.notes || t('projectStatus'),
         }
       })
-  }, [archivedIds, clientNameById, leads, projectContracts, projectEvents, projectPayments, projectRecords, projects, t])
+  }, [archivedIds, clientNameById, deletedIds, leads, projectContracts, projectEvents, projectPayments, projectRecords, t])
 
   const activeJobsList = jobs.filter((job) => !isArchivedJob(job))
   const filteredJobs = selectedFilter === 'All'
@@ -350,13 +303,6 @@ export function JobsPage({ leads, projectRecords = [], clients = [], archivedIds
         if (confirmAction.mode === 'archive') {
           const response = await dataProvider?.projects?.archive?.(projectId, { contractorId })
           if (response?.error) throw response.error
-          if (USE_SUPABASE_PROJECTS) {
-            setProjects((current) => current.map((project) => (
-              project.id === projectId
-                ? { ...project, archivedAt: new Date().toISOString(), archived_at: new Date().toISOString(), isArchived: true }
-                : project
-            )))
-          }
           onArchiveJob?.(projectId)
         }
         if (confirmAction.mode === 'delete') {
@@ -385,14 +331,7 @@ export function JobsPage({ leads, projectRecords = [], clients = [], archivedIds
             showToast(t('projectDeleteFailed'), 'error')
             return false
           }
-          if (USE_SUPABASE_PROJECTS) {
-            setProjects((current) => current.filter((project) => project.id !== projectId))
-          }
           onDeleteJob?.(projectId)
-          const refreshResponse = await dataProvider.projects.list({ contractorId, includeArchived: true })
-          if (!refreshResponse?.error && Array.isArray(refreshResponse?.data)) {
-            setProjects(refreshResponse.data)
-          }
           showToast(t('itemDeletedPermanently'))
         }
       } catch (err) {
@@ -567,15 +506,16 @@ export function JobsPage({ leads, projectRecords = [], clients = [], archivedIds
           ))}
         </div>
 
-        {USE_SUPABASE_PROJECTS && isLoadingProjects && (
+        {isInitialLoading ? (
           <AymeroLoader
             variant="section"
             title={t('loadingJobs')}
             accessibleLabel={t('loadingJobs')}
             className="mb-5 rounded-2xl border border-slate-200 bg-slate-50"
           />
-        )}
+        ) : null}
 
+        {!isInitialLoading ? <>
         <div className="hidden overflow-hidden rounded-2xl border border-slate-200 md:block">
           <table className="w-full border-collapse text-left text-sm">
             <thead className="bg-slate-50 text-xs font-bold uppercase tracking-wide text-slate-500">
@@ -641,6 +581,7 @@ export function JobsPage({ leads, projectRecords = [], clients = [], archivedIds
             <p className="mt-2 text-sm text-slate-500">{t('noJobsFoundHelp')}</p>
           </div>
         )}
+        </> : null}
       </section>
       <ConfirmRecordModal isOpen={Boolean(confirmAction)} mode={confirmAction?.mode} title={confirmAction?.mode === 'delete' ? t('deleteProjectConfirmTitle') : t('confirmArchive')} message={confirmAction?.mode === 'delete' ? t('deleteProjectConfirmBody') : t('archiveHelp')} confirmLabel={confirmAction?.mode === 'delete' ? t('deletePermanently') : t('archive')} onCancel={() => setConfirmAction(null)} onConfirm={runConfirmAction} t={t} />
     </div>

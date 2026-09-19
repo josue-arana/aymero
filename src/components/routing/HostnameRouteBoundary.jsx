@@ -6,6 +6,7 @@ import { getHostnameEnvironmentConfig } from '../../services/system/environmentS
 import { resolveInitialSupportedLanguage } from '../../utils/language'
 import { buildAppSessionTransferUrl, resolveHostnameRoute } from '../../utils/hostnameRouting'
 import { appRoutes } from '../../config/appRoutes'
+import { AymeroLoader } from '../common/AymeroLoader'
 
 function AbsoluteRedirect({ target }) {
   useEffect(() => {
@@ -35,6 +36,13 @@ function BoundaryMessage({ portal = false }) {
       </section>
     </main>
   )
+}
+
+function BoundaryLoading() {
+  const language = resolveInitialSupportedLanguage('contractorflow.language', 'en')
+  const t = createTranslator(language)
+
+  return <AymeroLoader variant="page" title={t('loading')} accessibleLabel={t('loading')} />
 }
 
 function getBrowserRouteDecision(location) {
@@ -114,7 +122,7 @@ function AuthHostBridge({ decision, environment, location }) {
   if (resolvedTarget) return <AbsoluteRedirect target={resolvedTarget} />
   if (hasConfigurationError) return <BoundaryMessage />
   if (showLogin) return <Navigate to={appRoutes.login} replace />
-  return null
+  return <BoundaryLoading />
 }
 
 export function HostnameRouteBoundary({ children, publicEstimateElement = null }) {

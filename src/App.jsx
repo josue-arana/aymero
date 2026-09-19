@@ -1,4 +1,4 @@
-import { Suspense, lazy, useEffect, useMemo, useRef, useState } from 'react'
+import { Suspense, lazy, useCallback, useEffect, useMemo, useRef, useState } from 'react'
 import { BrowserRouter, Navigate, Route, Routes, matchPath, useLocation, useNavigate, useParams } from 'react-router-dom'
 import { DollarSign, Settings, Users } from 'lucide-react'
 import { Sidebar } from './components/layout/Sidebar'
@@ -80,6 +80,7 @@ import { resolveNavigationContext, withNavigationContext } from './utils/navigat
 import { SAMPLE_GUIDE_ITEM_KEYS, SAMPLE_WORKSPACE_VERSION, createSampleWorkspace, removeSampleWorkspace, updateSampleWorkspaceGuide, upgradeSampleWorkspace as upgradeSampleWorkspaceRecords } from './services/sampleWorkspaceService'
 import { calculateDashboardPipelineValue, getDashboardLeadValue, getDashboardProjectFinancialSummary, selectDashboardOverdueInvoices, selectDashboardTodayEvents } from './utils/dashboardConsistency'
 import { getLeadEstimateRecords } from './utils/leadLifecycle'
+import { COLLECTION_STATUS, isCollectionInitialLoading } from './utils/collectionLoading'
 
 const emptyArchiveState = {
   leadIds: [],
@@ -92,6 +93,10 @@ const emptyArchiveState = {
   deletedClientIds: [],
   deletedInvoiceIds: [],
   deletedScheduleEventIds: [],
+}
+
+function getInitialCollectionStatus(enabled) {
+  return enabled ? COLLECTION_STATUS.IDLE : COLLECTION_STATUS.LOADED
 }
 
 function isSampleGuideDestination(itemKey, pathname, records = {}) {
@@ -598,6 +603,16 @@ function ContractorFlowApp() {
   const [persistedEstimates, setPersistedEstimates] = useState([])
   const [persistedContracts, setPersistedContracts] = useState([])
   const [persistedProjects, setPersistedProjects] = useState([])
+  const [collectionLoadState, setCollectionLoadState] = useState(() => ({
+    clients: getInitialCollectionStatus(USE_SUPABASE || USE_SUPABASE_CLIENTS),
+    leads: getInitialCollectionStatus(USE_SUPABASE || USE_SUPABASE_LEADS),
+    estimates: getInitialCollectionStatus(USE_SUPABASE || USE_SUPABASE_ESTIMATES),
+    projects: getInitialCollectionStatus(USE_SUPABASE || USE_SUPABASE_PROJECTS),
+    contracts: getInitialCollectionStatus(USE_SUPABASE || USE_SUPABASE_CONTRACTS),
+    invoices: getInitialCollectionStatus(USE_SUPABASE || USE_SUPABASE_INVOICES),
+    payments: getInitialCollectionStatus(USE_SUPABASE || USE_SUPABASE_PAYMENTS),
+    events: getInitialCollectionStatus(USE_SUPABASE || USE_SUPABASE_EVENTS),
+  }))
   const [notifications, setNotifications] = useState(initialNotifications)
   const contractEnsureGuardRef = useRef(new Map())
   const [userProfilesByUserId, setUserProfilesByUserId] = useState(() => {
@@ -662,6 +677,46 @@ function ContractorFlowApp() {
     || storedAppLanguage
     || resolveInitialSupportedLanguage('contractorflow.language', 'en')
   const mainLayoutClassName = 'pb-[max(1.5rem,env(safe-area-inset-bottom))] pl-[max(1rem,env(safe-area-inset-left))] pr-[max(1rem,env(safe-area-inset-right))] pt-6 sm:pl-[max(1.5rem,env(safe-area-inset-left))] sm:pr-[max(1.5rem,env(safe-area-inset-right))] lg:pl-[max(2rem,env(safe-area-inset-left))] lg:pr-[max(2rem,env(safe-area-inset-right))]'
+
+  const setCollectionStatus = useCallback((key, status) => {
+    setCollectionLoadState((current) => current[key] === status
+      ? current
+      : { ...current, [key]: status })
+  }, [])
+
+  const beginCollectionLoad = useCallback((key) => {
+    setCollectionLoadState((current) => ({
+      ...current,
+      [key]: current[key] === COLLECTION_STATUS.LOADED
+        ? COLLECTION_STATUS.REFRESHING
+        : COLLECTION_STATUS.LOADING,
+    }))
+  }, [])
+
+  const clientsStatusChange = useCallback((status) => {
+    if (status === COLLECTION_STATUS.LOADING) {
+      beginCollectionLoad('clients')
+      return
+    }
+    setCollectionStatus('clients', status)
+  }, [beginCollectionLoad, setCollectionStatus])
+  const leadsStatusChange = useCallback((status) => {
+    if (status === COLLECTION_STATUS.LOADING) {
+      beginCollectionLoad('leads')
+      return
+    }
+    setCollectionStatus('leads', status)
+  }, [beginCollectionLoad, setCollectionStatus])
+  const dashboardCollectionsLoading = [
+    collectionLoadState.clients,
+    collectionLoadState.leads,
+    collectionLoadState.projects,
+    collectionLoadState.estimates,
+    collectionLoadState.contracts,
+    collectionLoadState.invoices,
+    collectionLoadState.payments,
+    collectionLoadState.events,
+  ].some(isCollectionInitialLoading)
 
   const hasResolvedOnboardingSettings = Boolean(
     contractorAccess?.membershipStatus === 'active'
@@ -1143,8 +1198,8 @@ function ContractorFlowApp() {
     setPersistedContracts((current) => current.filter((contract) => contract.id !== contractId))
   }
 
-  useClientsBootstrap(setCustomClients)
-  useLeadsBootstrap(setLeads)
+  useClientsBootstrap(setCustomClients, clientsStatusChange)
+  useLeadsBootstrap(setLeads, leadsStatusChange)
 
   useEffect(() => {
     if (!USE_AUTH || !isAuthenticated || isLoading) {
@@ -1259,16 +1314,19 @@ function ContractorFlowApp() {
 
     if ((!USE_SUPABASE && !USE_SUPABASE_ESTIMATES) || !projectsContractorId) {
       setPersistedEstimates([])
+      setCollectionStatus('estimates', COLLECTION_STATUS.LOADED)
       return undefined
     }
 
     async function loadPersistedEstimates() {
+      beginCollectionLoad('estimates')
       const response = await dataProvider.estimates.list({
         contractorId: projectsContractorId,
         includeArchived: true,
       })
 
       if (isCancelled || response?.error || !Array.isArray(response?.data)) {
+        if (!isCancelled) setCollectionStatus('estimates', COLLECTION_STATUS.LOADED)
         return
       }
 
@@ -1281,6 +1339,7 @@ function ContractorFlowApp() {
       })
 
       setPersistedEstimates(dedupeById(response.data))
+      setCollectionStatus('estimates', COLLECTION_STATUS.LOADED)
     }
 
     loadPersistedEstimates()
@@ -1288,24 +1347,30 @@ function ContractorFlowApp() {
     return () => {
       isCancelled = true
     }
-  }, [projectsContractorId])
+  }, [beginCollectionLoad, projectsContractorId, setCollectionStatus])
 
   useEffect(() => {
     let isCancelled = false
 
     if (!USE_SUPABASE_PROJECTS || !projectsContractorId) {
       setPersistedProjects([])
+      setCollectionStatus('projects', COLLECTION_STATUS.LOADED)
       return undefined
     }
 
     async function loadPersistedProjects() {
+      beginCollectionLoad('projects')
       const response = await dataProvider.projects.list({
         contractorId: projectsContractorId,
         includeArchived: true,
       })
 
-      if (isCancelled || response?.error || !Array.isArray(response?.data)) return
+      if (isCancelled || response?.error || !Array.isArray(response?.data)) {
+        if (!isCancelled) setCollectionStatus('projects', COLLECTION_STATUS.LOADED)
+        return
+      }
       setPersistedProjects(dedupeById(response.data))
+      setCollectionStatus('projects', COLLECTION_STATUS.LOADED)
     }
 
     loadPersistedProjects()
@@ -1313,23 +1378,26 @@ function ContractorFlowApp() {
     return () => {
       isCancelled = true
     }
-  }, [projectsContractorId])
+  }, [beginCollectionLoad, projectsContractorId, setCollectionStatus])
 
   useEffect(() => {
     let isCancelled = false
 
     if ((!USE_SUPABASE && !USE_SUPABASE_CONTRACTS) || !projectsContractorId) {
       setPersistedContracts([])
+      setCollectionStatus('contracts', COLLECTION_STATUS.LOADED)
       return undefined
     }
 
     async function loadPersistedContracts() {
+      beginCollectionLoad('contracts')
       const response = await dataProvider.contracts.list({
         contractorId: projectsContractorId,
         includeArchived: true,
       })
 
       if (isCancelled || response?.error || !Array.isArray(response?.data)) {
+        if (!isCancelled) setCollectionStatus('contracts', COLLECTION_STATUS.LOADED)
         return
       }
 
@@ -1343,6 +1411,7 @@ function ContractorFlowApp() {
       })
 
       setPersistedContracts(dedupeById(response.data, ['projectId', 'project_id', 'estimateId', 'estimate_id', 'number', 'contractNumber']))
+      setCollectionStatus('contracts', COLLECTION_STATUS.LOADED)
     }
 
     loadPersistedContracts()
@@ -1350,7 +1419,7 @@ function ContractorFlowApp() {
     return () => {
       isCancelled = true
     }
-  }, [projectsContractorId])
+  }, [beginCollectionLoad, projectsContractorId, setCollectionStatus])
 
   useEffect(() => {
     let isCancelled = false
@@ -1359,10 +1428,12 @@ function ContractorFlowApp() {
 
     if (requiresContractorId && !invoicesContractorId) {
       setPersistedPayments([])
+      setCollectionStatus('payments', COLLECTION_STATUS.LOADED)
       return undefined
     }
 
     async function loadPersistedPayments() {
+      beginCollectionLoad('payments')
       const response = await dataProvider.payments.list({
         contractorId: invoicesContractorId,
         includeArchived: true,
@@ -1371,11 +1442,13 @@ function ContractorFlowApp() {
       if (isCancelled || response?.error || !Array.isArray(response?.data)) {
         if (!isCancelled) {
           setPersistedPayments([])
+          setCollectionStatus('payments', COLLECTION_STATUS.LOADED)
         }
         return
       }
 
       setPersistedPayments(dedupePayments(response.data))
+      setCollectionStatus('payments', COLLECTION_STATUS.LOADED)
     }
 
     loadPersistedPayments()
@@ -1383,7 +1456,7 @@ function ContractorFlowApp() {
     return () => {
       isCancelled = true
     }
-  }, [invoicesContractorId])
+  }, [beginCollectionLoad, invoicesContractorId, setCollectionStatus])
 
   useEffect(() => {
     let isCancelled = false
@@ -1392,10 +1465,12 @@ function ContractorFlowApp() {
     if (requiresContractorId && !invoicesContractorId) {
       setInvoiceRecords([])
       setAreInvoicesLoaded(false)
+      setCollectionStatus('invoices', COLLECTION_STATUS.LOADED)
       return undefined
     }
 
     async function loadInvoices() {
+      beginCollectionLoad('invoices')
       setAreInvoicesLoaded(false)
 
       const response = await dataProvider.invoices.list({
@@ -1408,11 +1483,13 @@ function ContractorFlowApp() {
       if (response?.error || !Array.isArray(response?.data)) {
         setInvoiceRecords([])
         setAreInvoicesLoaded(true)
+        setCollectionStatus('invoices', COLLECTION_STATUS.LOADED)
         return
       }
 
       setInvoiceRecords(dedupeInvoiceRecords(response.data))
       setAreInvoicesLoaded(true)
+      setCollectionStatus('invoices', COLLECTION_STATUS.LOADED)
     }
 
     loadInvoices()
@@ -1420,7 +1497,7 @@ function ContractorFlowApp() {
     return () => {
       isCancelled = true
     }
-  }, [invoicesContractorId])
+  }, [beginCollectionLoad, invoicesContractorId, setCollectionStatus])
 
   useEffect(() => {
     let isCancelled = false
@@ -1431,20 +1508,24 @@ function ContractorFlowApp() {
       } else {
         setScheduleEvents([])
       }
+      setCollectionStatus('events', COLLECTION_STATUS.LOADED)
       return undefined
     }
 
     async function loadPersistedEvents() {
+      beginCollectionLoad('events')
       const response = await dataProvider.events.list({
         contractorId: eventsContractorId,
         includeArchived: true,
       })
 
       if (isCancelled || response?.error || !Array.isArray(response?.data)) {
+        if (!isCancelled) setCollectionStatus('events', COLLECTION_STATUS.LOADED)
         return
       }
 
       setScheduleEvents(sortScheduleEventRecords(response.data))
+      setCollectionStatus('events', COLLECTION_STATUS.LOADED)
     }
 
     loadPersistedEvents()
@@ -1452,7 +1533,7 @@ function ContractorFlowApp() {
     return () => {
       isCancelled = true
     }
-  }, [eventsContractorId])
+  }, [beginCollectionLoad, eventsContractorId, setCollectionStatus])
 
   const visibleLeads = useMemo(() => leads
     .filter((lead) => !archives.deletedLeadIds.includes(lead.id))
@@ -4956,6 +5037,7 @@ function buildWorkspaceJobRecord(job, clientRecord = null) {
       })}
       t={t}
       userProfile={userProfile}
+      isInitialLoading={dashboardCollectionsLoading}
     />
   )
 
@@ -4963,16 +5045,16 @@ function buildWorkspaceJobRecord(job, clientRecord = null) {
     <Routes>
       <Route path={appRoutes.root} element={dashboardPage} />
       <Route path={appRoutes.dashboard} element={dashboardPage} />
-      <Route path={appRoutes.leads} element={<LeadsPage leads={visibleLeads} clients={clients} estimates={persistedEstimates} archivedIds={archives.leadIds} onViewLead={openLead} onCreateLead={saveLeadRecord} onArchiveLead={archiveRecord.lead} onRestoreLead={restoreRecord.lead} onDeleteLead={deleteRecord.lead} language={language} t={t} />} />
+      <Route path={appRoutes.leads} element={<LeadsPage leads={visibleLeads} clients={clients} estimates={persistedEstimates} archivedIds={archives.leadIds} onViewLead={openLead} onCreateLead={saveLeadRecord} onArchiveLead={archiveRecord.lead} onRestoreLead={restoreRecord.lead} onDeleteLead={deleteRecord.lead} language={language} t={t} collectionStatus={collectionLoadState.leads} />} />
       <Route path={appRoutes.leadDetail} element={<LeadRoute leads={visibleLeads} clients={clients} estimates={persistedEstimates} archivedIds={archives.leadIds} onBack={() => navigate(appRoutes.leads)} onOpenProject={openProject} onDuplicateLead={duplicateLead} onConvertLeadToJob={(leadId) => transitionLeadStage(leadId, leadPipelineStages.CONVERTED_TO_JOB)} onTransitionLeadStage={transitionLeadStage} onUpdateLead={updateLead} onArchiveLead={archiveRecord.lead} onRestoreLead={restoreRecord.lead} onDeleteLead={deleteRecord.lead} onCreateEstimateOption={createLeadEstimateOption} language={language} t={t} />} />
-      <Route path={appRoutes.estimates} element={<EstimatesPage leads={visibleLeads} estimates={persistedEstimates} projects={persistedProjects} contracts={persistedContracts} archivedIds={archives.leadIds} onOpenEstimate={openEstimateForLead} onConvertEstimate={async (leadId, estimate) => { const contract = await ensureContractForLead(leadId, estimate); if (contract) openContractForLead(leadId, { source: 'estimate', projectId: contract.projectId || contract.project_id || undefined, leadId }) }} onArchiveEstimate={archiveEstimateRecord} onRestoreEstimate={restoreEstimateRecord} onDeleteEstimate={deleteEstimateRecord} t={t} />} />
+      <Route path={appRoutes.estimates} element={<EstimatesPage leads={visibleLeads} estimates={persistedEstimates} projects={persistedProjects} contracts={persistedContracts} archivedIds={archives.leadIds} onOpenEstimate={openEstimateForLead} onConvertEstimate={async (leadId, estimate) => { const contract = await ensureContractForLead(leadId, estimate); if (contract) openContractForLead(leadId, { source: 'estimate', projectId: contract.projectId || contract.project_id || undefined, leadId }) }} onArchiveEstimate={archiveEstimateRecord} onRestoreEstimate={restoreEstimateRecord} onDeleteEstimate={deleteEstimateRecord} t={t} collectionStatus={[collectionLoadState.estimates, collectionLoadState.leads].some(isCollectionInitialLoading) ? 'loading' : 'loaded'} />} />
       <Route path={appRoutes.estimateDetail} element={<EstimateBuilderRoute companySettings={companySettings} leads={visibleLeads} clients={clients} projects={persistedProjects} estimates={persistedEstimates} archivedIds={archives.leadIds} onSaveEstimate={saveEstimate} onDuplicateEstimate={duplicateEstimateFromBuilder} onConvertEstimate={async (leadId, estimate) => { const contract = await ensureContractForLead(leadId, estimate); if (contract) openContractForLead(leadId, { source: 'estimate', estimateId: estimate?.id, projectId: contract.projectId || contract.project_id || undefined, leadId }); return contract }} onSyncEstimateContract={async (leadId, estimate, options = {}) => syncContractFromEstimate(leadId, estimate, options)} onArchiveEstimate={archiveEstimateRecord} onRestoreEstimate={restoreEstimateRecord} onDeleteEstimate={deleteEstimateRecord} t={t} appLanguage={language} />} />
-      <Route path={appRoutes.contracts} element={<ContractsPage leads={activeLeads} contracts={persistedContracts} onViewContract={openContractForLead} onRestoreContract={restoreContractRecord} onDeleteContract={deleteContractRecord} t={t} />} />
-      <Route path={appRoutes.jobs} element={<JobsPage leads={visibleLeads} projectRecords={persistedProjects} clients={clients} archivedIds={archives.projectIds} sampleWorkspace={companySettings?.sampleWorkspace} onViewJob={(projectId, leadId) => openCalendarProject(projectId, leadId, { returnTo: appRoutes.jobs, returnLabelKey: 'backToJobs' })} onViewLead={openLead} onCreateJob={() => openJobModal()} onArchiveJob={archiveRecord.job} onRestoreJob={restoreRecord.job} onDeleteJob={deleteRecord.job} t={t} />} />
-      <Route path={appRoutes.calendar} element={<CalendarPage leads={activeLeads} scheduleEvents={activeScheduleEvents} onCreateEvent={(event) => createScheduleEvent(event, 'event')} onExportEvent={exportScheduleEvent} onViewProject={openCalendarProject} onViewLead={openLead} onMarkComplete={markScheduleEventComplete} t={t} language={language} />} />
-      <Route path={appRoutes.clients} element={<ClientsPage leads={visibleLeads} customClients={customClients} archivedClientIds={archives.clientIds} onOpenClient={openClient} onCreateClient={createClient} onArchiveClient={archiveRecord.client} onRestoreClient={restoreRecord.client} onDeleteClient={deleteRecord.client} language={language} t={t} />} />
-      <Route path={appRoutes.clientProfile} element={<ClientProfilePage leads={visibleLeads} customClients={customClients} projects={financialProjects} archivedClientIds={archives.clientIds} onBack={() => navigate('/clients')} onOpenProject={openProject} onOpenLead={openLead} onOpenEstimate={openEstimateForLead} onOpenContract={openContractForLead} onCreateJob={(client) => openJobModal({ clientId: client?.id, client })} onUpdateClient={updateClient} onArchiveClient={archiveRecord.client} onRestoreClient={restoreRecord.client} onDeleteClient={deleteRecord.client} language={language} t={t} />} />
-      <Route path={appRoutes.invoices} element={<InvoicesPage leads={visibleLeads} clients={clients} projects={persistedProjects} estimates={persistedEstimates} contracts={persistedContracts} payments={persistedPayments} invoices={invoices} archivedIds={archives.invoiceIds} deletedIds={archives.deletedInvoiceIds} onCreateInvoice={() => openInvoiceModal()} onViewInvoice={(invoiceId) => navigate(`/invoices/${invoiceId}`, { state: withNavigationContext({}, appRoutes.invoices, 'backToInvoices') })} onRecordPayment={(invoiceId) => navigate(`/invoices/${invoiceId}`, { state: withNavigationContext({}, appRoutes.invoices, 'backToInvoices') })} onArchiveInvoice={archiveRecord.invoice} onRestoreInvoice={restoreRecord.invoice} onDeleteInvoice={deleteRecord.invoice} onInvoiceSent={markInvoiceSent} t={t} appLanguage={language} />} />
+      <Route path={appRoutes.contracts} element={<ContractsPage leads={activeLeads} contracts={persistedContracts} onViewContract={openContractForLead} onRestoreContract={restoreContractRecord} onDeleteContract={deleteContractRecord} t={t} collectionStatus={[collectionLoadState.contracts, collectionLoadState.leads].some(isCollectionInitialLoading) ? 'loading' : 'loaded'} />} />
+      <Route path={appRoutes.jobs} element={<JobsPage leads={visibleLeads} projectRecords={persistedProjects} projectPayments={persistedPayments} projectContracts={persistedContracts} projectEvents={visibleScheduleEvents} clients={clients} archivedIds={archives.projectIds} deletedIds={archives.deletedProjectIds} sampleWorkspace={companySettings?.sampleWorkspace} onViewJob={(projectId, leadId) => openCalendarProject(projectId, leadId, { returnTo: appRoutes.jobs, returnLabelKey: 'backToJobs' })} onViewLead={openLead} onCreateJob={() => openJobModal()} onArchiveJob={archiveRecord.job} onRestoreJob={restoreRecord.job} onDeleteJob={deleteRecord.job} t={t} collectionStatus={[collectionLoadState.leads, collectionLoadState.projects, collectionLoadState.payments, collectionLoadState.contracts, collectionLoadState.events].some(isCollectionInitialLoading) ? 'loading' : 'loaded'} />} />
+      <Route path={appRoutes.calendar} element={<CalendarPage leads={activeLeads} scheduleEvents={activeScheduleEvents} onCreateEvent={(event) => createScheduleEvent(event, 'event')} onExportEvent={exportScheduleEvent} onViewProject={openCalendarProject} onViewLead={openLead} onMarkComplete={markScheduleEventComplete} t={t} language={language} collectionStatus={collectionLoadState.events} />} />
+      <Route path={appRoutes.clients} element={<ClientsPage leads={visibleLeads} customClients={customClients} archivedClientIds={archives.clientIds} onOpenClient={openClient} onCreateClient={createClient} onArchiveClient={archiveRecord.client} onRestoreClient={restoreRecord.client} onDeleteClient={deleteRecord.client} language={language} t={t} collectionStatus={[collectionLoadState.clients, collectionLoadState.leads].some(isCollectionInitialLoading) ? 'loading' : 'loaded'} />} />
+      <Route path={appRoutes.clientProfile} element={<ClientProfilePage leads={visibleLeads} customClients={customClients} projects={financialProjects} archivedClientIds={archives.clientIds} onBack={() => navigate('/clients')} onOpenProject={openProject} onOpenLead={openLead} onOpenEstimate={openEstimateForLead} onOpenContract={openContractForLead} onCreateJob={(client) => openJobModal({ clientId: client?.id, client })} onUpdateClient={updateClient} onArchiveClient={archiveRecord.client} onRestoreClient={restoreRecord.client} onDeleteClient={deleteRecord.client} language={language} t={t} collectionStatus={[collectionLoadState.clients, collectionLoadState.leads, collectionLoadState.projects].some(isCollectionInitialLoading) ? 'loading' : 'loaded'} />} />
+      <Route path={appRoutes.invoices} element={<InvoicesPage leads={visibleLeads} clients={clients} projects={persistedProjects} estimates={persistedEstimates} contracts={persistedContracts} payments={persistedPayments} invoices={invoices} archivedIds={archives.invoiceIds} deletedIds={archives.deletedInvoiceIds} onCreateInvoice={() => openInvoiceModal()} onViewInvoice={(invoiceId) => navigate(`/invoices/${invoiceId}`, { state: withNavigationContext({}, appRoutes.invoices, 'backToInvoices') })} onRecordPayment={(invoiceId) => navigate(`/invoices/${invoiceId}`, { state: withNavigationContext({}, appRoutes.invoices, 'backToInvoices') })} onArchiveInvoice={archiveRecord.invoice} onRestoreInvoice={restoreRecord.invoice} onDeleteInvoice={deleteRecord.invoice} onInvoiceSent={markInvoiceSent} t={t} appLanguage={language} collectionStatus={collectionLoadState.invoices} />} />
       <Route path={appRoutes.invoiceDetail} element={<InvoiceDetailRoute companySettings={companySettings} leads={visibleLeads} clients={clients} projects={persistedProjects} estimates={persistedEstimates} contracts={persistedContracts} invoices={invoices} payments={persistedPayments} invoicesLoaded={areInvoicesLoaded} archivedIds={archives.invoiceIds} deletedIds={archives.deletedInvoiceIds} onUpdateInvoice={updateInvoice} onRecordInvoicePayment={recordInvoicePayment} onMarkInvoicePaid={markInvoicePaid} onInvoiceSent={markInvoiceSent} onArchiveInvoice={archiveRecord.invoice} onRestoreInvoice={restoreRecord.invoice} onDeleteInvoice={deleteRecord.invoice} t={t} appLanguage={language} />} />
       <Route path={appRoutes.settings} element={<SettingsPage settings={companySettings} onSaveSettings={(settings) => { setCompanySettings(settings); showToast(t('settingsSaved')) }} onOpenCompanySetup={() => { setIsCompanySetupReopen(true); setOnboardingSessionActive(true) }} onCreateSampleData={installSampleWorkspace} onUpdateSampleData={updateInstalledSampleWorkspace} onRemoveSampleData={uninstallSampleWorkspace} onReopenSampleGuide={async () => { const result = await persistSampleGuide({ ...(companySettings?.sampleWorkspace?.guide || {}), dismissed: false }); if (!result?.error) navigate(appRoutes.dashboard); return result }} onOpenSampleWorkspace={() => navigate(appRoutes.dashboard)} language={language} setLanguage={setLanguage} portalLanguage={portalLanguage} setPortalLanguage={setPortalLanguage} t={t} />} />
       <Route path={appRoutes.subscription} element={<SubscriptionPage language={language} t={t} />} />
