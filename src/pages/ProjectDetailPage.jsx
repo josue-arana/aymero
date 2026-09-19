@@ -1,4 +1,4 @@
-import { Component, useEffect, useMemo, useState } from 'react'
+import { Component, useEffect, useMemo, useRef, useState } from 'react'
 import { Archive, CalendarDays, Camera, CheckCircle2, ChevronLeft, ChevronRight, Copy, Edit3, ExternalLink, FileText, MapPin, MoreVertical, Share2, DollarSign, Trash2, Undo2, X } from 'lucide-react'
 import { useLocation, useNavigate, useParams } from 'react-router-dom'
 import { ActionMenu } from '../components/common/ActionMenu'
@@ -400,7 +400,7 @@ class ProjectDetailErrorBoundary extends Component {
   }
 }
 
-function ProjectDetailPageContent({ lead, companySettings, clients = [], estimates = [], invoices = [], scheduleEvents = [], archivedScheduleEventIds = [], isArchived = false, onBack, onOpenPortal, onOpenContract, onConvertEstimate, onCreateInvoice, onMarkProjectComplete, onUpdateLead, onRecordPayment, onUpdatePayment, onDeletePayment, onUploadPhotos, onScheduleEvent, onEditScheduleEvent, onExportEvent, onArchiveScheduleEvent, onRestoreScheduleEvent, onDeleteScheduleEvent, onArchiveProject, onRestoreProject, onDeleteProject, onCreateEstimateOption, onDuplicateEstimateOption, onSelectEstimate, onClearEstimateSelection, language = 'en', t }) {
+function ProjectDetailPageContent({ lead, openRecordPaymentOnLoad = false, companySettings, clients = [], estimates = [], invoices = [], scheduleEvents = [], archivedScheduleEventIds = [], isArchived = false, onBack, onOpenPortal, onOpenContract, onConvertEstimate, onCreateInvoice, onMarkProjectComplete, onUpdateLead, onRecordPayment, onUpdatePayment, onDeletePayment, onUploadPhotos, onScheduleEvent, onEditScheduleEvent, onExportEvent, onArchiveScheduleEvent, onRestoreScheduleEvent, onDeleteScheduleEvent, onArchiveProject, onRestoreProject, onDeleteProject, onCreateEstimateOption, onDuplicateEstimateOption, onSelectEstimate, onClearEstimateSelection, language = 'en', t }) {
   const { id, leadId } = useParams()
   const location = useLocation()
   const navigate = useNavigate()
@@ -423,6 +423,7 @@ function ProjectDetailPageContent({ lead, companySettings, clients = [], estimat
   const [isEditOpen, setIsEditOpen] = useState(false)
   const [confirmAction, setConfirmAction] = useState(null)
   const [showPaymentModal, setShowPaymentModal] = useState(false)
+  const openedPaymentFromRouteRef = useRef(false)
   const [editingPayment, setEditingPayment] = useState(null)
   const [paymentConfirmAction, setPaymentConfirmAction] = useState(null)
   const [showPhotoModal, setShowPhotoModal] = useState(false)
@@ -647,6 +648,13 @@ function ProjectDetailPageContent({ lead, companySettings, clients = [], estimat
     return projectCandidates.find((candidateId) => isUuid(candidateId)) || ''
   }, [baseProject, currentLead, fallbackLinkedProjectId, linkedProjectId, project, requiresPersistedProjectLink])
   const canRecordPayment = Boolean(persistedProjectId)
+  useEffect(() => {
+    if (!openRecordPaymentOnLoad || openedPaymentFromRouteRef.current || !hasLoadedProject || !currentLead || !canRecordPayment) return
+
+    openedPaymentFromRouteRef.current = true
+    setEditingPayment(null)
+    setShowPaymentModal(true)
+  }, [canRecordPayment, currentLead, hasLoadedProject, openRecordPaymentOnLoad])
   const fallbackProjectPhotos = useMemo(() => {
     const hiddenIds = new Set(hiddenFallbackPhotoIds)
     const scopedProjectId = linkedProjectId || resolvePersistedProjectId(currentLead) || currentLead?.id || projectId

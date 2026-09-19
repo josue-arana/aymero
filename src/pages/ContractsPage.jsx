@@ -908,7 +908,7 @@ export function ContractsPage({ leads, contracts = [], onViewContract, onRestore
       <section className="rounded-3xl bg-gradient-to-br from-slate-950 to-slate-800 p-6 text-white shadow-xl">
         <p className="text-sm font-semibold uppercase tracking-[0.25em] text-blue-200">{t('contracts')}</p>
         <h1 className="mt-2 text-3xl font-bold">{t('contracts')}</h1>
-        <p className="mt-2 text-sm text-slate-300">{t('contractsComingDescription')}</p>
+        <p className="mt-2 text-sm text-slate-300">{t('contractsDescription')}</p>
       </section>
       <section className="grid gap-4">
         <div className="flex gap-2 overflow-x-auto pb-1">

@@ -38,6 +38,7 @@ import { ProjectDetailPage } from './pages/ProjectDetailPage'
 import { InvoicesPage } from './pages/InvoicesPage'
 import { InvoiceDetailRoute } from './pages/InvoiceDetailPage'
 import { InvoiceCreationModal } from './components/invoices/InvoiceCreationModal'
+import { ProjectPaymentSelectionModal } from './components/projects/ProjectPaymentSelectionModal'
 import { CalendarPage } from './pages/CalendarPage'
 import { AuthSetupPage } from './pages/AuthSetupPage'
 import { PublicEstimatePage } from './pages/PublicEstimatePage'
@@ -582,6 +583,7 @@ function ContractorFlowApp() {
   const [jobModalState, setJobModalState] = useState({ isOpen: false, initialClientId: '', initialClient: null, origin: '' })
   const [invoiceModalState, setInvoiceModalState] = useState({ isOpen: false, initialProjectId: '', lockProject: false, returnTo: '', returnLabelKey: '' })
   const [isDashboardLeadModalOpen, setIsDashboardLeadModalOpen] = useState(false)
+  const [isDashboardPaymentSelectionOpen, setIsDashboardPaymentSelectionOpen] = useState(false)
   const [dashboardSuccessMessage, setDashboardSuccessMessage] = useState('')
   const [archives, setArchives] = useState(emptyArchiveState)
   const [sidebarOpen, setSidebarOpen] = useState(false)
@@ -5018,7 +5020,7 @@ function buildWorkspaceJobRecord(job, clientRecord = null) {
       onOpenInvoice={(invoiceId) => navigate(`/invoices/${invoiceId}`)}
       onCreateLeadClick={() => setIsDashboardLeadModalOpen(true)}
       onCreateJob={() => openJobModal({ origin: 'dashboard' })}
-      onRecordPayment={() => navigate(appRoutes.invoices)}
+      onRecordPayment={() => setIsDashboardPaymentSelectionOpen(true)}
       onScheduleVisit={() => openScheduleModal({ origin: 'dashboard' })}
       successMessage={dashboardSuccessMessage}
       showOnboardingReminder={companySettings?.onboarding?.completed === false}
@@ -5188,6 +5190,32 @@ function buildWorkspaceJobRecord(job, clientRecord = null) {
           <main className={mainLayoutClassName}>{routeElements}</main>
         </div>
         <LeadFormModal isOpen={isDashboardLeadModalOpen} mode="create" clients={clients} defaultClientLanguage={language} onClose={() => setIsDashboardLeadModalOpen(false)} onSave={createLeadFromDashboard} t={t} />
+        <ProjectPaymentSelectionModal
+          isOpen={isDashboardPaymentSelectionOpen}
+          projects={persistedProjects}
+          leads={activeDashboardLeads}
+          clients={clients}
+          estimates={persistedEstimates}
+          contracts={persistedContracts}
+          invoices={activeInvoices}
+          payments={persistedPayments}
+          archivedIds={archives.projectIds}
+          deletedIds={archives.deletedProjectIds}
+          onClose={() => setIsDashboardPaymentSelectionOpen(false)}
+          onSelectProject={(projectId) => {
+            setIsDashboardPaymentSelectionOpen(false)
+            navigate(appRoutes.projects.replace(':id', projectId), { state: { openRecordPayment: true, returnTo: appRoutes.dashboard, returnLabelKey: 'backToDashboard' } })
+          }}
+          onCreateJob={() => {
+            setIsDashboardPaymentSelectionOpen(false)
+            openJobModal({ origin: 'dashboard' })
+          }}
+          onViewJobs={() => {
+            setIsDashboardPaymentSelectionOpen(false)
+            navigate(appRoutes.jobs)
+          }}
+          t={t}
+        />
         <JobFormModal
           isOpen={jobModalState.isOpen}
           clients={clients}
@@ -5289,6 +5317,7 @@ function ProjectRoute({ companySettings, leads, projects = [], clients, estimate
   return (
       <ProjectDetailPage
       lead={lead}
+      openRecordPaymentOnLoad={Boolean(location.state?.openRecordPayment)}
       companySettings={companySettings}
       clients={clients}
       estimates={estimates}

@@ -20,6 +20,7 @@ export const en = {
   "estimates": "Estimates",
   "jobs": "Jobs",
   "contracts": "Contracts",
+  "contractsDescription": "Review, edit, and send the contracts connected to your projects.",
   "payments": "Payments",
   "customerPortal": "Client Portal",
   "calendar": "Calendar",
@@ -156,6 +157,9 @@ export const en = {
   "reviewLead": "Review Lead",
   "openContract": "Open Contract",
   "recordPayment": "Record Payment",
+  "chooseProjectForPayment": "Choose the project that should receive this payment.",
+  "noProjectsForPayment": "No open projects are ready for a payment.",
+  "noProjectsForPaymentHelp": "Create a Job or open Jobs to choose the project before recording money received.",
   "deposit": "Deposit",
   "uploadPhotos": "Upload Photos",
   "openCustomerPortal": "Open Client Portal",
@@ -2108,7 +2112,7 @@ export const en = {
   ,"onboardingGoToDashboard": "Go to Dashboard"
   ,"onboardingSaving": "Saving…"
   ,"onboardingSaved": "All changes saved"
-  ,"onboardingSaveError": "We couldn't save your setup. Check your connection and try again."
+  ,"onboardingSaveError": "We couldn't finish your setup. Your information is still available. Please try again, and contact support if the problem continues."
   ,"onboardingCompleteToast": "Your Aymero workspace is ready."
   ,"onboardingReminderTitle": "Finish personalizing your workspace"
   ,"onboardingReminderBody": "Complete Company Setup when you're ready. Your saved progress is waiting for you."
