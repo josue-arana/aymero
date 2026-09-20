@@ -2,7 +2,7 @@ import { useMemo } from 'react'
 import { BriefcaseBusiness, DollarSign } from 'lucide-react'
 import { ModalShell } from '../common/ModalShell'
 import { currency } from '../../utils/formatters'
-import { calculateProjectFinancialSummary } from '../../utils/projectFinancials'
+import { buildProjectPaymentSelectionSummary } from '../../utils/projectPaymentSelection'
 
 const CLOSED_PROJECT_STATUSES = new Set(['completed', 'paid', 'archived', 'cancelled', 'canceled'])
 
@@ -83,42 +83,22 @@ export function ProjectPaymentSelectionModal({
         || String(lead?.projectId || lead?.project_id || '') === projectId
         || String(record?.leadId || record?.lead_id || '') === String(lead?.id || '')
       ))
-      const project = {
-        ...(relatedLead || {}),
-        ...record,
-        id: projectId,
-        projectId,
-        portal: { ...(relatedLead?.portal || {}), ...(record?.portal || {}) },
-      }
-      const summary = calculateProjectFinancialSummary({
-        project,
-        estimates,
-        contracts,
-        invoices,
-        payments: [
-          ...(Array.isArray(payments) ? payments : []),
-          ...(Array.isArray(relatedLead?.payments) ? relatedLead.payments : []),
-          ...(Array.isArray(record?.payments) ? record.payments : []),
-        ],
-      })
-      const explicitValue = Number(record?.projectValue ?? record?.contractValue ?? record?.value ?? record?.portal?.contractAmount ?? relatedLead?.projectValue ?? relatedLead?.value ?? 0) || 0
-      const explicitPaid = Number(record?.amountPaid ?? record?.paid ?? record?.portal?.amountPaid ?? relatedLead?.amountPaid ?? relatedLead?.paid ?? 0) || 0
-      const projectValue = summary.agreedValue || explicitValue
-      const amountPaid = summary.totalProjectPaid || explicitPaid
-      const remainingBalance = summary.projectBalance ?? (Number(record?.remainingBalance ?? record?.remaining ?? relatedLead?.remainingBalance ?? relatedLead?.remaining ?? Math.max(projectValue - amountPaid, 0)) || 0)
+      const project = { ...(relatedLead || {}), ...record, id: projectId, projectId }
+      const summary = buildProjectPaymentSelectionSummary({ project: record, lead: relatedLead, estimates, contracts, invoices, payments })
 
       return {
         id: projectId,
         title: getProjectTitle(project, t),
         clientName: getClientName(project, leads, clients),
         status: record?.projectStatus || record?.status || relatedLead?.projectStatus || relatedLead?.status || '',
-        projectValue,
-        amountPaid,
-        remainingBalance,
+        projectValue: summary.projectValue,
+        amountPaid: summary.amountPaid,
+        remainingBalance: summary.remainingBalance,
+        hasFinancialSummary: summary.hasFinancialSummary,
       }
     })
     .filter((project) => !CLOSED_PROJECT_STATUSES.has(normalizeStatus(project)))
-    .filter((project) => project.projectValue <= 0 || project.remainingBalance === null || project.remainingBalance > 0)
+    .filter((project) => project.remainingBalance === null || project.remainingBalance > 0)
     .sort((first, second) => `${first.title} ${first.clientName}`.localeCompare(`${second.title} ${second.clientName}`)),
   [archivedIds, clients, contracts, deletedIds, estimates, invoices, leads, payments, projects, t])
 
@@ -154,7 +134,7 @@ export function ProjectPaymentSelectionModal({
               </span>
               <span className="shrink-0 text-right">
                 <span className="block text-xs font-semibold uppercase tracking-wide text-slate-500">{t('remaining')}</span>
-                <span className="mt-1 block font-bold text-slate-950">{currency.format(project.remainingBalance || 0)}</span>
+                <span className="mt-1 block font-bold text-slate-950">{project.remainingBalance === null ? t('notAvailable') : currency.format(project.remainingBalance)}</span>
               </span>
             </button>
           ))}
