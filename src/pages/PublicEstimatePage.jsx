@@ -8,6 +8,8 @@ import { getPublicEstimateByToken, respondToPublicEstimate } from '../services/p
 import { createTranslator } from '../translations'
 import { normalizeEstimateDocument, resolveEstimatePricingMode, resolveEstimateValidUntil } from '../utils/estimateDocument'
 import { getPaymentTermLabel } from '../utils/paymentTerms'
+import { downloadEstimatePdf } from '../utils/estimatePdf'
+import { shouldUseGeneratedPdfForPrint } from '../utils/documentOutput'
 import { isPrintWindowBlockedError, printDocumentElement } from '../utils/printDocument'
 import {
   ESTIMATE_DOCUMENT_SOURCE_PADDING,
@@ -45,6 +47,7 @@ export function PublicEstimatePage() {
   const [confirmDecision, setConfirmDecision] = useState('')
   const [isSubmittingResponse, setIsSubmittingResponse] = useState(false)
   const [responseError, setResponseError] = useState('')
+  const shouldUsePdfForPrint = useMemo(() => shouldUseGeneratedPdfForPrint(), [])
   const t = useMemo(() => createTranslator(language), [language])
 
   useEffect(() => {
@@ -139,6 +142,29 @@ export function PublicEstimatePage() {
   async function handleSaveAsPdf() {
     setPrintError('')
     try {
+      if (shouldUsePdfForPrint) {
+        if (!sourceRef.current || !previewProps) throw new Error('Estimate PDF template is not ready.')
+
+        await downloadEstimatePdf({
+          element: sourceRef.current,
+          ...previewProps,
+          clientName: previewProps.lead?.client,
+          companyName: previewProps.company?.name,
+          pricingMode: previewProps.documentModel?.pricingMode,
+          scope: previewProps.documentModel?.scope?.text,
+          lineItems: previewProps.documentModel?.workItems,
+          materialsIncluded: previewProps.documentModel?.defaults?.materialsIncluded,
+          paymentTerms: previewProps.paymentTerms,
+          total: previewProps.documentModel?.totals?.total,
+          subtotal: previewProps.documentModel?.totals?.subtotal,
+          discountAmount: previewProps.documentModel?.totals?.discountAmount,
+          taxAmount: previewProps.documentModel?.totals?.taxAmount,
+          messageFromContractor: previewProps.documentModel?.messageFromContractor?.text,
+          validUntil: previewProps.documentModel?.validUntil,
+        })
+        return
+      }
+
       await printDocumentElement(sourceRef.current, {
         documentTitle: `${previewProps?.estimateNumber || t('estimate')} ${previewProps?.lead?.client || ''}`.trim(),
         pageMarginInches: ESTIMATE_PAPER_MARGIN / 72,

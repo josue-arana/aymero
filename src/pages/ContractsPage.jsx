@@ -21,6 +21,8 @@ import { USE_SUPABASE, USE_SUPABASE_CONTRACTS, USE_SUPABASE_PROJECTS } from '../
 import { getProjectsContractorId } from '../services/system/projectsRuntimeService'
 import { readLinkedContractDraft } from '../utils/contractLinks'
 import { formatContractDisplayNumber, generateContractNumber } from '../utils/contractNumber'
+import { downloadContractPdf } from '../utils/contractPdf'
+import { shouldUseGeneratedPdfForPrint } from '../utils/documentOutput'
 import { isPrintWindowBlockedError, printDocumentElement } from '../utils/printDocument'
 import { dedupeById, findLeadByProjectLookup, findProjectByLookup, resolveLinkedProjectId } from '../utils/projectIdentity'
 import { createTranslator } from '../translations'
@@ -136,6 +138,7 @@ export function ContractPreviewPage({ lead, clientRecord = null, t, appLanguage 
     appLanguage,
   })
   const contractT = useMemo(() => createTranslator(contractOutputLanguage), [contractOutputLanguage])
+  const shouldUsePdfForPrint = useMemo(() => shouldUseGeneratedPdfForPrint(), [])
   const contractTotal = Number(savedContract.total || lead.portal?.contractAmount || lead.portal?.estimate?.total || lead.value || 0)
   const editorState = buildContractEditorState({ lead, portal, savedContract, estimate, contractTotal, t: contractT })
   const [scope, setScope] = useState(editorState.scope)
@@ -254,6 +257,33 @@ export function ContractPreviewPage({ lead, clientRecord = null, t, appLanguage 
 
   async function openContractPrintDialog() {
     try {
+      if (shouldUsePdfForPrint) {
+        await downloadContractPdf({
+          element: pdfTemplateRef.current,
+          contractNumber: previewContractNumber,
+          contractDate: previewContractDate,
+          notesAndTermsItems,
+          clientName: lead?.client,
+          companyName: companySettings?.company?.name,
+          company: companySettings?.company || {},
+          lead,
+          scope,
+          workBreakdown,
+          acceptanceLegalText,
+          depositAmount,
+          paymentTerms,
+          materials,
+          timeline,
+          changeOrders,
+          clientResponsibilities,
+          warrantyDisclaimer,
+          total: contractTotal,
+          t: contractT,
+        })
+        showToast(t('contractPdfGenerated'))
+        return
+      }
+
       await printDocumentElement(pdfTemplateRef.current, {
         documentTitle: `${previewContractNumber} ${lead?.client || ''}`.trim(),
         pageMarginInches: ESTIMATE_PAPER_MARGIN / 72,
