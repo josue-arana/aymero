@@ -13,6 +13,9 @@ import { useToast } from '../common/ToastProvider'
 import { currency } from '../../utils/formatters'
 import { getContractDisplayNumber } from '../../utils/contractNumber'
 import { getEstimateDisplayNumber } from '../../utils/estimateNumber'
+import { downloadContractPdf } from '../../utils/contractPdf'
+import { downloadEstimatePdf } from '../../utils/estimatePdf'
+import { shouldUseGeneratedPdfForPrint } from '../../utils/documentOutput'
 import { isPrintWindowBlockedError, printDocumentElement } from '../../utils/printDocument'
 import { createTranslator } from '../../translations'
 import { tStatus } from '../../translations'
@@ -300,6 +303,7 @@ export function PortalSummary({
   const [searchParams, setSearchParams] = useSearchParams()
   const estimatePreviewRef = useRef(null)
   const contractPreviewRef = useRef(null)
+  const shouldUsePdfForPrint = useMemo(() => shouldUseGeneratedPdfForPrint(), [])
   const [selectedPhotoIndex, setSelectedPhotoIndex] = useState(-1)
   const hasEstimate = Boolean(estimate)
   const hasContract = Boolean(contract)
@@ -389,6 +393,29 @@ export function PortalSummary({
     if (!estimatePreviewRef.current) return
 
     try {
+      if (shouldUsePdfForPrint) {
+        await downloadEstimatePdf({
+          element: estimatePreviewRef.current,
+          ...estimatePreviewProps,
+          estimateNumber,
+          clientName: previewLead.client,
+          companyName: company?.name,
+          pricingMode: estimatePreviewProps.pricingMode,
+          scope: estimatePreviewProps.scope,
+          lineItems: estimatePreviewProps.lineItems,
+          materialsIncluded: estimatePreviewProps.materialsIncluded,
+          paymentTerms: estimatePreviewProps.paymentTerms,
+          total: estimatePreviewProps.total,
+          subtotal: estimatePreviewProps.subtotal,
+          discountAmount: estimatePreviewProps.discountAmount,
+          taxAmount: estimatePreviewProps.taxAmount,
+          messageFromContractor: estimatePreviewProps.messageFromContractor,
+          validUntil: estimatePreviewProps.validUntil,
+        })
+        showToast(t('estimatePdfGenerated'))
+        return
+      }
+
       await printDocumentElement(estimatePreviewRef.current, {
         documentTitle: `${estimateNumber} ${previewLead.client || ''}`.trim(),
         pageMarginInches: ESTIMATE_PAPER_MARGIN / 72,
@@ -401,6 +428,11 @@ export function PortalSummary({
   }
 
   async function handlePrintEstimate() {
+    if (shouldUsePdfForPrint) {
+      await handleDownloadEstimate()
+      return
+    }
+
     try {
       await printDocumentElement(estimatePreviewRef.current, {
         documentTitle: `${estimateNumber} ${previewLead.client || ''}`.trim(),
@@ -417,6 +449,18 @@ export function PortalSummary({
     if (!contractPreviewRef.current) return
 
     try {
+      if (shouldUsePdfForPrint) {
+        await downloadContractPdf({
+          element: contractPreviewRef.current,
+          ...contractPreviewProps,
+          contractNumber,
+          clientName: previewLead.client,
+          companyName: company?.name,
+        })
+        showToast(t('contractPdfGenerated'))
+        return
+      }
+
       await printDocumentElement(contractPreviewRef.current, {
         documentTitle: `${contractNumber} ${previewLead.client || ''}`.trim(),
         pageMarginInches: ESTIMATE_PAPER_MARGIN / 72,

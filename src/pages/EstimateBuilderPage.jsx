@@ -30,6 +30,8 @@ import {
 import { getProjectsContractorId } from '../services/system/projectsRuntimeService'
 import { readLinkedEstimateDraft, writeLinkedEstimateDrafts } from '../utils/estimateLinks'
 import { formatEstimateDisplayNumber, generateEstimateNumber } from '../utils/estimateNumber'
+import { downloadEstimatePdf } from '../utils/estimatePdf'
+import { shouldUseGeneratedPdfForPrint } from '../utils/documentOutput'
 import { isPrintWindowBlockedError, printDocumentElement } from '../utils/printDocument'
 import { createTranslator, tStatus } from '../translations'
 import { findLeadByProjectLookup, findProjectByLookup, getEstimatesForProject, getSelectedEstimateForProject } from '../utils/projectIdentity'
@@ -460,6 +462,7 @@ export function EstimateBuilderPage({ lead, clientRecord = null, t, appLanguage 
   const linkedContract = lead?.portal?.contract || portal.contract || {}
   const linkedContractIsArchived = Boolean(linkedContract?.archivedAt || linkedContract?.archived_at || linkedContract?.isArchived || linkedContract?.archived)
   const estimateT = useMemo(() => createTranslator(estimateOutputLanguage), [estimateOutputLanguage])
+  const shouldUsePdfForPrint = useMemo(() => shouldUseGeneratedPdfForPrint(), [])
   const paymentTermOptions = useMemo(() => getPaymentTermOptions(t, paymentTerms), [paymentTerms, t])
   const previewEstimateNumber = formatEstimateDisplayNumber(
     savedEstimate.number || savedEstimate.estimateNumber || generateEstimateNumber(lead),
@@ -1131,6 +1134,33 @@ export function EstimateBuilderPage({ lead, clientRecord = null, t, appLanguage 
 
   async function handleDownloadPdf() {
     try {
+      if (shouldUsePdfForPrint) {
+        await downloadEstimatePdf({
+          element: pdfTemplateRef.current,
+          estimateNumber: previewEstimateNumber,
+          estimateDate: previewEstimateDate,
+          clientName: lead?.client,
+          companyName: companySettings?.company?.name,
+          company: companySettings?.company || {},
+          lead,
+          documentModel: estimateDocumentModel,
+          pricingMode,
+          scope,
+          lineItems: isDetailedPricing ? lineItems : [],
+          materialsIncluded,
+          paymentTerms: getPaymentTermLabel(paymentTerms, estimateT),
+          total: estimateTotal,
+          subtotal: isDetailedPricing ? lineTotal : Number(savedEstimate?.subtotal || estimateTotal),
+          discountAmount: savedEstimate?.discountAmount,
+          taxAmount: savedEstimate?.taxAmount,
+          messageFromContractor: readEstimateContractorMessage(savedEstimate),
+          validUntil: estimateDocumentModel.validUntil,
+          t: estimateT,
+        })
+        showToast(t('estimatePdfGenerated'))
+        return
+      }
+
       await printDocumentElement(pdfTemplateRef.current, {
         documentTitle: `${previewEstimateNumber} ${lead?.client || ''}`.trim(),
         pageMarginInches: ESTIMATE_PAPER_MARGIN / 72,
@@ -1143,6 +1173,11 @@ export function EstimateBuilderPage({ lead, clientRecord = null, t, appLanguage 
   }
 
   async function handlePrint() {
+    if (shouldUsePdfForPrint) {
+      await handleDownloadPdf()
+      return
+    }
+
     try {
       await printDocumentElement(pdfTemplateRef.current, {
         documentTitle: `${previewEstimateNumber} ${lead?.client || ''}`.trim(),
