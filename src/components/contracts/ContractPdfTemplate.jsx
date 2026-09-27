@@ -13,6 +13,7 @@ import {
 import { EstimateInlineText, EstimateRichTextBlocks } from '../estimates/EstimatePdfTemplate'
 import { resolveDocumentBrandTokens } from '../../data/brandColors'
 import { getDocumentDensityVariables } from '../../utils/documentDensity'
+import { DocumentItemMarker, DocumentMaterialBadge } from '../documents/DocumentBadges'
 import {
   ESTIMATE_DOCUMENT_BORDER_WIDTH,
   ESTIMATE_DOCUMENT_HORIZONTAL_PADDING,
@@ -144,9 +145,9 @@ function getMaterialTagLabel(item, t) {
 function MaterialTag({ item, accentColor, accentTextColor, t }) {
   if (!item?.materialsStatus && typeof item?.materialsIncluded !== 'boolean') return null
   return (
-    <span style={{ display: 'inline-flex', maxWidth: '100%', alignItems: 'center', border: `1px solid ${accentColor}`, borderRadius: '999px', padding: '2px 7px', color: accentTextColor, fontSize: '9px', lineHeight: 1.35, fontWeight: 650, overflowWrap: 'anywhere' }}>
+    <DocumentMaterialBadge accentColor={accentColor} accentTextColor={accentTextColor}>
       {getMaterialTagLabel(item, t)}
-    </span>
+    </DocumentMaterialBadge>
   )
 }
 
@@ -156,8 +157,10 @@ const workBreakdownColumnGap = '8px'
 function ContractWorkBreakdownItem({ item, index, accentColor, accentTextColor, t }) {
   return (
     <div data-line-item-card="true" data-contract-keep-together="true" style={{ display: 'grid', gridTemplateColumns: workBreakdownGridColumns, gap: workBreakdownColumnGap, alignItems: 'start', padding: '13px 0', borderTop: index === 0 ? 'none' : `1px solid ${colors.slate200}`, breakInside: 'avoid', pageBreakInside: 'avoid' }}>
-      <div style={{ display: 'flex', width: '24px', height: '24px', alignItems: 'center', justifyContent: 'center', borderRadius: '999px', border: `1px solid ${accentColor}`, backgroundColor: colors.white, color: accentTextColor, fontSize: '10px', fontWeight: 700, lineHeight: 1, marginTop: '2px' }}>
-        {index + 1}
+      <div style={{ marginTop: '2px' }}>
+        <DocumentItemMarker accentColor={accentColor} accentTextColor={accentTextColor}>
+          {index + 1}
+        </DocumentItemMarker>
       </div>
       <div style={{ minWidth: 0 }}>
         <p data-contract-flow-text="true" style={{ margin: 0, fontSize: getEstimateTextSizeCss(item?.titleSize), lineHeight: 1.4, fontWeight: 700, color: colors.ink, overflowWrap: 'anywhere', wordBreak: 'break-word' }}>

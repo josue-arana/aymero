@@ -61,6 +61,10 @@ const estimateTemplateSource = readFileSync(
   fileURLToPath(new URL('../src/components/estimates/EstimatePdfTemplate.jsx', import.meta.url)),
   'utf8',
 )
+const contractTemplateSource = readFileSync(
+  fileURLToPath(new URL('../src/components/contracts/ContractPdfTemplate.jsx', import.meta.url)),
+  'utf8',
+)
 const estimatePrintStyles = readFileSync(
   fileURLToPath(new URL('../src/components/estimates/estimateDocument.css', import.meta.url)),
   'utf8',
@@ -89,6 +93,10 @@ const contractPdfSource = readFileSync(
   fileURLToPath(new URL('../src/utils/contractPdf.js', import.meta.url)),
   'utf8',
 )
+const sharedBadgeSource = readFileSync(
+  fileURLToPath(new URL('../src/components/documents/DocumentBadges.jsx', import.meta.url)),
+  'utf8',
+)
 
 assert.doesNotMatch(printSource, /pageNode\.style\.zoom/)
 assert.match(printSource, /loadingNode\.remove\(\)/)
@@ -103,6 +111,17 @@ assert.match(contractPrintStyles, /@page[\s\S]*size: letter portrait[\s\S]*margi
 assert.match(estimatePageSource, /downloadEstimatePdf/)
 assert.match(contractPageSource, /downloadContractPdf/)
 assert.match(documentOutputSource, /isAppleTouchDevice/)
+assert.match(estimateTemplateSource, /DocumentItemMarker, DocumentMaterialBadge/)
+assert.match(contractTemplateSource, /DocumentItemMarker, DocumentMaterialBadge/)
+assert.match(sharedBadgeSource, /display: 'flex'/)
+assert.match(sharedBadgeSource, /alignItems: 'center'/)
+assert.match(sharedBadgeSource, /justifyContent: 'center'/)
+assert.match(sharedBadgeSource, /width: '24px'/)
+assert.match(sharedBadgeSource, /height: '24px'/)
+assert.match(sharedBadgeSource, /minHeight: '18px'/)
+assert.match(sharedBadgeSource, /lineHeight: '12px'/)
+assert.doesNotMatch(estimateTemplateSource, /lineHeight: '22px'/)
+assert.doesNotMatch(estimateTemplateSource, /display: 'inline-block',[\s\S]*data-estimate-material-tag/)
 for (const generatedPdfSource of [estimatePdfSource, contractPdfSource]) {
   assert.match(generatedPdfSource, /getEstimatePaginationModel\(element\)/)
   assert.match(generatedPdfSource, /pages\.forEach/)

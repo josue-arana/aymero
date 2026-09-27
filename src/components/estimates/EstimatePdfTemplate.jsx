@@ -10,6 +10,7 @@ import {
 import { getAcceptedPaymentMethodLabels } from '../../utils/acceptedPaymentMethods'
 import { getPaymentTermLabel } from '../../utils/paymentTerms'
 import { resolveDocumentBrandTokens } from '../../data/brandColors'
+import { DocumentItemMarker, DocumentMaterialBadge } from '../documents/DocumentBadges'
 import {
   ESTIMATE_DOCUMENT_BORDER_WIDTH,
   ESTIMATE_DOCUMENT_HORIZONTAL_PADDING,
@@ -216,25 +217,9 @@ function getMaterialsTagLabel(materialsStatus, t) {
 
 function MaterialTag({ materialsStatus, accentColor, accentTextColor, t }) {
   return (
-    <span
-      data-estimate-material-tag="true"
-      style={{
-        display: 'inline-block',
-        maxWidth: '100%',
-        boxSizing: 'border-box',
-        border: `1px solid ${accentColor}`,
-        borderRadius: '999px',
-        padding: '0 7px',
-        color: accentTextColor,
-        fontSize: '9px',
-        lineHeight: '16px',
-        fontWeight: 650,
-        overflowWrap: 'anywhere',
-        verticalAlign: 'top',
-      }}
-    >
+    <DocumentMaterialBadge accentColor={accentColor} accentTextColor={accentTextColor}>
       {getMaterialsTagLabel(materialsStatus, t)}
-    </span>
+    </DocumentMaterialBadge>
   )
 }
 
@@ -321,26 +306,9 @@ function WorkBreakdownItem({ item, index, accentColor, accentTextColor, showQuan
       }}
     >
       <div data-estimate-item-marker-cell="true" style={{ display: 'flex', minHeight: 0, alignItems: 'center', justifyContent: 'center' }}>
-        <div
-          data-estimate-item-marker="true"
-          style={{
-            display: 'block',
-            width: '24px',
-            height: '24px',
-            flexShrink: 0,
-            boxSizing: 'border-box',
-            borderRadius: '999px',
-            border: `1px solid ${accentColor}`,
-            backgroundColor: colors.white,
-            color: accentTextColor,
-            fontSize: '10px',
-            fontWeight: 700,
-            lineHeight: '22px',
-            textAlign: 'center',
-          }}
-        >
+        <DocumentItemMarker accentColor={accentColor} accentTextColor={accentTextColor}>
           {index + 1}
-        </div>
+        </DocumentItemMarker>
       </div>
       <div data-estimate-item-content="true" style={{ width: '100%', maxWidth: 'none', minWidth: 0 }}>
         <p
