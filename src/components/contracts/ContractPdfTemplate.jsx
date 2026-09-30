@@ -13,7 +13,7 @@ import {
 import { EstimateInlineText, EstimateRichTextBlocks } from '../estimates/EstimatePdfTemplate'
 import { resolveDocumentBrandTokens } from '../../data/brandColors'
 import { getDocumentDensityVariables } from '../../utils/documentDensity'
-import { DocumentItemMarker, DocumentMaterialBadge } from '../documents/DocumentBadges'
+import { DocumentItemNumber, DocumentMaterialLabel } from '../documents/DocumentLabels'
 import {
   ESTIMATE_DOCUMENT_BORDER_WIDTH,
   ESTIMATE_DOCUMENT_HORIZONTAL_PADDING,
@@ -142,12 +142,12 @@ function getMaterialTagLabel(item, t) {
   return t('materialsIncludedTag')
 }
 
-function MaterialTag({ item, accentColor, accentTextColor, t }) {
+function MaterialTag({ item, accentTextColor, t }) {
   if (!item?.materialsStatus && typeof item?.materialsIncluded !== 'boolean') return null
   return (
-    <DocumentMaterialBadge accentColor={accentColor} accentTextColor={accentTextColor}>
+    <DocumentMaterialLabel accentTextColor={accentTextColor}>
       {getMaterialTagLabel(item, t)}
-    </DocumentMaterialBadge>
+    </DocumentMaterialLabel>
   )
 }
 
@@ -157,10 +157,10 @@ const workBreakdownColumnGap = '8px'
 function ContractWorkBreakdownItem({ item, index, accentColor, accentTextColor, t }) {
   return (
     <div data-line-item-card="true" data-contract-keep-together="true" style={{ display: 'grid', gridTemplateColumns: workBreakdownGridColumns, gap: workBreakdownColumnGap, alignItems: 'start', padding: '13px 0', borderTop: index === 0 ? 'none' : `1px solid ${colors.slate200}`, breakInside: 'avoid', pageBreakInside: 'avoid' }}>
-      <div style={{ marginTop: '2px' }}>
-        <DocumentItemMarker accentColor={accentColor} accentTextColor={accentTextColor}>
+      <div style={{ minWidth: 0 }}>
+        <DocumentItemNumber accentTextColor={accentTextColor}>
           {index + 1}
-        </DocumentItemMarker>
+        </DocumentItemNumber>
       </div>
       <div style={{ minWidth: 0 }}>
         <p data-contract-flow-text="true" style={{ margin: 0, fontSize: getEstimateTextSizeCss(item?.titleSize), lineHeight: 1.4, fontWeight: 700, color: colors.ink, overflowWrap: 'anywhere', wordBreak: 'break-word' }}>
@@ -168,7 +168,7 @@ function ContractWorkBreakdownItem({ item, index, accentColor, accentTextColor, 
         </p>
         {item.descriptionBlocks?.length ? <div style={{ marginTop: '5px', display: 'grid', gap: '3px' }}><EstimateRichTextBlocks blocks={item.descriptionBlocks} flowTextAttribute="data-contract-flow-text" /></div> : null}
         <div style={{ marginTop: item.descriptionBlocks?.length ? '8px' : '5px' }}>
-          <MaterialTag item={item} accentColor={accentColor} accentTextColor={accentTextColor} t={t} />
+          <MaterialTag item={item} accentTextColor={accentTextColor} t={t} />
         </div>
       </div>
       <div style={{ paddingTop: '3px', textAlign: 'right', whiteSpace: 'nowrap', fontSize: '11.5px', lineHeight: 1.4, fontWeight: 700, color: colors.ink }}>

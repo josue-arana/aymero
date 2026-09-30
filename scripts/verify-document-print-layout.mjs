@@ -93,8 +93,8 @@ const contractPdfSource = readFileSync(
   fileURLToPath(new URL('../src/utils/contractPdf.js', import.meta.url)),
   'utf8',
 )
-const sharedBadgeSource = readFileSync(
-  fileURLToPath(new URL('../src/components/documents/DocumentBadges.jsx', import.meta.url)),
+const sharedLabelSource = readFileSync(
+  fileURLToPath(new URL('../src/components/documents/DocumentLabels.jsx', import.meta.url)),
   'utf8',
 )
 
@@ -111,17 +111,16 @@ assert.match(contractPrintStyles, /@page[\s\S]*size: letter portrait[\s\S]*margi
 assert.match(estimatePageSource, /downloadEstimatePdf/)
 assert.match(contractPageSource, /downloadContractPdf/)
 assert.match(documentOutputSource, /isAppleTouchDevice/)
-assert.match(estimateTemplateSource, /DocumentItemMarker, DocumentMaterialBadge/)
-assert.match(contractTemplateSource, /DocumentItemMarker, DocumentMaterialBadge/)
-assert.match(sharedBadgeSource, /display: 'flex'/)
-assert.match(sharedBadgeSource, /alignItems: 'center'/)
-assert.match(sharedBadgeSource, /justifyContent: 'center'/)
-assert.match(sharedBadgeSource, /width: '24px'/)
-assert.match(sharedBadgeSource, /height: '24px'/)
-assert.match(sharedBadgeSource, /minHeight: '18px'/)
-assert.match(sharedBadgeSource, /lineHeight: '12px'/)
+assert.match(estimateTemplateSource, /DocumentItemNumber, DocumentMaterialLabel/)
+assert.match(contractTemplateSource, /DocumentItemNumber, DocumentMaterialLabel/)
+assert.match(sharedLabelSource, /data-document-item-number/)
+assert.match(sharedLabelSource, /data-document-material-label/)
+assert.match(sharedLabelSource, /children\}\./)
+assert.match(sharedLabelSource, /fontWeight: 650/)
+assert.doesNotMatch(sharedLabelSource, /border|backgroundColor|borderRadius|minHeight|alignItems|justifyContent|display: 'flex'/)
 assert.doesNotMatch(estimateTemplateSource, /lineHeight: '22px'/)
-assert.doesNotMatch(estimateTemplateSource, /display: 'inline-block',[\s\S]*data-estimate-material-tag/)
+assert.doesNotMatch(estimateTemplateSource, /DocumentBadges|data-estimate-item-marker|data-estimate-material-tag/)
+assert.doesNotMatch(contractTemplateSource, /DocumentBadges|data-contract-item-marker|data-contract-material-tag/)
 for (const generatedPdfSource of [estimatePdfSource, contractPdfSource]) {
   assert.match(generatedPdfSource, /getEstimatePaginationModel\(element\)/)
   assert.match(generatedPdfSource, /pages\.forEach/)

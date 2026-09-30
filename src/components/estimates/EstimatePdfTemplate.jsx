@@ -10,7 +10,7 @@ import {
 import { getAcceptedPaymentMethodLabels } from '../../utils/acceptedPaymentMethods'
 import { getPaymentTermLabel } from '../../utils/paymentTerms'
 import { resolveDocumentBrandTokens } from '../../data/brandColors'
-import { DocumentItemMarker, DocumentMaterialBadge } from '../documents/DocumentBadges'
+import { DocumentItemNumber, DocumentMaterialLabel } from '../documents/DocumentLabels'
 import {
   ESTIMATE_DOCUMENT_BORDER_WIDTH,
   ESTIMATE_DOCUMENT_HORIZONTAL_PADDING,
@@ -215,11 +215,11 @@ function getMaterialsTagLabel(materialsStatus, t) {
   return t('materialsIncludedTag')
 }
 
-function MaterialTag({ materialsStatus, accentColor, accentTextColor, t }) {
+function MaterialTag({ materialsStatus, accentTextColor, t }) {
   return (
-    <DocumentMaterialBadge accentColor={accentColor} accentTextColor={accentTextColor}>
+    <DocumentMaterialLabel accentTextColor={accentTextColor}>
       {getMaterialsTagLabel(materialsStatus, t)}
-    </DocumentMaterialBadge>
+    </DocumentMaterialLabel>
   )
 }
 
@@ -305,10 +305,10 @@ function WorkBreakdownItem({ item, index, accentColor, accentTextColor, showQuan
         pageBreakInside: 'avoid',
       }}
     >
-      <div data-estimate-item-marker-cell="true" style={{ display: 'flex', minHeight: 0, alignItems: 'center', justifyContent: 'center' }}>
-        <DocumentItemMarker accentColor={accentColor} accentTextColor={accentTextColor}>
+      <div data-estimate-item-number-cell="true" style={{ minWidth: 0 }}>
+        <DocumentItemNumber accentTextColor={accentTextColor}>
           {index + 1}
-        </DocumentItemMarker>
+        </DocumentItemNumber>
       </div>
       <div data-estimate-item-content="true" style={{ width: '100%', maxWidth: 'none', minWidth: 0 }}>
         <p
@@ -333,7 +333,7 @@ function WorkBreakdownItem({ item, index, accentColor, accentTextColor, showQuan
           </div>
         ) : null}
         <div style={{ marginTop: descriptionBlocks.length ? '4px' : '3px' }}>
-          <MaterialTag materialsStatus={item?.materialsStatus} accentColor={accentColor} accentTextColor={accentTextColor} t={t} />
+          <MaterialTag materialsStatus={item?.materialsStatus} accentTextColor={accentTextColor} t={t} />
         </div>
       </div>
       {showQuantity ? (
