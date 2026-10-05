@@ -85,12 +85,16 @@ export function normalizeContractWorkBreakdown(items = [], fallbackMaterialsIncl
 
   return items
     .map((item, index) => {
+      const hasStructuredText = Object.prototype.hasOwnProperty.call(item || {}, 'title')
+        || Object.prototype.hasOwnProperty.call(item || {}, 'description')
       const rawText = normalizeMultilineText(
-        item?.rawText
-          ?? item?.name
-          ?? item?.description
-          ?? item?.title
-          ?? ''
+        hasStructuredText
+          ? [item?.title, item?.description].filter(Boolean).join('\n')
+          : item?.rawText
+            ?? item?.name
+            ?? item?.description
+            ?? item?.title
+            ?? ''
       )
       const amount = toSafeNumber(item?.amount)
       const quantity = resolveEstimateLineItemQuantity(item)
@@ -98,7 +102,7 @@ export function normalizeContractWorkBreakdown(items = [], fallbackMaterialsIncl
       const materialsStatus = normalizeMaterialsStatus(item, materialsIncluded)
       const normalizedRichItem = normalizeEstimateLineItemForDocument({
         ...item,
-        name: rawText,
+        ...(hasStructuredText ? {} : { name: rawText }),
       }, {
         displayOrder: index,
         fallbackMaterialsIncluded: Boolean(materialsIncluded),

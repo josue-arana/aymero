@@ -45,9 +45,11 @@ import {
   hasMeaningfulEstimateFormattedText,
   normalizeEstimateDocument,
   normalizeEstimateFormattedTextForStorage,
+  normalizeEstimateLineItemForDocument,
   normalizeEstimateLineItemsForStorage,
   resolveEstimatePricingMode,
   resolveEstimateValidUntil,
+  shouldBypassScopeAssistantForDetailedEstimate,
 } from '../utils/estimateDocument'
 import { normalizeDocumentLanguageOverride, normalizeSupportedLanguage, resolveClientFacingLanguage, resolveScopeAssistantContractorLanguage } from '../utils/language'
 import { resolveNavigationContext } from '../utils/navigationContext'
@@ -142,13 +144,18 @@ function resolveMaterialsIncludedDefault(...values) {
 }
 
 function createEmptyLineItem(materialsIncluded = false) {
-  return { name: '', amount: 0, materialsIncluded }
+  return { name: '', title: '', description: '', amount: 0, materialsIncluded }
 }
 
 function normalizeLineItems(items = [], fallbackMaterialsIncluded = false) {
-  return normalizeEstimateLineItemsForStorage(items, {
+  const storedItems = normalizeEstimateLineItemsForStorage(items, {
     fallbackMaterialsIncluded,
   })
+
+  return storedItems.map((item, index) => normalizeEstimateLineItemForDocument(item, {
+    displayOrder: index,
+    fallbackMaterialsIncluded,
+  }))
 }
 
 function formatAmountInputValue(value) {
@@ -400,6 +407,11 @@ export function EstimateBuilderPage({ lead, clientRecord = null, t, appLanguage 
 
   const lineTotal = lineItems.reduce((sum, item) => sum + Number(item.amount || 0), 0)
   const isDetailedPricing = pricingMode === detailedPricingMode
+  const isDetailOnlyEstimate = shouldBypassScopeAssistantForDetailedEstimate({
+    scope,
+    lineItems,
+    pricingMode,
+  })
   const estimateTotal = Number(isDetailedPricing ? lineTotal : total || 0)
   const scopeAssistantFeatureEnabled = isAiScopeAssistantEnabled()
   const isScopeAssistantActionPending = isImprovingScope
@@ -417,12 +429,12 @@ export function EstimateBuilderPage({ lead, clientRecord = null, t, appLanguage 
   const scopeAssistantReadinessMessage = scopeAssistantReadinessTranslationKeys[scopeAssistantReadiness.reason]
     ? t(scopeAssistantReadinessTranslationKeys[scopeAssistantReadiness.reason])
     : ''
-  const isScopeAssistantReadinessPending = !isEmptyScopeAssistantState(scopeAssistantState)
+  const isScopeAssistantReadinessPending = !isDetailOnlyEstimate
+    && !isEmptyScopeAssistantState(scopeAssistantState)
     && scopeAssistantReadiness.manual
   const isScopeAssistantSendBlocked = !scopeAssistantReadiness.ready || isScopeAssistantReadinessPending
 
   async function getEstimateSendReadiness() {
-    const assistantReadiness = await getScopeAssistantSendReadiness(scopeAssistantState, scope)
     const contentReady = hasMeaningfulEstimateContent({
       scope,
       lineItems: isDetailedPricing ? lineItems : [],
@@ -430,11 +442,23 @@ export function EstimateBuilderPage({ lead, clientRecord = null, t, appLanguage 
 
     if (!contentReady) {
       return {
-        ...assistantReadiness,
         ready: false,
+        manual: true,
         reason: ESTIMATE_SEND_REASON_CONTENT_REQUIRED,
       }
     }
+
+    // Detailed work descriptions are already customer-facing content. Scope
+    // Assistant remains optional and must not block a detail-only estimate.
+    if (isDetailOnlyEstimate) {
+      return {
+        ready: true,
+        manual: true,
+        reason: SCOPE_ASSISTANT_SEND_REASON.MANUAL,
+      }
+    }
+
+    const assistantReadiness = await getScopeAssistantSendReadiness(scopeAssistantState, scope)
 
     return assistantReadiness
   }
@@ -1039,7 +1063,17 @@ export function EstimateBuilderPage({ lead, clientRecord = null, t, appLanguage 
 
   function updateLineItem(index, field, value) {
     markDraftDirty()
-    setLineItems((items) => items.map((item, itemIndex) => itemIndex === index ? { ...item, [field]: value } : item))
+    setLineItems((items) => items.map((item, itemIndex) => {
+      if (itemIndex !== index) return item
+      const nextItem = { ...item, [field]: value }
+      if (field === 'title' || field === 'description') {
+        delete nextItem.legacyText
+      }
+      if (field === 'materialsIncluded') {
+        delete nextItem.materialsStatus
+      }
+      return nextItem
+    }))
   }
 
   function addLineItem() {
@@ -1062,7 +1096,11 @@ export function EstimateBuilderPage({ lead, clientRecord = null, t, appLanguage 
   }
 
   function handleLineItemTextareaInput(index, value) {
-    updateLineItem(index, 'name', value)
+    updateLineItem(index, 'description', value)
+  }
+
+  function handleLineItemTitleInput(index, value) {
+    updateLineItem(index, 'title', value)
   }
 
   function handleLineItemAmountInput(index, rawValue) {
@@ -1364,16 +1402,27 @@ export function EstimateBuilderPage({ lead, clientRecord = null, t, appLanguage 
                           <div className="grid gap-3 sm:grid-cols-[minmax(0,1fr)_184px] sm:items-start">
                             <div className="min-w-0 space-y-2">
                               <label className="block text-xs font-bold uppercase tracking-[0.14em] text-slate-400">
-                                {t('lineItemDetails')}
+                                {t('lineItemTitle')}
+                              </label>
+                              <input
+                                type="text"
+                                value={item.title || ''}
+                                onChange={(event) => handleLineItemTitleInput(index, event.target.value)}
+                                placeholder={t('lineItemTitlePlaceholder')}
+                                aria-label={t('lineItemTitle')}
+                                className="h-11 w-full rounded-xl border border-slate-200 bg-white px-3 text-sm font-semibold text-slate-900 outline-none placeholder:text-slate-300 focus:border-blue-500 focus:ring-4 focus:ring-blue-100"
+                              />
+                              <label className="block pt-1 text-xs font-bold uppercase tracking-[0.14em] text-slate-400">
+                                {t('lineItemDescription')}
                               </label>
                               <LightweightFormattedTextarea
-                                value={item.name}
+                                value={item.description || ''}
                                 onChange={(nextValue) => handleLineItemTextareaInput(index, nextValue)}
-                                placeholder={t('enterScopeDetails')}
+                                placeholder={t('lineItemDescriptionPlaceholder')}
                                 rows={3}
                                 minHeight={104}
                                 maxHeight={400}
-                                ariaLabel={t('lineItemDetails')}
+                                ariaLabel={t('lineItemDescription')}
                                 t={t}
                                 className="px-3 py-3 text-sm leading-6"
                               />
@@ -1442,7 +1491,10 @@ export function EstimateBuilderPage({ lead, clientRecord = null, t, appLanguage 
                           </div>
                         ) : (
                           <div className="grid gap-3 sm:grid-cols-[minmax(0,1fr)_184px] sm:items-start">
-                            <EstimateFormattedText value={item.name || t('item')} className="rounded-xl bg-slate-50 px-3 py-3 text-sm leading-6 text-slate-700" />
+                            <div className="rounded-xl bg-slate-50 px-3 py-3 text-sm leading-6 text-slate-700">
+                              {item.title ? <p className="font-bold text-slate-900">{item.title}</p> : null}
+                              {item.description ? <EstimateFormattedText value={item.description} className={item.title ? 'mt-2' : ''} /> : null}
+                            </div>
                             <div className="space-y-2">
                               {Number(item.quantity) > 0 ? <div className="rounded-xl bg-slate-50 px-3 py-2 text-right text-xs font-bold text-slate-700">{t('quantity')}: {item.quantity}</div> : null}
                               <div className="rounded-xl bg-slate-50 px-3 py-3 text-right text-sm font-bold text-slate-900">{currency.format(Number(item.amount || 0))}</div>
