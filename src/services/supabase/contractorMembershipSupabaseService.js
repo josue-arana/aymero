@@ -129,11 +129,35 @@ export async function resolveAuthenticatedContractorAccess(userId) {
       },
     })
 
+    const contractor = readSingleRow(contractorRow)
+    if (!contractor) {
+      return {
+        data: {
+          contractorId: '',
+          membership: null,
+          contractor: null,
+          membershipStatus: 'error',
+          requiresSetup: true,
+        },
+        error: {
+          message: 'Your contractor workspace could not be found. Retry setup or contact support.',
+          details: {
+            userId,
+            contractorId,
+            membershipId: membership?.id || null,
+          },
+          code: 'CONTRACTOR_PROFILE_MISSING',
+          status: null,
+        },
+        skipped: false,
+      }
+    }
+
     return {
       data: {
         contractorId,
         membership,
-        contractor: readSingleRow(contractorRow),
+        contractor,
         membershipStatus: 'active',
         requiresSetup: false,
       },

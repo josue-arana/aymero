@@ -9,6 +9,7 @@ import { getAuthServiceStatus, getCurrentUser, resendSignUpVerificationEmail as 
 import { resolveAuthenticatedContractorAccess, updateAuthenticatedPreferredLanguage } from '../services/supabase/contractorMembershipSupabaseService'
 import { completeBetaContractorOnboarding } from '../services/supabase/contractorOnboardingSupabaseService'
 import { normalizeSupportedLanguage, resolveInitialSupportedLanguage } from '../utils/language'
+import { ONBOARDING_STATE, resolveOnboardingState } from '../utils/onboardingState'
 
 const AuthContext = createContext(null)
 
@@ -439,10 +440,19 @@ export function AuthProvider({ children }) {
       }
     }
 
+    const refreshedAccess = refreshResult.data?.contractorAccess
+    if (refreshedAccess?.membershipStatus !== 'active' || !refreshedAccess?.contractorId) {
+      return {
+        data: onboardingResult.data,
+        error: buildMissingMembershipError(),
+        skipped: false,
+      }
+    }
+
     return {
       data: {
         ...(onboardingResult.data || {}),
-        contractorAccess: refreshResult.data?.contractorAccess || null,
+        contractorAccess: refreshedAccess,
       },
       error: null,
       skipped: false,
@@ -565,8 +575,13 @@ export function AuthProvider({ children }) {
   const authMode = USE_AUTH ? 'supabase' : 'mock'
   const isAuthenticated = Boolean(user)
   const hasContractorAccess = contractorAccess.membershipStatus === 'active' || contractorAccess.membershipStatus === 'mock'
-  const onboardingRequired = Boolean(USE_AUTH && contractorAccess.membershipStatus === 'missing')
-  const onboardingCompleted = Boolean(contractorAccess.membershipStatus === 'active' || contractorAccess.membershipStatus === 'mock')
+  const onboardingState = resolveOnboardingState({
+    isAuthenticated,
+    membershipStatus: contractorAccess.membershipStatus,
+    onboardingCompleted: hasContractorAccess,
+  })
+  const onboardingRequired = Boolean(USE_AUTH && onboardingState === ONBOARDING_STATE.AUTHENTICATED_UNPROVISIONED)
+  const onboardingCompleted = onboardingState === ONBOARDING_STATE.WORKSPACE_READY
 
   const value = useMemo(() => ({
     user,

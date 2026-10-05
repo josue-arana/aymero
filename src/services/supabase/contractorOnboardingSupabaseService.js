@@ -7,6 +7,7 @@ const onboardingRuntimeState = {
   status: 'idle',
   lastError: null,
 }
+const inFlightOnboardingRequests = new Map()
 
 function createSkippedResponse(message, data = null) {
   return {
@@ -48,7 +49,7 @@ function setOnboardingRuntimeStatus(status, error = null) {
   onboardingRuntimeState.lastError = error
 }
 
-export async function completeBetaContractorOnboarding({
+async function performCompleteBetaContractorOnboarding({
   companyName,
   ownerName,
   phone,
@@ -106,6 +107,28 @@ export async function completeBetaContractorOnboarding({
       skipped: false,
     }
   }
+}
+
+export async function completeBetaContractorOnboarding(profile = {}) {
+  const requestKey = [
+    profile?.companyName,
+    profile?.ownerName,
+    profile?.phone,
+    profile?.businessEmail,
+    profile?.businessAddress,
+  ].map((value) => String(value || '').trim()).join('|')
+  const existingRequest = inFlightOnboardingRequests.get(requestKey)
+  if (existingRequest) return existingRequest
+
+  const request = performCompleteBetaContractorOnboarding(profile)
+  const trackedRequest = request.finally(() => {
+    if (inFlightOnboardingRequests.get(requestKey) === trackedRequest) {
+      inFlightOnboardingRequests.delete(requestKey)
+    }
+  })
+  inFlightOnboardingRequests.set(requestKey, trackedRequest)
+
+  return trackedRequest
 }
 
 export function getContractorOnboardingRuntimeStatus() {
