@@ -596,6 +596,7 @@ function ContractorFlowApp() {
   const scheduleSaveInFlightRef = useRef(false)
   const settingsMutationVersionRef = useRef(0)
   const sampleGuideVisitRef = useRef('')
+  const previousAuthIdentityKeyRef = useRef(null)
   const [companySettings, setCompanySettings] = useState(() => createDefaultCompanySettings({
     appLanguage: language,
     portal: {
@@ -638,6 +639,7 @@ function ContractorFlowApp() {
   const { showToast } = useToast()
   const { authSetupError, company, contractor, contractorAccess, hasContractorAccess, isAuthenticated, isLoading, logout, onboardingRequired, persistPreferredLanguage, session, user } = useAuth()
   const activeUserProfileKey = USE_AUTH ? (user?.id || session?.user?.id || 'anonymous-auth') : 'mock-user'
+  const authIdentityKey = USE_AUTH ? (user?.id || '') : 'mock-user'
   const preferredLanguageSyncRef = useRef('')
   const {
     profile: userProfile,
@@ -737,6 +739,31 @@ function ContractorFlowApp() {
     }
   }, [onboardingRequired])
 
+  useEffect(() => {
+    if (previousAuthIdentityKeyRef.current === null) {
+      previousAuthIdentityKeyRef.current = authIdentityKey
+      return
+    }
+
+    if (previousAuthIdentityKeyRef.current === authIdentityKey) return
+
+    previousAuthIdentityKeyRef.current = authIdentityKey
+    settingsMutationVersionRef.current += 1
+    setOnboardingSessionActive(false)
+    setIsCompanySetupReopen(false)
+    setCompanySettings(createDefaultCompanySettings({
+      appLanguage: language,
+      portal: {
+        defaultLanguage: portalLanguage,
+      },
+      onboarding: {
+        completed: false,
+        dismissed: false,
+        step: 1,
+      },
+    }))
+  }, [authIdentityKey, language, portalLanguage])
+
   async function persistOnboardingSettings(nextSettings, contractorIdOverride = '') {
     const contractorId = contractorIdOverride || settingsContractorId
     settingsMutationVersionRef.current += 1
@@ -835,6 +862,23 @@ function ContractorFlowApp() {
   }
 
   async function installSampleWorkspace(onProgress) {
+    if (USE_AUTH && (contractorAccess?.membershipStatus !== 'active' || !settingsContractorId)) {
+      return {
+        success: false,
+        installed: false,
+        partial: false,
+        manifest: null,
+        recordIds: {},
+        records: {},
+        settings: companySettings,
+        warnings: [],
+        errorCode: 'SAMPLE_DATA_CONTRACTOR_MISSING',
+        duplicate: false,
+        upgradeRequired: false,
+        upgraded: false,
+      }
+    }
+
     try {
       const result = await createSampleWorkspace({
         contractorId: settingsContractorId,
@@ -5043,6 +5087,23 @@ function buildWorkspaceJobRecord(job, clientRecord = null) {
     />
   )
 
+  function runWithUsableWorkspace(action) {
+    const hasUsableWorkspace = !USE_AUTH
+      || (
+        contractorAccess?.membershipStatus === 'active'
+        && settingsContractorId
+        && companySettings?.contractorId === settingsContractorId
+      )
+
+    if (!hasUsableWorkspace) {
+      setOnboardingSessionActive(true)
+      showToast(t('authContractorSetupRequiredMessage'), 'error')
+      return
+    }
+
+    action()
+  }
+
   const routeElements = (
     <Routes>
       <Route path={appRoutes.root} element={dashboardPage} />
@@ -5105,15 +5166,19 @@ function buildWorkspaceJobRecord(job, clientRecord = null) {
             onAddSampleData={installSampleWorkspace}
             onClose={() => {
               closeOnboarding()
-              navigate(appRoutes.dashboard, { replace: true })
+              runWithUsableWorkspace(() => navigate(appRoutes.dashboard, { replace: true }))
             }}
             onCreateClient={() => {
-              closeOnboarding()
-              navigate(appRoutes.clients, { replace: true, state: { createClient: true } })
+              runWithUsableWorkspace(() => {
+                closeOnboarding()
+                navigate(appRoutes.clients, { replace: true, state: { createClient: true } })
+              })
             }}
             onGoToDashboard={() => {
-              closeOnboarding()
-              navigate(appRoutes.dashboard, { replace: true })
+              runWithUsableWorkspace(() => {
+                closeOnboarding()
+                navigate(appRoutes.dashboard, { replace: true })
+              })
             }}
             isReopen={isCompanySetupReopen}
           />

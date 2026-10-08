@@ -317,24 +317,21 @@ function WorkBreakdownItem({ item, index, accentColor, accentTextColor, showQuan
             margin: 0,
             fontSize: getEstimateTextSizeCss(item?.titleSize),
             lineHeight: 1.3,
-            fontWeight: 700,
+            fontWeight: item?.title ? 700 : 650,
             color: colors.ink,
             overflowWrap: 'anywhere',
             wordBreak: 'break-word',
           }}
         >
-          {item?.title
-            ? <EstimateInlineText segments={item?.titleSegments} />
-            : t('item')}
+          {item?.title ? <EstimateInlineText segments={item?.titleSegments} /> : null}
+          {item?.title ? <span aria-hidden="true"> — </span> : null}
+          <MaterialTag materialsStatus={item?.materialsStatus} accentTextColor={accentTextColor} t={t} />
         </p>
         {descriptionBlocks.length ? (
           <div style={{ width: '100%', maxWidth: 'none', minWidth: 0, marginTop: '3px', display: 'grid', gap: '2px' }}>
             <EstimateRichTextBlocks blocks={descriptionBlocks} density="compact" />
           </div>
         ) : null}
-        <div style={{ marginTop: descriptionBlocks.length ? '4px' : '3px' }}>
-          <MaterialTag materialsStatus={item?.materialsStatus} accentTextColor={accentTextColor} t={t} />
-        </div>
       </div>
       {showQuantity ? (
         <div data-estimate-item-quantity="true" style={{ display: 'flex', minHeight: 0, alignItems: 'center', justifyContent: 'flex-end', textAlign: 'right', whiteSpace: 'nowrap', fontSize: '11.5px', lineHeight: 1.4, fontWeight: 650, color: colors.ink }}>

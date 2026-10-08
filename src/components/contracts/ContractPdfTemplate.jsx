@@ -163,13 +163,12 @@ function ContractWorkBreakdownItem({ item, index, accentColor, accentTextColor, 
         </DocumentItemNumber>
       </div>
       <div style={{ minWidth: 0 }}>
-        <p data-contract-flow-text="true" style={{ margin: 0, fontSize: getEstimateTextSizeCss(item?.titleSize), lineHeight: 1.4, fontWeight: 700, color: colors.ink, overflowWrap: 'anywhere', wordBreak: 'break-word' }}>
-          {item.title ? <EstimateInlineText segments={item.titleSegments} /> : t('item')}
+        <p data-contract-flow-text="true" style={{ margin: 0, fontSize: getEstimateTextSizeCss(item?.titleSize), lineHeight: 1.4, fontWeight: item.title ? 700 : 650, color: colors.ink, overflowWrap: 'anywhere', wordBreak: 'break-word' }}>
+          {item.title ? <EstimateInlineText segments={item.titleSegments} /> : null}
+          {item.title ? <span aria-hidden="true"> — </span> : null}
+          <MaterialTag item={item} accentTextColor={accentTextColor} t={t} />
         </p>
         {item.descriptionBlocks?.length ? <div style={{ marginTop: '5px', display: 'grid', gap: '3px' }}><EstimateRichTextBlocks blocks={item.descriptionBlocks} flowTextAttribute="data-contract-flow-text" /></div> : null}
-        <div style={{ marginTop: item.descriptionBlocks?.length ? '8px' : '5px' }}>
-          <MaterialTag item={item} accentTextColor={accentTextColor} t={t} />
-        </div>
       </div>
       <div style={{ paddingTop: '3px', textAlign: 'right', whiteSpace: 'nowrap', fontSize: '11.5px', lineHeight: 1.4, fontWeight: 700, color: colors.ink }}>
         {currency.format(Number(item?.amount || 0))}

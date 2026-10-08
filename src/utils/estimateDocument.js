@@ -377,16 +377,34 @@ export function resolveEstimateLineItemQuantity(item = {}) {
 export function hasMeaningfulEstimateLineItemContent(lineItems = []) {
   if (!Array.isArray(lineItems)) return false
 
-  return lineItems.some((item) => hasMeaningfulEstimateFormattedText([
-    item?.name,
-    item?.title,
-    item?.description,
-  ].map(sanitizeEstimateFormattedText).join('\n')))
+  return lineItems.some((item) => {
+    const hasStructuredText = !item?.legacyText
+      && (Object.prototype.hasOwnProperty.call(item || {}, 'title')
+        || Object.prototype.hasOwnProperty.call(item || {}, 'description'))
+
+    // New detailed items must contain actual work details. Legacy records only
+    // have `name`, so their existing text remains the compatibility fallback.
+    const workDescription = hasStructuredText
+      ? item?.description
+      : item?.name || item?.description || item?.title
+
+    return hasMeaningfulEstimateFormattedText(workDescription)
+  })
 }
 
 export function hasMeaningfulEstimateContent({ scope = '', lineItems = [] } = {}) {
   return hasMeaningfulEstimateFormattedText(scope)
     || hasMeaningfulEstimateLineItemContent(lineItems)
+}
+
+export function shouldBypassScopeAssistantForDetailedEstimate({
+  scope = '',
+  lineItems = [],
+  pricingMode = ESTIMATE_PRICING_SIMPLE,
+} = {}) {
+  return pricingMode === ESTIMATE_PRICING_DETAILED
+    && !hasMeaningfulEstimateFormattedText(scope)
+    && hasMeaningfulEstimateLineItemContent(lineItems)
 }
 
 export function isValidExplicitEstimateItem(item = {}) {
@@ -591,10 +609,20 @@ export function normalizeEstimateLineItemsForStorage(lineItems = [], {
 
   return lineItems.map((item, index) => {
     const source = item && typeof item === 'object' ? item : {}
+    const hasLegacyTextFallback = Boolean(source.legacyText)
+    const hasStructuredText = !hasLegacyTextFallback
+      && (Object.prototype.hasOwnProperty.call(source, 'title')
+        || Object.prototype.hasOwnProperty.call(source, 'description'))
+    const title = hasStructuredText
+      ? normalizeEstimateFormattedTextForStorage(source.title)
+      : ''
+    const description = hasStructuredText
+      ? normalizeEstimateFormattedTextForStorage(source.description)
+      : ''
     const name = normalizeEstimateFormattedTextForStorage(
-      typeof source.name === 'string' && source.name.trim()
-        ? source.name
-        : [source.title, source.description].filter(Boolean).join('\n')
+      hasStructuredText
+        ? [title, description].filter(Boolean).join('\n')
+        : source.legacyText || source.name
     )
     const materialsStatus = normalizeEstimateMaterialsStatus(source, fallbackMaterialsIncluded)
     const quantity = resolveEstimateLineItemQuantity(source)
@@ -605,6 +633,7 @@ export function normalizeEstimateLineItemsForStorage(lineItems = [], {
     return {
       ...(source.id ? { id: source.id } : {}),
       name,
+      ...(hasStructuredText ? { title, description } : {}),
       amount: resolveEstimateLineItemAmount(source),
       ...(quantity ? { quantity } : {}),
       materialsIncluded: materialsStatus === ESTIMATE_MATERIALS_INCLUDED,
@@ -619,11 +648,44 @@ function normalizeEstimateWorkItem(item = {}, {
   fallbackMaterialsIncluded,
   idPrefix = 'estimate-item',
 } = {}) {
-  const sourceText = normalizeEstimateFormattedTextForStorage(item?.name).trim()
-    || [normalizeEstimateFormattedTextForStorage(item?.title).trim(), normalizeEstimateFormattedTextForStorage(item?.description).trim()]
-      .filter(Boolean)
-      .join('\n')
-  const textParts = splitLegacyEstimateItemText(sourceText)
+  const hasStructuredText = !item?.legacyText
+    && (Object.prototype.hasOwnProperty.call(item || {}, 'title')
+      || Object.prototype.hasOwnProperty.call(item || {}, 'description'))
+  const normalizedTitleSource = hasStructuredText
+    ? normalizeEstimateFormattedTextForStorage(item?.title).trim()
+    : ''
+  const normalizedDescription = hasStructuredText
+    ? normalizeEstimateFormattedTextForStorage(item?.description).trim()
+    : ''
+  const legacyText = normalizeEstimateFormattedTextForStorage(item?.name || item?.legacyText).trim()
+  const textParts = hasStructuredText
+    ? (() => {
+        const parsedTitle = parseEstimateSizedText(normalizedTitleSource).lines[0]
+        const title = parsedTitle?.text.trim() || ''
+        const titleSize = item?.titleSize
+          ? normalizeEstimateTextSize(item.titleSize)
+          : parsedTitle?.size || ESTIMATE_TEXT_SIZE_STANDARD
+        const titleSource = title
+          ? serializeEstimateSizedText(title, [titleSize])
+          : ''
+
+        return {
+          title,
+          titleSize,
+          description: normalizedDescription,
+          detailLines: normalizedDescription
+            .split('\n')
+            .map((line) => parseEstimateSizedText(line).text.trim())
+            .filter(Boolean)
+            .map((line) => line.replace(/^[-*•]\s*/, '').trim() || line),
+          sourceText: [titleSource, normalizedDescription].filter(Boolean).join('\n'),
+        }
+      })()
+    : {
+        ...splitLegacyEstimateItemText(legacyText),
+        sourceText: legacyText,
+      }
+  const sourceText = textParts.sourceText
   const amount = resolveEstimateLineItemAmount(item)
   const quantity = resolveEstimateLineItemQuantity(item)
   const materialsStatus = normalizeEstimateMaterialsStatus(item, fallbackMaterialsIncluded)
@@ -642,6 +704,7 @@ function normalizeEstimateWorkItem(item = {}, {
     materialsIncluded: materialsStatus === ESTIMATE_MATERIALS_INCLUDED,
     materialsStatus,
     displayOrder,
+    ...(hasStructuredText ? {} : { legacyText: legacyText || undefined }),
   }
 }
 
@@ -763,38 +826,12 @@ export function ensureNormalizedEstimateDocument(documentModel, legacyInput = {}
       text: legacyScopeText,
       contentBlocks: normalizeEstimateRichText(legacyScopeText).blocks,
     }
-    const normalizedDocumentWorkItems = normalizedWorkItems.map((item, index) => {
-      const parsedTitle = parseEstimateSizedText(item?.title).lines[0]
-      const titleSize = item?.titleSize
-        ? normalizeEstimateTextSize(item.titleSize)
-        : parsedTitle.size
-      const materialsStatus = normalizeEstimateMaterialsStatus(
-        item,
-        documentModel?.defaults?.materialsIncluded
-      )
-      const quantity = resolveEstimateLineItemQuantity(item)
-
-      return {
-        id: item?.id || `estimate-item-${index + 1}`,
-        title: parsedTitle.text,
-        titleSize,
-        description: normalizeEstimateFormattedTextForStorage(item?.description),
-        titleSegments: parseEstimateInlineFormatting(parsedTitle.text),
-        contentBlocks: normalizeEstimateRichText([
-          serializeEstimateSizedText(parsedTitle.text, [titleSize]),
-          item?.description,
-        ].filter(Boolean).join('\n')).blocks,
-        descriptionBlocks: normalizeEstimateRichText(item?.description).blocks,
-        detailLines: Array.isArray(item?.detailLines) ? item.detailLines : [],
-        amount: resolveEstimateLineItemAmount(item),
-        ...(quantity ? { quantity } : {}),
-        materialsIncluded: materialsStatus === ESTIMATE_MATERIALS_INCLUDED,
-        materialsStatus,
-        displayOrder: Number.isFinite(Number(item?.displayOrder))
-          ? Number(item.displayOrder)
-          : index,
-      }
-    })
+    const normalizedDocumentWorkItems = normalizedWorkItems.map((item, index) => normalizeEstimateWorkItem(item, {
+      displayOrder: Number.isFinite(Number(item?.displayOrder))
+        ? Number(item.displayOrder)
+        : index,
+      fallbackMaterialsIncluded: documentModel?.defaults?.materialsIncluded,
+    }))
 
     return {
       ...documentModel,

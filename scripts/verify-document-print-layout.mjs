@@ -121,6 +121,12 @@ assert.doesNotMatch(sharedLabelSource, /border|backgroundColor|borderRadius|minH
 assert.doesNotMatch(estimateTemplateSource, /lineHeight: '22px'/)
 assert.doesNotMatch(estimateTemplateSource, /DocumentBadges|data-estimate-item-marker|data-estimate-material-tag/)
 assert.doesNotMatch(contractTemplateSource, /DocumentBadges|data-contract-item-marker|data-contract-material-tag/)
+assert.match(estimateTemplateSource, /item\?\.title \? <EstimateInlineText/)
+assert.match(contractTemplateSource, /item\.title \? <EstimateInlineText/)
+assert.match(estimateBuilderSource, /lineItemTitlePlaceholder/)
+assert.match(estimateBuilderSource, /value=\{item\.description \|\| ''\}/)
+assert.doesNotMatch(estimateTemplateSource, /: t\('item'\)/)
+assert.doesNotMatch(contractTemplateSource, /: t\('item'\)/)
 for (const generatedPdfSource of [estimatePdfSource, contractPdfSource]) {
   assert.match(generatedPdfSource, /getEstimatePaginationModel\(element\)/)
   assert.match(generatedPdfSource, /pages\.forEach/)
