@@ -8,7 +8,7 @@ import dataProvider from '../services/dataProvider'
 import { getSettingsContractorId } from '../services/system/settingsRuntimeService'
 import settingsHeroBackground from '../assets/page-heroes/settings-bg.png'
 import { buildHeroBackgroundStyle } from '../utils/heroBackground'
-import { getPaymentTermOptions } from '../utils/paymentTerms'
+import { getPaymentTermOptions, isKnownPaymentTermValue } from '../utils/paymentTerms'
 import {
   ACCEPTED_PAYMENT_METHOD_OPTIONS,
   normalizeAcceptedPaymentMethods,
@@ -468,9 +468,19 @@ export function SettingsPage({ settings, onSaveSettings, onOpenCompanySetup, onC
             <div className="mt-4 grid gap-4 md:grid-cols-2 lg:grid-cols-[minmax(0,1.5fr)_minmax(0,1fr)_minmax(0,1fr)]">
               <label className="flex min-w-0 flex-col text-sm font-bold text-slate-700">
                 <span className="lg:min-h-10">{t('onboardingDefaultPaymentTerms')}</span>
-                <select value={defaults.paymentTerms || ''} onChange={(event) => updateDefaults('paymentTerms', event.target.value)} className="mt-2 w-full rounded-2xl border border-slate-200 bg-slate-50 px-4 py-3 text-sm outline-none focus:border-blue-500 focus:ring-4 focus:ring-blue-100">
-                  {paymentTermOptions.map(([value, label]) => <option key={value} value={value}>{label}</option>)}
-                </select>
+                {isKnownPaymentTermValue(defaults.paymentTerms) ? (
+                  <div>
+                    <select value={defaults.paymentTerms || ''} onChange={(event) => updateDefaults('paymentTerms', event.target.value)} className="mt-2 w-full rounded-2xl border border-slate-200 bg-slate-50 px-4 py-3 text-sm outline-none focus:border-blue-500 focus:ring-4 focus:ring-blue-100">
+                      {paymentTermOptions.map(([value, label]) => <option key={value} value={value}>{label}</option>)}
+                    </select>
+                    <button type="button" onClick={() => updateDefaults('paymentTerms', '')} className="mt-2 text-sm font-semibold text-blue-700 hover:text-blue-900">{t('paymentTermsCustom')}</button>
+                  </div>
+                ) : (
+                  <div>
+                    <textarea value={defaults.paymentTerms || ''} onChange={(event) => updateDefaults('paymentTerms', event.target.value)} placeholder={t('paymentTermsCustomPlaceholder')} rows={4} className="mt-2 w-full rounded-2xl border border-slate-200 bg-slate-50 px-4 py-3 text-sm leading-6 outline-none focus:border-blue-500 focus:ring-4 focus:ring-blue-100" />
+                    <p className="mt-2 text-xs font-normal leading-5 text-slate-500">{t('paymentTermsUseCompanyDefault')}</p>
+                  </div>
+                )}
               </label>
               <SettingsNumberInput
                 label={t('defaultDepositPercentage')}

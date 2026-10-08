@@ -7,7 +7,7 @@ import { useToast } from '../components/common/ToastProvider'
 import { useAuth } from '../contexts/AuthContext'
 import { normalizeBrandColor } from '../data/brandColors'
 import { createDefaultCompanySettings } from '../data/defaultCompanySettings'
-import { getPaymentTermOptions } from '../utils/paymentTerms'
+import { getPaymentTermOptions, isKnownPaymentTermValue } from '../utils/paymentTerms'
 import { canRenderOnboardingReady, hasUsableContractorWorkspace } from '../utils/onboardingState'
 
 const TOTAL_STEPS = 5
@@ -645,7 +645,18 @@ function StepContent({ step, draft, updateCompany, updateDefaults, handleLogoUpl
         <p className="mt-3 text-slate-600">{t('onboardingDefaultsSubtitle')}</p>
         <div className="mt-7 grid gap-4 sm:grid-cols-2">
           <OnboardingInput id="onboarding-tax" type="number" min="0" max="100" step="0.001" label={t('onboardingDefaultTaxRate')} helper={t('onboardingTaxRateHelper')} value={defaults.taxRate} onChange={(value) => updateDefaults('taxRate', Math.min(100, Math.max(0, Number(value || 0))))} suffix="%" />
-          <OnboardingSelect id="onboarding-terms" label={t('onboardingDefaultPaymentTerms')} helper={t('onboardingPaymentTermsHelper')} value={defaults.paymentTerms} onChange={(value) => updateDefaults('paymentTerms', value)} options={paymentTermOptions} />
+          {isKnownPaymentTermValue(defaults.paymentTerms) ? (
+            <div>
+              <OnboardingSelect id="onboarding-terms" label={t('onboardingDefaultPaymentTerms')} helper={t('onboardingPaymentTermsHelper')} value={defaults.paymentTerms} onChange={(value) => updateDefaults('paymentTerms', value)} options={paymentTermOptions} />
+              <button type="button" onClick={() => updateDefaults('paymentTerms', '')} className="mt-2 text-sm font-semibold text-blue-700 hover:text-blue-900">{t('paymentTermsCustom')}</button>
+            </div>
+          ) : (
+            <label className="block text-sm font-semibold text-slate-700">
+              <span>{t('onboardingDefaultPaymentTerms')}</span>
+              <p className="mt-1 text-sm font-normal leading-6 text-slate-500">{t('onboardingPaymentTermsHelper')}</p>
+              <textarea id="onboarding-terms" value={defaults.paymentTerms || ''} onChange={(event) => updateDefaults('paymentTerms', event.target.value)} placeholder={t('paymentTermsCustomPlaceholder')} rows={4} className="mt-2 w-full rounded-2xl border border-slate-200 bg-white px-4 py-3 text-sm leading-6 outline-none focus:border-blue-500 focus:ring-4 focus:ring-blue-100" />
+            </label>
+          )}
           <OnboardingSelect id="onboarding-expiration" label={t('onboardingEstimateExpiration')} helper={t('onboardingEstimateExpirationHelper')} value={String(defaults.estimateExpirationDays)} onChange={(value) => updateDefaults('estimateExpirationDays', Number(value))} options={[
             ['7', t('onboardingDays', { count: 7 })], ['14', t('onboardingDays', { count: 14 })], ['30', t('onboardingDays', { count: 30 })], ['60', t('onboardingDays', { count: 60 })],
           ]} />

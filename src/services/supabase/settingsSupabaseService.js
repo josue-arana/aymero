@@ -197,7 +197,7 @@ function toSupabasePayload(contractorId, settings = {}) {
     logo_file_path: normalized.company.logo || null,
     primary_brand_color: normalizeBrandColor(normalized.company.primaryColor),
     accepted_payment_methods: serializeAcceptedPaymentMethods(normalized.company.acceptedPaymentMethods),
-    default_payment_terms: normalized.defaults.paymentTerms || null,
+    default_payment_terms: String(normalized.defaults.paymentTerms || '').trim() || null,
     default_tax_rate: Number(normalized.defaults.taxRate ?? 0),
     default_estimate_expiration_days: Number(normalized.defaults.estimateExpirationDays ?? 30),
     default_currency: normalized.defaults.currency || 'USD',

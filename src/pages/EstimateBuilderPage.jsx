@@ -591,7 +591,7 @@ export function EstimateBuilderPage({ lead, clientRecord = null, t, appLanguage 
       summary: hasMeaningfulEstimateFormattedText(sanitizedScope) ? sanitizedScope : '',
       lineItems: isDetailedPricing ? sanitizedLineItems : [],
       materialsIncluded,
-      paymentTerms,
+      paymentTerms: String(paymentTerms || '').trim(),
       estimateLanguage: estimateLanguage || '',
       scopeAssistantState,
       pricingMode,
@@ -1340,11 +1340,17 @@ export function EstimateBuilderPage({ lead, clientRecord = null, t, appLanguage 
                   <label className="block text-sm font-bold text-slate-800">{t('paymentTerms')}</label>
                   {isEditing ? (
                     isKnownPaymentTermValue(paymentTerms) ? (
-                      <SelectField value={paymentTerms} onChange={(event) => { markDraftDirty(); setPaymentTerms(event.target.value) }} className="bg-slate-50">
-                        {paymentTermOptions.map(([value, label]) => <option key={value} value={value}>{label}</option>)}
-                      </SelectField>
+                      <div className="space-y-2">
+                        <SelectField value={paymentTerms} onChange={(event) => { markDraftDirty(); setPaymentTerms(event.target.value) }} className="bg-slate-50">
+                          {paymentTermOptions.map(([value, label]) => <option key={value} value={value}>{label}</option>)}
+                        </SelectField>
+                        <button type="button" onClick={() => { markDraftDirty(); setPaymentTerms('') }} className="text-sm font-semibold text-blue-700 hover:text-blue-900">{t('paymentTermsCustom')}</button>
+                      </div>
                     ) : (
-                      <textarea value={paymentTerms} onChange={(event) => { markDraftDirty(); setPaymentTerms(event.target.value) }} rows={4} className="w-full rounded-2xl border border-slate-200 bg-slate-50 p-4 text-sm leading-6 outline-none focus:border-blue-500 focus:ring-4 focus:ring-blue-100" />
+                      <div className="space-y-2">
+                        <textarea value={paymentTerms} onChange={(event) => { markDraftDirty(); setPaymentTerms(event.target.value) }} rows={4} placeholder={t('paymentTermsCustomPlaceholder')} className="w-full rounded-2xl border border-slate-200 bg-slate-50 p-4 text-sm leading-6 outline-none focus:border-blue-500 focus:ring-4 focus:ring-blue-100" />
+                        <button type="button" onClick={() => { markDraftDirty(); setPaymentTerms(companySettings?.defaults?.paymentTerms || draftEstimateT('defaultPaymentTerms')) }} className="text-sm font-semibold text-blue-700 hover:text-blue-900">{t('paymentTermsUseCompanyDefault')}</button>
+                      </div>
                     )
                   ) : (
                     <div className="rounded-2xl bg-slate-50 p-4 text-sm leading-6 text-slate-700 whitespace-pre-line">{getPaymentTermLabel(paymentTerms, t)}</div>
