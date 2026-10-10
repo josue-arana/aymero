@@ -565,14 +565,17 @@ export function EstimateBuilderPage({ lead, clientRecord = null, t, appLanguage 
   ])
   const estimatePreviewProps = useMemo(() => ({
     company: companySettings?.company,
-    lead,
+    lead: {
+      ...lead,
+      phone: lead?.phone || clientRecord?.phone || '',
+    },
     estimateNumber: previewEstimateNumber,
     estimateDate: previewEstimateDate,
     documentModel: estimateDocumentModel,
     paymentTerms: getPaymentTermLabel(paymentTerms, estimateT),
     language: estimateOutputLanguage,
     t: estimateT,
-  }), [companySettings?.company, estimateDocumentModel, estimateOutputLanguage, estimateT, lead, paymentTerms, previewEstimateDate, previewEstimateNumber])
+  }), [clientRecord?.phone, companySettings?.company, estimateDocumentModel, estimateOutputLanguage, estimateT, lead, paymentTerms, previewEstimateDate, previewEstimateNumber])
 
   function getEstimatePayload() {
     const sanitizedScope = normalizeEstimateFormattedTextForStorage(scope)

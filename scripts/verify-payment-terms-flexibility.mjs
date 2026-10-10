@@ -26,6 +26,9 @@ const settingsPersistence = read('src/services/supabase/settingsSupabaseService.
 const publicEstimate = read('src/pages/PublicEstimatePage.jsx')
 const duplicateDraft = read('src/utils/estimateAlternatives.js')
 const schema = read('supabase/schema.sql')
+const defaults = read('src/data/defaultCompanySettings.js')
+const en = read('src/translations/en.js')
+const contractDocument = read('src/utils/contractDocument.js')
 
 const customTerms = '50% deposit required to begin work.\nRemaining balance due upon completion.'
 assert.equal(normalizePaymentTermValue('net_7'), 'net_7')
@@ -49,4 +52,8 @@ const duplicated = buildDuplicatedEstimateDraft({
 assert.equal(duplicated.paymentTerms, customTerms)
 assert.match(duplicateDraft, /Object\.entries\(estimate \|\| \{\}\)/)
 assert.match(schema, /payment_terms text/)
+assert.match(defaults, /50% down payment with remaining balance due weekly based on work progress\./)
+assert.doesNotMatch(defaults, /downpayment/)
+assert.match(en, /contractPaymentTermsDownPayment\": \"Down payment of \{\{deposit\}\}/)
+assert.match(contractDocument, /currency\.format\(safeDeposit\)/)
 console.log('Payment terms flexibility verification passed.')

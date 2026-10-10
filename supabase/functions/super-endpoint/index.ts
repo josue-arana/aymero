@@ -286,7 +286,7 @@ Deno.serve(async (request) => {
       estimateRow.lead_id
         ? admin
             .from('leads')
-            .select('client_id, name, address, service_type')
+            .select('client_id, name, phone, address, service_type')
             .eq('contractor_id', contractorId)
             .eq('id', estimateRow.lead_id)
             .is('archived_at', null)
@@ -301,7 +301,7 @@ Deno.serve(async (request) => {
     const clientResult = clientId
       ? await admin
           .from('clients')
-          .select('display_name, address, city, state, postal_code, preferred_language')
+            .select('display_name, phone, address, city, state, postal_code, preferred_language')
           .eq('contractor_id', contractorId)
           .eq('id', clientId)
           .is('archived_at', null)
@@ -320,6 +320,7 @@ Deno.serve(async (request) => {
       client: {
         name: client.display_name || lead.name || '',
         displayName: client.display_name || lead.name || '',
+        phone: client.phone || lead.phone || '',
         address: client.address || lead.address || '',
         city: client.city || '',
         state: client.state || '',

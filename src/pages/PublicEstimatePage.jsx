@@ -107,6 +107,7 @@ export function PublicEstimatePage() {
     )
     const lead = {
       client: client.displayName || client.name || '',
+      phone: client.phone || '',
       address: formatClientAddress(client, project),
       location: formatClientAddress(client, project),
       projectTitle: estimate.projectTitle || estimate.title || project.projectTitle || '',

@@ -21,7 +21,7 @@ const baseCompanySettings = {
     },
   },
   defaults: {
-    paymentTerms: '50% downpayment with remaining balance due weekly based on work progress.',
+    paymentTerms: '50% down payment with remaining balance due weekly based on work progress.',
     taxRate: 0,
     estimateExpirationDays: 30,
     currency: 'USD',

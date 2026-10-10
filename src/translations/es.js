@@ -303,6 +303,7 @@ export const es = {
   "paymentTermsCustom": "Ingresar términos personalizados",
   "paymentTermsUseCompanyDefault": "Usar valor predeterminado de la compañía",
   "paymentTermsCustomPlaceholder": "Ejemplo: Se requiere un depósito del 50% para comenzar. El saldo restante vence al completar el trabajo.",
+  "license": "Licencia",
   "messageFromContractor": "Mensaje del contratista",
   "validUntil": "Válido hasta",
   "thankYouForEstimateOpportunity": "¡Gracias por la oportunidad de proporcionar este estimado!",
