@@ -17,6 +17,7 @@ import {
   waitForEstimateDocumentAssets,
 } from './estimatePagination'
 import { getPaymentTermLabel } from './paymentTerms'
+import { formatEstimateDocumentDate } from './estimateDocumentDate'
 import { resolveDocumentBrandTokens } from '../data/brandColors'
 
 export { calculateEstimatePageBreakOffsets } from './estimatePagination'
@@ -59,19 +60,6 @@ function createEstimateCanvasSlice(sourceCanvas, startY, height) {
   )
 
   return sliceCanvas
-}
-
-function formatDisplayDate(value) {
-  if (!value) {
-    return new Date().toLocaleDateString(undefined, { month: 'long', day: 'numeric', year: 'numeric' })
-  }
-
-  const parsedDate = new Date(value)
-  if (Number.isNaN(parsedDate.getTime())) {
-    return String(value)
-  }
-
-  return parsedDate.toLocaleDateString(undefined, { month: 'long', day: 'numeric', year: 'numeric' })
 }
 
 function resolveValidUntil(value, estimateDate) {
@@ -466,7 +454,9 @@ function buildFallbackPdf({
   }
   if (company?.website) {
     drawContactIcon('website', innerX + 54, cursorY + 46)
-    drawText(company.website, innerX + 68, cursorY + 46, { size: 10, color: safeColors.slate900 })
+    drawText([company.website, company?.licenseNumber ? `${t('license')}: ${company.licenseNumber}` : ''].filter(Boolean).join('  |  '), innerX + 68, cursorY + 46, { size: 10, color: safeColors.slate900 })
+  } else if (company?.licenseNumber) {
+    drawText(`${t('license')}: ${company.licenseNumber}`, innerX + 68, cursorY + 46, { size: 10, color: safeColors.slate900 })
   }
 
   drawText(t('estimate').toUpperCase(), cardX + cardWidth - 24, cursorY + 2, { bold: true, size: 11, color: safeColors.slate900, align: 'right' })
@@ -487,8 +477,8 @@ function buildFallbackPdf({
   drawText(t('client').toUpperCase(), innerX + 14, cursorY + 16, { bold: true, size: 9.5, color: safeColors.slate900 })
   drawText(t('date').toUpperCase(), innerX + columnWidth + 14, cursorY + 16, { bold: true, size: 9.5, color: safeColors.slate900 })
   drawText(lead?.client || clientName, innerX + 14, cursorY + 33, { bold: true, size: 10.5, color: safeColors.slate900 })
-  drawText(lead?.address || lead?.location || '', innerX + 14, cursorY + 47, { size: 9.5, color: safeColors.slate700 })
-  drawText(formatDisplayDate(estimateDate), innerX + columnWidth + 14, cursorY + 33, { size: 10.5, color: safeColors.slate700 })
+  drawText([lead?.phone, lead?.address || lead?.location || ''].filter(Boolean).join('  |  '), innerX + 14, cursorY + 47, { size: 9.5, color: safeColors.slate700 })
+  drawText(formatEstimateDocumentDate(estimateDate), innerX + columnWidth + 14, cursorY + 33, { size: 10.5, color: safeColors.slate700 })
   if (showGlobalMaterialsIncluded) {
     drawText(t('materialsIncluded').toUpperCase(), innerX + (columnWidth * 2) + 14, cursorY + 16, { bold: true, size: 9.5, color: safeColors.slate900 })
     pdf.setDrawColor(accentColor)
@@ -626,7 +616,7 @@ function buildFallbackPdf({
     `${t('totalEstimate')}: ${currency.format(total)}`,
   ]
   drawSectionBlock(t('totalEstimate'), totalsLines.join('\n'), { minHeight: 76, titleColor: accentTextColor })
-  drawSectionBlock(t('validUntil'), formatDisplayDate(validUntil), { minHeight: 62, titleColor: accentTextColor, titleIcon: 'calendar' })
+  drawSectionBlock(t('validUntil'), formatEstimateDocumentDate(validUntil), { minHeight: 62, titleColor: accentTextColor, titleIcon: 'calendar' })
 
   ensureSpace(50)
   pdf.setDrawColor(safeColors.slate200)

@@ -1,5 +1,5 @@
 import { currency } from '../../utils/formatters'
-import { getLanguageLocale } from '../../utils/language'
+import { formatEstimateDocumentDate } from '../../utils/estimateDocumentDate'
 import { getDocumentDensityVariables } from '../../utils/documentDensity'
 import {
   ensureNormalizedEstimateDocument,
@@ -29,19 +29,6 @@ const colors = {
   slate900: '#0f172a',
   ink: '#111111',
   teal700: '#0e7490',
-}
-
-function formatDisplayDate(value, language = 'en') {
-  if (!value) {
-    return new Date().toLocaleDateString(getLanguageLocale(language), { month: 'long', day: 'numeric', year: 'numeric' })
-  }
-
-  const parsedDate = new Date(value)
-  if (Number.isNaN(parsedDate.getTime())) {
-    return String(value)
-  }
-
-  return parsedDate.toLocaleDateString(getLanguageLocale(language), { month: 'long', day: 'numeric', year: 'numeric' })
 }
 
 function resolveValidUntil(value, estimateDate) {
@@ -172,6 +159,11 @@ function CompanyBadge({ company = {}, accentColor, t }) {
           ) : null}
           {company?.website ? (
             <CompanyContactItem icon={HeaderWebsiteIcon} accentColor={accentColor}>{company.website}</CompanyContactItem>
+          ) : null}
+          {company?.licenseNumber ? (
+            <span style={{ minWidth: 0, fontSize: '11px', lineHeight: 1.35, color: colors.ink, overflowWrap: 'anywhere', wordBreak: 'break-word' }}>
+              {t('license')}: {company.licenseNumber}
+            </span>
           ) : null}
         </div>
       </div>
@@ -523,6 +515,7 @@ export function EstimatePdfTemplate({
           >
             <SummaryBlock label={t('client')}>
               <div style={{ fontWeight: 700 }}>{lead?.client || ''}</div>
+              {lead?.phone ? <div style={{ marginTop: '2px', color: colors.slate500 }}>{lead.phone}</div> : null}
             </SummaryBlock>
           </div>
           <div style={{ minWidth: 0, borderLeft: `1px solid ${colors.slate200}`, padding: 'var(--document-summary-padding-y) var(--document-summary-padding-x)' }}>
@@ -536,7 +529,7 @@ export function EstimatePdfTemplate({
           </div>
           <div style={{ minWidth: 0, borderLeft: `1px solid ${colors.slate200}`, padding: 'var(--document-summary-padding-y) var(--document-summary-padding-x)' }}>
             <SummaryBlock label={t('date')}>
-              <div>{formatDisplayDate(estimateDate, language)}</div>
+              <div>{formatEstimateDocumentDate(estimateDate)}</div>
             </SummaryBlock>
           </div>
           <div
@@ -764,7 +757,7 @@ export function EstimatePdfTemplate({
           >
             <ValidUntilHeading accentColor={accentColor} accentTextColor={accentTextColor}>{t('validUntil')}</ValidUntilHeading>
             <p style={{ margin: '6px 0 0', fontSize: '11.5px', lineHeight: 1.4, fontWeight: 700, color: colors.ink }}>
-              {formatDisplayDate(displayValidUntil, language)}
+              {formatEstimateDocumentDate(displayValidUntil)}
             </p>
           </div>
         </div>
