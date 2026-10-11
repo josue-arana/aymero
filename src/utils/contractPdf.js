@@ -138,16 +138,6 @@ function buildWorkLines(lead = {}, t = (key) => key) {
   return lines.length > 0 ? lines : [t('unknownAddress')]
 }
 
-function buildLicenseLines(company = {}, t = (key) => key) {
-  const lines = []
-
-  if (company?.licenseNumber) {
-    lines.push(company.licenseNumber)
-  }
-
-  return lines.length > 0 ? lines : [t('notAdded')]
-}
-
 function getContractMaterialsLabel(item = {}, t = (key) => key) {
   if (item?.materialsStatus === 'owner_supplied_materials') return t('ownerSuppliedMaterials')
   if (item?.materialsStatus === 'labor_only' || item?.materialsIncluded === false) return t('laborOnly')
@@ -232,7 +222,6 @@ function buildFallbackPdf({
   let cursorY = cardY + 24
   const billToLines = buildBillToLines(lead, t)
   const workLines = buildWorkLines(lead, t)
-  const licenseLines = buildLicenseLines(company, t)
   const normalizedWorkBreakdown = normalizeContractWorkBreakdown(workBreakdown)
   const { accentColor, accentTextColor } = resolveDocumentBrandTokens(company)
 
@@ -382,14 +371,13 @@ function buildFallbackPdf({
   }
   if (company?.website) {
     drawContactIcon('website', innerX + 54, cursorY + 46)
-    drawText(company.website, innerX + 68, cursorY + 46, { size: 10, color: safeColors.slate900 })
+    drawText([company.website, company?.licenseNumber ? `${t('license')}: ${company.licenseNumber}` : ''].filter(Boolean).join('  |  '), innerX + 68, cursorY + 46, { size: 10, color: safeColors.slate900 })
+  } else if (company?.licenseNumber) {
+    drawText(`${t('license')}: ${company.licenseNumber}`, innerX + 68, cursorY + 46, { size: 10, color: safeColors.slate900 })
   }
 
   drawText(t('contract').toUpperCase(), cardX + cardWidth - 24, cursorY + 2, { bold: true, size: 11, color: safeColors.slate900, align: 'right' })
   drawText(contractNumber, cardX + cardWidth - 24, cursorY + 18, { bold: true, size: 12, color: accentTextColor, align: 'right' })
-  if (contractDate) {
-    drawText(contractDate, cardX + cardWidth - 24, cursorY + 34, { size: 9, color: safeColors.slate500, align: 'right' })
-  }
   cursorY += 52
   const infoRowHeight = 76
   ensureSpace(infoRowHeight + 8)
@@ -400,10 +388,10 @@ function buildFallbackPdf({
   pdf.line(innerX + (columnWidth * 2), cursorY, innerX + (columnWidth * 2), cursorY + infoRowHeight)
   drawText(t('billTo').toUpperCase(), innerX + 14, cursorY + 16, { bold: true, size: 9, color: safeColors.slate900 })
   drawText(t('jobLocation').toUpperCase(), innerX + columnWidth + 14, cursorY + 16, { bold: true, size: 9, color: safeColors.slate900 })
-  drawText(t('licenseInfo').toUpperCase(), innerX + (columnWidth * 2) + 14, cursorY + 16, { bold: true, size: 9, color: safeColors.slate900 })
+  drawText(t('date').toUpperCase(), innerX + (columnWidth * 2) + 14, cursorY + 16, { bold: true, size: 9, color: safeColors.slate900 })
   billToLines.forEach((line, index) => drawText(line, innerX + 14, cursorY + 32 + (index * 13), { size: index === 0 ? 10 : 9, color: safeColors.slate700, bold: index === 0 }))
   workLines.forEach((line, index) => drawText(line, innerX + columnWidth + 14, cursorY + 32 + (index * 13), { size: index === 0 ? 10 : 9, color: safeColors.slate700, bold: index === 1 }))
-  licenseLines.forEach((line, index) => drawText(line, innerX + (columnWidth * 2) + 14, cursorY + 32 + (index * 13), { size: 9, color: safeColors.slate700 }))
+  drawText(contractDate || '', innerX + (columnWidth * 2) + 14, cursorY + 32, { size: 9, color: safeColors.slate700 })
   cursorY += infoRowHeight + 10
 
   const scopeLines = getRichTextPlainLines(scope).flatMap((line) => wrapMultilineText(line, 72))

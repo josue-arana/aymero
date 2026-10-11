@@ -81,6 +81,10 @@ const contractPageSource = readFileSync(
   fileURLToPath(new URL('../src/pages/ContractsPage.jsx', import.meta.url)),
   'utf8',
 )
+const formattedTextareaSource = readFileSync(
+  fileURLToPath(new URL('../src/components/estimates/LightweightFormattedTextarea.jsx', import.meta.url)),
+  'utf8',
+)
 const documentOutputSource = readFileSync(
   fileURLToPath(new URL('../src/utils/documentOutput.js', import.meta.url)),
   'utf8',
@@ -110,6 +114,13 @@ assert.match(estimatePrintStyles, /@page[\s\S]*size: letter portrait[\s\S]*margi
 assert.match(contractPrintStyles, /@page[\s\S]*size: letter portrait[\s\S]*margin: 0\.5in/)
 assert.match(estimatePageSource, /downloadEstimatePdf/)
 assert.match(contractPageSource, /downloadContractPdf/)
+assert.match(contractPageSource, /LightweightFormattedTextarea/)
+assert.equal((contractPageSource.match(/<ContractSection[^>]*formatted t=\{t\}/g) || []).length, 3)
+assert.match(contractPageSource, /\{t\('license'\)\}: \{company\.licenseNumber\}/)
+assert.match(contractTemplateSource, /\{t\('license'\)\}: \{company\.licenseNumber\}/)
+assert.match(contractTemplateSource, /SummaryBlock label=\{t\('date'\)\}/)
+assert.match(formattedTextareaSource, /decreaseTextSize/)
+assert.match(formattedTextareaSource, /increaseTextSize/)
 assert.match(documentOutputSource, /isAppleTouchDevice/)
 assert.match(estimateTemplateSource, /DocumentItemNumber, DocumentMaterialLabel/)
 assert.match(contractTemplateSource, /DocumentItemNumber, DocumentMaterialLabel/)
