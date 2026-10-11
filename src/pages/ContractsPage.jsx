@@ -565,8 +565,8 @@ function ContractDocument({ isEditing, lead, company, contractDate, contractNumb
             </div>
           ) : null}
           <ContractSection title={t('projectScope')} value={scope} onChange={setScope} isEditing={isEditing} highlighted formatted t={t} />
-          <ContractSection title={t('paymentTerms')} value={paymentTerms} onChange={setPaymentTerms} isEditing={isEditing} />
-          <ContractSection title={t('acceptanceLegalConfirmation')} value={acceptanceLegalText} onChange={setAcceptanceLegalText} isEditing={isEditing} />
+          <ContractSection title={t('paymentTerms')} value={paymentTerms} onChange={setPaymentTerms} isEditing={isEditing} formatted t={t} />
+          <ContractSection title={t('acceptanceLegalConfirmation')} value={acceptanceLegalText} onChange={setAcceptanceLegalText} isEditing={isEditing} formatted t={t} />
         </>
       ) : null}
     </div>

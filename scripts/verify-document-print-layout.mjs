@@ -115,7 +115,7 @@ assert.match(contractPrintStyles, /@page[\s\S]*size: letter portrait[\s\S]*margi
 assert.match(estimatePageSource, /downloadEstimatePdf/)
 assert.match(contractPageSource, /downloadContractPdf/)
 assert.match(contractPageSource, /LightweightFormattedTextarea/)
-assert.match(contractPageSource, /formatted t=\{t\}/)
+assert.equal((contractPageSource.match(/<ContractSection[^>]*formatted t=\{t\}/g) || []).length, 3)
 assert.match(contractPageSource, /\{t\('license'\)\}: \{company\.licenseNumber\}/)
 assert.match(contractTemplateSource, /\{t\('license'\)\}: \{company\.licenseNumber\}/)
 assert.match(contractTemplateSource, /SummaryBlock label=\{t\('date'\)\}/)
