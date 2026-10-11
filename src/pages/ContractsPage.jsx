@@ -8,6 +8,7 @@ import { PaginatedContractPreview } from '../components/contracts/PaginatedContr
 import { SelectField } from '../components/ui/SelectField'
 import { FilterChip } from '../components/ui/FilterChip'
 import { StatusBadge } from '../components/ui/StatusBadge'
+import { LightweightFormattedTextarea } from '../components/estimates/LightweightFormattedTextarea'
 import { currency } from '../utils/formatters'
 import { getPortalData, resolvePublicPortalShareUrl } from '../utils/portal'
 import { SendToCustomerModal } from '../components/common/SendToCustomerModal'
@@ -35,20 +36,10 @@ import { resolveNavigationContext } from '../utils/navigationContext'
 import { AymeroLoader } from '../components/common/AymeroLoader'
 import { LoadingButton } from '../components/common/LoadingButton'
 import { isCollectionInitialLoading } from '../utils/collectionLoading'
+import { formatEstimateDocumentDate } from '../utils/estimateDocumentDate'
 
-function formatContractDate(value, language = 'en') {
-  const locale = language === 'es' ? 'es-ES' : 'en-US'
-
-  if (!value) {
-    return new Date().toLocaleDateString(locale, { month: 'long', day: 'numeric', year: 'numeric' })
-  }
-
-  const parsedDate = new Date(value)
-  if (Number.isNaN(parsedDate.getTime())) {
-    return String(value)
-  }
-
-  return parsedDate.toLocaleDateString(locale, { month: 'long', day: 'numeric', year: 'numeric' })
+function formatContractDate(value) {
+  return formatEstimateDocumentDate(value)
 }
 
 const contractPreviewPageWidth = defaultDocumentPreviewWidth
@@ -152,8 +143,8 @@ export function ContractPreviewPage({ lead, clientRecord = null, t, appLanguage 
   const [warrantyDisclaimer, setWarrantyDisclaimer] = useState(editorState.warrantyDisclaimer)
   const [depositAmount, setDepositAmount] = useState(editorState.depositAmount)
   const previewContractDate = useMemo(
-    () => formatContractDate(savedContract.signedDate || savedContract.updatedAt || lead.portal?.contract?.updatedAt || new Date(), contractOutputLanguage),
-    [contractOutputLanguage, lead.portal?.contract?.updatedAt, savedContract.signedDate, savedContract.updatedAt]
+    () => formatContractDate(savedContract.signedDate || savedContract.updatedAt || lead.portal?.contract?.updatedAt || new Date()),
+    [lead.portal?.contract?.updatedAt, savedContract.signedDate, savedContract.updatedAt]
   )
   const notesAndTermsItems = useMemo(
     () => buildContractNotesAndTermsItems({
@@ -573,7 +564,7 @@ function ContractDocument({ isEditing, lead, company, contractDate, contractNumb
               <ContractWorkBreakdownList workBreakdown={workBreakdown} t={t} />
             </div>
           ) : null}
-          <ContractSection title={t('projectScope')} value={scope} onChange={setScope} isEditing={isEditing} highlighted />
+          <ContractSection title={t('projectScope')} value={scope} onChange={setScope} isEditing={isEditing} highlighted formatted t={t} />
           <ContractSection title={t('paymentTerms')} value={paymentTerms} onChange={setPaymentTerms} isEditing={isEditing} />
           <ContractSection title={t('acceptanceLegalConfirmation')} value={acceptanceLegalText} onChange={setAcceptanceLegalText} isEditing={isEditing} />
         </>
@@ -594,6 +585,7 @@ function DocumentCompanyHeader({ company, t }) {
         <p className="break-words font-bold text-slate-950">{company?.name || t('brandName')}</p>
         <p className="break-words text-sm text-slate-600">{company?.phone || ''}</p>
         <p className="break-words text-sm text-slate-600">{company?.email || ''}</p>
+        {company?.licenseNumber ? <p className="break-words text-sm text-slate-600">{t('license')}: {company.licenseNumber}</p> : null}
         <p className="break-words text-sm text-slate-600">{company?.address || ''}</p>
       </div>
     </div>
@@ -638,12 +630,16 @@ function ContractWorkBreakdownList({ workBreakdown = [], t }) {
   )
 }
 
-function ContractSection({ title, value, onChange, isEditing, highlighted = false }) {
+function ContractSection({ title, value, onChange, isEditing, highlighted = false, formatted = false, t }) {
   return (
     <section>
       <h2 className="mb-2 text-base font-bold text-slate-950">{title}</h2>
       {isEditing ? (
-        <textarea value={value} onChange={(event) => onChange?.(event.target.value)} rows={3} className="w-full rounded-2xl border border-slate-200 bg-slate-50 p-4 text-sm leading-6 outline-none focus:border-blue-500 focus:ring-4 focus:ring-blue-100" />
+        formatted ? (
+          <LightweightFormattedTextarea value={value} onChange={onChange} rows={6} minHeight={152} maxHeight={560} ariaLabel={title} t={t} className="p-4 text-sm leading-6" />
+        ) : (
+          <textarea value={value} onChange={(event) => onChange?.(event.target.value)} rows={3} className="w-full rounded-2xl border border-slate-200 bg-slate-50 p-4 text-sm leading-6 outline-none focus:border-blue-500 focus:ring-4 focus:ring-blue-100" />
+        )
       ) : (
         <div className={`${highlighted ? 'rounded-2xl bg-slate-50 p-4' : ''} whitespace-pre-line break-words text-sm leading-6 text-slate-700`}>{value}</div>
       )}

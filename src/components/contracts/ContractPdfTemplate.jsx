@@ -91,6 +91,11 @@ function CompanyBadge({ company = {}, accentColor, t }) {
           {company?.phone ? <CompanyContactItem icon={HeaderPhoneIcon} accentColor={accentColor}>{company.phone}</CompanyContactItem> : null}
           {company?.email ? <CompanyContactItem icon={HeaderMailIcon} accentColor={accentColor}>{company.email}</CompanyContactItem> : null}
           {company?.website ? <CompanyContactItem icon={HeaderWebsiteIcon} accentColor={accentColor}>{company.website}</CompanyContactItem> : null}
+          {company?.licenseNumber ? (
+            <span style={{ minWidth: 0, fontSize: '11px', lineHeight: 1.35, color: colors.ink, overflowWrap: 'anywhere', wordBreak: 'break-word' }}>
+              {t('license')}: {company.licenseNumber}
+            </span>
+          ) : null}
         </div>
       </div>
     </div>
@@ -113,10 +118,6 @@ function buildBillToLines(lead = {}, t) {
 function buildWorkLines(lead = {}, t) {
   const lines = formatAddressLines(lead?.address || lead?.location || '')
   return lines.length ? lines : [t('unknownAddress')]
-}
-
-function buildLicenseLines(company = {}, t) {
-  return company?.licenseNumber ? [company.licenseNumber] : [t('notAdded')]
 }
 
 function SummaryBlock({ label, children, align = 'left' }) {
@@ -252,7 +253,6 @@ function SignatureSection({ contractorName, clientName, t }) {
 export function ContractPdfTemplate({ company, lead, contractNumber, contractDate, notesAndTermsItems = [], scope, workBreakdown = [], total, t }) {
   const billToLines = buildBillToLines(lead, t)
   const workLines = buildWorkLines(lead, t)
-  const licenseLines = buildLicenseLines(company, t)
   const projectTitle = lead?.projectTitle || lead?.projectType || t('projectScope')
   const normalizedWorkBreakdown = normalizeContractWorkBreakdown(workBreakdown)
   const hasScope = shouldRenderContractScopeText(scope, normalizedWorkBreakdown)
@@ -273,7 +273,7 @@ export function ContractPdfTemplate({ company, lead, contractNumber, contractDat
         <div style={{ display: 'grid', gridTemplateColumns: 'minmax(0,1.05fr) minmax(0,1.35fr) minmax(112px,0.8fr) minmax(144px,1fr)', alignItems: 'stretch' }}>
           <div style={{ minWidth: 0, padding: 'var(--document-summary-padding-y) var(--document-summary-padding-x)' }}><SummaryBlock label={t('billTo')}><div style={{ display: 'grid', gap: '1px' }}>{billToLines.map((line, index) => <div key={`${line}-${index}`}>{line}</div>)}</div></SummaryBlock></div>
           <div style={{ minWidth: 0, borderLeft: `1px solid ${colors.slate200}`, padding: 'var(--document-summary-padding-y) var(--document-summary-padding-x)' }}><SummaryBlock label={t('jobLocation')}><div style={{ display: 'grid', gap: '1px' }}>{workLines.map((line, index) => <div key={`${line}-${index}`}>{line}</div>)}</div></SummaryBlock></div>
-          <div style={{ minWidth: 0, borderLeft: `1px solid ${colors.slate200}`, padding: 'var(--document-summary-padding-y) var(--document-summary-padding-x)' }}><SummaryBlock label={t('licenseInfo')}><div style={{ display: 'grid', gap: '1px' }}>{licenseLines.map((line, index) => <div key={`${line}-${index}`}>{line}</div>)}</div></SummaryBlock></div>
+          <div style={{ minWidth: 0, borderLeft: `1px solid ${colors.slate200}`, padding: 'var(--document-summary-padding-y) var(--document-summary-padding-x)' }}><SummaryBlock label={t('date')}><div>{contractDate}</div></SummaryBlock></div>
           <div style={{ borderLeft: `1px solid ${colors.slate300}`, padding: 'var(--document-summary-padding-y) var(--document-summary-padding-x)', display: 'flex', flexDirection: 'column', justifyContent: 'center', textAlign: 'right' }}><SummaryBlock label={t('projectTotal')} align="right"><div style={{ fontSize: '25px', lineHeight: 1, fontWeight: 700, letterSpacing: '-0.025em', color: colors.ink }}>{currency.format(Number(total || 0))}</div></SummaryBlock></div>
         </div>
         <div style={{ display: 'grid', gridTemplateColumns: '118px minmax(0,1fr)', gap: '18px', borderTop: `1px solid ${colors.slate200}`, padding: '12px var(--document-summary-padding-x)', alignItems: 'start' }}>
