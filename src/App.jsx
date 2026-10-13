@@ -4183,6 +4183,7 @@ function buildWorkspaceJobRecord(job, clientRecord = null) {
     }))
     syncLeadContractState(leadId, contract, persistedEstimate)
     showToast(t('contractSaved'))
+    return contract
   }
 
   function markContractSigned(leadId, contract) {

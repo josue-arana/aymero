@@ -865,9 +865,24 @@ export function ContractRoute({ companySettings, leads, clients = [], projects =
       publicPortalLink={publicPortalLink}
       onBack={handleBack}
       backLabel={backLabel}
-      onSaveContract={(contract) => onSaveContract?.(lead.id, contract)}
-      onMarkSigned={(contract) => onMarkContractSigned?.(lead.id, contract)}
-      onMarkUnsigned={(contract) => onMarkContractUnsigned?.(lead.id, contract)}
+      onSaveContract={async (contract) => {
+        const persistedContract = await onSaveContract?.(lead.id, contract)
+        const canonicalContract = persistedContract || contract
+        setLoadedContract(canonicalContract)
+        return canonicalContract
+      }}
+      onMarkSigned={async (contract) => {
+        const persistedContract = await onMarkContractSigned?.(lead.id, contract)
+        const canonicalContract = persistedContract || contract
+        setLoadedContract(canonicalContract)
+        return canonicalContract
+      }}
+      onMarkUnsigned={async (contract) => {
+        const persistedContract = await onMarkContractUnsigned?.(lead.id, contract)
+        const canonicalContract = persistedContract || contract
+        setLoadedContract(canonicalContract)
+        return canonicalContract
+      }}
       onArchiveContract={(contract) => onArchiveContract?.(lead.id, contract)}
     />
   )

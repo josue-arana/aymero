@@ -37,6 +37,7 @@
     "verify:estimate-finalization": "node scripts/verify-estimate-finalization.mjs",
     "verify:estimate-polish": "node scripts/verify-estimate-polish.mjs",
     "verify:estimate-detail-only": "node scripts/verify-estimate-detail-only.mjs",
+    "verify:contract-edit-persistence": "node scripts/verify-contract-edit-persistence.mjs",
     "verify:invoice-creation": "node scripts/verify-invoice-creation.mjs",
     "verify:project-completion": "node scripts/verify-project-completion.mjs",
     "verify:project-data-integrity": "node scripts/verify-project-data-integrity.mjs",
