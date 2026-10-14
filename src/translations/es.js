@@ -1511,6 +1511,7 @@ export const es = {
   "uploadedFromPhone": "Subido desde el dispositivo",
   "estimateSaved": "Estimado guardado",
   "estimateSaveFailed": "No se pudo guardar el estimado.",
+  "estimateSaveContextMissing": "No se pudo guardar este estimado porque no está disponible el vínculo con su proyecto o cliente potencial. Actualiza la página y vuelve a abrirlo desde el proyecto o la lista de estimados.",
   "contractSaved": "Contrato guardado",
   "contractSaveFailed": "No se pudo guardar el contrato",
   "contractSigned": "Contrato firmado",

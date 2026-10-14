@@ -1,0 +1,215 @@
+[
+  {
+    "id": "kitchen-quartz",
+    "sourceLanguage": "es",
+    "targetLanguage": "en",
+    "sourceStatus": "verbatim_historical",
+    "originalSource": "Demolición y renovación de Top De, cocina y back  Splash, en material de cuarzo, el trabajo consiste en remover todo el Top De, madera y existente y el Back Splash , remover el zinc de cocina y colocar un zinc cuadrado. Nuevo, reforzar los gabinetes con madera y soportes resistentes para luego instalar un Top en cuarzo de cocina en color blanco, con manchas grises con todo y su Back Flash por todo alrededor de la cocina, medidas ya programadas, también incluye demolición de una pequeña isla tipo desayunador y hacer un Nuevo soporte para instalar un nuevo Top De cuarzo en el área de la isla desayunador con una altura a escoger por el dueño Alicia el trabajo también incluye instalar un Nuevo Faucet, zinc comprado por el dueño también realizar los trabajos de plomería para su total funcionamiento. Todo este trabajo tiene un costo de 6,100$ con un anticipo de $4500 para la compra y orden de materiales con un balance de $1600 al entregar el trabajo",
+    "laterConfirmedFacts": [],
+    "expectedInterpretation": {
+      "projectTitle": "Encimeras de cocina",
+      "workCategories": [
+        {
+          "name": "Encimeras de cocina",
+          "activities": ["Instalar la encimera de cocina", "Instalar el backsplash", "Instalar el fregadero", "Instalar el grifo"],
+          "materials": ["Cuarzo blanco con vetas grises", "Fregadero nuevo"],
+          "quantities": [],
+          "measurements": [],
+          "conditions": ["El propietario seleccionará la altura de la isla"]
+        }
+      ],
+      "contractorResponsibilities": [],
+      "homeownerResponsibilities": ["El propietario comprará el fregadero nuevo"],
+      "ambiguities": [
+        {
+          "sourceText": "Faucet",
+          "likelyMeaning": "Grifo de cocina; la responsabilidad de compra no está indicada",
+          "impact": "material",
+          "clarificationQuestion": "Confirma quién suministrará el grifo de cocina.",
+          "safetySensitive": false
+        }
+      ],
+      "commercial": {
+        "totalPrice": 6100,
+        "downPayment": 4500,
+        "remainingBalance": 1600,
+        "itemizedPrices": [],
+        "additionalCosts": [],
+        "unknownCosts": [],
+        "paymentSchedule": ["Saldo final al completar el trabajo"],
+        "materialsIncluded": "mixed"
+      }
+    },
+    "evaluationAssertions": {
+      "expectedSpanishScope": "- Instalar la encimera de cocina y el backsplash de cuarzo blanco con vetas grises.\n- Instalar el fregadero nuevo suministrado por el propietario.\n- Instalar el grifo de cocina; confirmar quién lo suministrará.\n- Coordinar con el propietario la selección de la altura de la isla.",
+      "expectedEnglishScope": "- Install the kitchen countertop and backsplash using white quartz with gray veining.\n- Install the new homeowner-supplied sink.\n- Install the kitchen faucet; confirm who will supply it.\n- Coordinate the island-height selection with the homeowner.",
+      "requiredEnglishTerms": ["countertop", "backsplash", "sink", "faucet", "white quartz", "gray veining", "homeowner"],
+      "forbiddenEnglishTerms": ["homeowner-supplied faucet", "permit", "warranty"]
+    }
+  },
+  {
+    "id": "roof-replacement",
+    "sourceLanguage": "es",
+    "targetLanguage": "en",
+    "sourceStatus": "verbatim_historical",
+    "originalSource": "demolición y renovación completa de Roof en la propiedad que incluye remover todo el Roof, viejo de la casa y el techo del garaje. Revisar todas las partes de plywood y reemplazar todo lo necesario. Si está en mal estado, reemplazar todos las salidas de aire que están en el tejado, colocar dos rollos de líneas a lo largo de cada techo, Ice Water protector, esto permitirá que la nieve no se repose en el tejado y pueda caer por bloques. Esto ayuda a deshacer la nieve, en cuanto se retenga en el tejado, agregar líneas de respiraderos de aire para el ático. Ridge vent , reemplazar todos los Flashing de metal, alrededor del tejado, reemplazar todos los cobertores de las canaletas, por último instalar Single Roof, con un color aún no definido por el cliente y luego limpiar toda la propiedad y sus alrededores, dejando totalmente limpio. Todo este trabajo tiene un costo de\n$11,900 más $350 para la instalación y reparación de un exhaust fam  exterior del baño , más el costo del valor del Nievo bathroom fam Que instalaremos adentro del bath  costo total $12,250 con un anticipo de $7500 quedando un balance de, $4750 más el costo del exhaust Fam, que va adentro del baño que aún no se determina el costo",
+    "laterConfirmedFacts": [],
+    "expectedInterpretation": {
+      "projectTitle": "Reemplazo de techo",
+      "workCategories": [
+        {
+          "name": "Reemplazo de techo",
+          "activities": ["Reemplazar el techo de tejas", "Reemplazar plywood dañado", "Instalar flashing", "Instalar ridge vent", "Instalar ice and water shield"],
+          "materials": ["Tejas de techo", "Plywood", "Flashing", "Ridge vent", "Ice and water shield"],
+          "quantities": [],
+          "measurements": [],
+          "conditions": ["Confirmar la cantidad y ubicación de la protección contra hielo y agua"]
+        },
+        {
+          "name": "Extractor del baño",
+          "activities": ["Reparar la instalación del extractor del baño"],
+          "materials": [],
+          "quantities": [],
+          "measurements": [],
+          "conditions": ["La compra del extractor interior tiene costo adicional por determinar"]
+        }
+      ],
+      "contractorResponsibilities": [],
+      "homeownerResponsibilities": [],
+      "ambiguities": [
+        {
+          "sourceText": "dos rollos de lines",
+          "likelyMeaning": "Posible cantidad de ice and water shield; cantidad y ubicación no confirmadas",
+          "impact": "material",
+          "clarificationQuestion": "Confirma la cantidad y ubicación del ice and water shield.",
+          "safetySensitive": false
+        }
+      ],
+      "commercial": {
+        "totalPrice": 12250,
+        "downPayment": 7500,
+        "remainingBalance": 4750,
+        "itemizedPrices": [{ "label": "Trabajo de techo", "amount": 11900 }, { "label": "Instalación o reparación del extractor del baño", "amount": 350 }],
+        "additionalCosts": [],
+        "unknownCosts": ["Compra del extractor interior: costo adicional por determinar"],
+        "paymentSchedule": [],
+        "materialsIncluded": "unknown"
+      }
+    },
+    "evaluationAssertions": {
+      "expectedSpanishScope": "- Reemplazar el techo de tejas, incluyendo el plywood dañado, el flashing y el ridge vent descritos.\n- Instalar ice and water shield; confirmar la cantidad y ubicación.\n- Reparar la instalación del extractor del baño.\n- La compra del extractor interior será un costo adicional por determinar.",
+      "expectedEnglishScope": "- Replace the shingle roof, including the described damaged plywood, flashing, and ridge vent.\n- Install ice and water shield; confirm the quantity and placement.\n- Repair the bathroom exhaust-fan installation.\n- The interior exhaust fan purchase will be an additional cost to be determined.",
+      "requiredEnglishTerms": ["shingle roof", "plywood", "flashing", "ridge vent", "ice and water shield", "exhaust fan", "additional cost"],
+      "forbiddenEnglishTerms": ["asphalt shingles", "two rolls included", "all-inclusive", "prevents snow"]
+    }
+  },
+  {
+    "id": "kitchen-flooring",
+    "sourceLanguage": "es",
+    "targetLanguage": "en",
+    "sourceStatus": "verbatim_historical",
+    "originalSource": "Trabajo de demolición y restauración de piso vinílico en cocina y trabajo. Consiste en remover la primera capa de piso laminado en el área de la cocina para luego instalar el nuevo piso laminado en color gris perla en todo el área de la cocina, incluyendo debajo de la refrigeradora y debajo de la estufa tomando en cuenta que si necesita remover el PlayBook tendremos que verificar antes si no tiene Alvesto materiales tóxicos y si es necesario que el cliente decida remover todo el PlayBook para dejar un piso a nivel a flat con el piso existente. El precio cambiará todo este trabajo tiene un costo de momento de $1950. con un Don payment de $1500 para materiales y un balance al terminar el trabajo de $450 al entregar el trabajo",
+    "laterConfirmedFacts": [
+      {
+        "field": "flooringMaterial",
+        "value": "laminate",
+        "source": "Later contractor confirmation; this fact is not part of the historical source."
+      }
+    ],
+    "expectedInterpretation": {
+      "projectTitle": "Piso de cocina",
+      "workCategories": [
+        {
+          "name": "Piso de cocina",
+          "activities": ["Retirar el piso existente", "Evaluar el plywood del subpiso", "Instalar piso laminado"],
+          "materials": ["Plywood", "Piso laminado"],
+          "quantities": [],
+          "measurements": [],
+          "conditions": ["Evaluar el material posiblemente relacionado con asbesto antes de alterarlo", "El trabajo adicional de subpiso requiere aprobación del propietario y puede cambiar el precio"]
+        }
+      ],
+      "contractorResponsibilities": [],
+      "homeownerResponsibilities": ["El propietario debe aprobar cualquier trabajo adicional de subpiso"],
+      "ambiguities": [
+        {
+          "sourceText": "Alvesto",
+          "likelyMeaning": "Posible referencia a asbesto; no está confirmada su presencia",
+          "impact": "safety",
+          "clarificationQuestion": "Confirma cómo se evaluará el material potencialmente peligroso antes de alterarlo.",
+          "safetySensitive": true
+        },
+        {
+          "sourceText": "piso vinílico / piso laminado",
+          "likelyMeaning": "La descripción histórica contiene una discrepancia de material; la confirmación posterior indica laminado",
+          "impact": "material",
+          "clarificationQuestion": "Confirma que el piso laminado reemplaza la referencia anterior al piso vinílico.",
+          "safetySensitive": false
+        }
+      ],
+      "commercial": {
+        "totalPrice": 1950,
+        "downPayment": 1500,
+        "remainingBalance": 450,
+        "itemizedPrices": [],
+        "additionalCosts": [],
+        "unknownCosts": ["El precio puede cambiar si se aprueba trabajo adicional de subpiso"],
+        "paymentSchedule": [],
+        "materialsIncluded": "unknown"
+      }
+    },
+    "evaluationAssertions": {
+      "expectedSpanishScope": "- Retirar el piso existente y evaluar el plywood del subpiso.\n- Evaluar el material posiblemente relacionado con asbesto antes de alterar las áreas afectadas; su presencia no está confirmada.\n- Instalar el piso laminado confirmado.\n- Realizar trabajo adicional de subpiso únicamente con la aprobación del propietario; el precio puede cambiar.",
+      "expectedEnglishScope": "- Remove the existing flooring and evaluate the plywood subfloor.\n- Evaluate the material potentially associated with asbestos before disturbing affected areas; its presence is not confirmed.\n- Install the confirmed laminate flooring.\n- Perform additional subfloor work only with homeowner approval; the price may change.",
+      "requiredEnglishTerms": ["plywood", "asbestos", "not confirmed", "laminate flooring", "homeowner approval", "price may change"],
+      "forbiddenEnglishTerms": ["asbestos is present", "fixed price"]
+    }
+  },
+  {
+    "id": "cabinet-hardware",
+    "sourceLanguage": "es",
+    "targetLanguage": "en",
+    "sourceStatus": "verbatim_historical",
+    "originalSource": "Remover 26 Jaladores de puertas de gabinete de cocina para instalar nuevos Jaladores para gabinete de cocina de cuatro o cinco pulgadas de largo en material brush. Nicole, el trabajo consiste en remover todos los Jaladores de botón y instalar Jaladores con manija de cinco pulgadas, el precio por ese trabajo es de $485 incluyendo todos los Jaladores",
+    "laterConfirmedFacts": [],
+    "expectedInterpretation": {
+      "projectTitle": "Herrajes de gabinetes de cocina",
+      "workCategories": [
+        {
+          "name": "Herrajes de gabinetes de cocina",
+          "activities": ["Retirar 26 perillas existentes", "Instalar 26 tiradores nuevos"],
+          "materials": ["Tiradores con acabado de níquel cepillado"],
+          "quantities": [{ "amount": 26, "unit": "tiradores", "appliesTo": "Retiro e instalación de herrajes de gabinete" }],
+          "measurements": [{ "value": "4 o 5 pulgadas; otra parte indica 5 pulgadas", "appliesTo": "Longitud de los tiradores nuevos" }],
+          "conditions": []
+        }
+      ],
+      "contractorResponsibilities": ["Los tiradores nuevos están incluidos en el precio indicado"],
+      "homeownerResponsibilities": [],
+      "ambiguities": [
+        {
+          "sourceText": "cuatro o cinco pulgadas ... cinco pulgadas",
+          "likelyMeaning": "La longitud final de los tiradores requiere confirmación",
+          "impact": "material",
+          "clarificationQuestion": "Confirma si los tiradores nuevos serán de 4 o 5 pulgadas.",
+          "safetySensitive": false
+        }
+      ],
+      "commercial": {
+        "totalPrice": 485,
+        "downPayment": null,
+        "remainingBalance": null,
+        "itemizedPrices": [],
+        "additionalCosts": [],
+        "unknownCosts": [],
+        "paymentSchedule": [],
+        "materialsIncluded": "included"
+      }
+    },
+    "evaluationAssertions": {
+      "expectedSpanishScope": "- Retirar las 26 perillas existentes de los gabinetes de cocina.\n- Instalar 26 tiradores nuevos con acabado de níquel cepillado; confirmar si la longitud será de 4 o 5 pulgadas.\n- Los tiradores nuevos están incluidos.",
+      "expectedEnglishScope": "- Remove the 26 existing kitchen-cabinet knobs.\n- Install 26 new brushed-nickel cabinet pulls; confirm whether the length will be 4 or 5 inches.\n- The new cabinet pulls are included.",
+      "requiredEnglishTerms": ["26", "knobs", "brushed-nickel", "cabinet pulls", "4 or 5 inches", "included"],
+      "forbiddenEnglishTerms": ["approximately 4 or 5", "brand", "deposit", "base metal"]
+    }
+  }
+]

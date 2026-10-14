@@ -117,6 +117,23 @@ function readSingleRow(data) {
   return Array.isArray(data) ? data[0] ?? null : data ?? null
 }
 
+function readResponseRow(response) {
+  return readSingleRow(response?.data)
+}
+
+function createNoRowsError(methodName, id = null, response = null) {
+  return {
+    code: `ESTIMATE_${methodName.toUpperCase()}_NO_ROWS`,
+    message: `The estimate ${methodName} did not persist because no authorized row was returned.`,
+    details: {
+      estimateId: id,
+      status: response?.status ?? null,
+      contentRange: response?.contentRange ?? null,
+      affectedRowCount: response?.count ?? 0,
+    },
+  }
+}
+
 function hasOwn(source, key) {
   return Boolean(source) && Object.prototype.hasOwnProperty.call(source, key)
 }
@@ -469,15 +486,23 @@ export async function create(estimateData, { contractorId } = {}) {
   }
 
   try {
-    const data = await supabaseClient.request(TABLE_NAME, {
+    const response = await supabaseClient.request(TABLE_NAME, {
       method: 'POST',
       body: toSupabasePayload(contractorId, estimateData, { isCreate: true }),
+      prefer: 'return=representation,count=exact',
+      includeResponseMetadata: true,
     })
+    const row = readResponseRow(response)
+
+    if (!row?.id || response?.count === 0) {
+      return { data: null, error: createNoRowsError('create', estimateData?.id || null, response), skipped: false }
+    }
 
     return {
-      data: toAppEstimate(readSingleRow(data)),
+      data: toAppEstimate(row),
       error: null,
       skipped: false,
+      affectedRowCount: response?.count ?? 1,
     }
   } catch (error) {
     return {
@@ -505,18 +530,26 @@ export async function update(id, updates, { contractorId } = {}) {
 
     delete payload.contractor_id
 
-    const data = await supabaseClient.request(TABLE_NAME, {
+    const response = await supabaseClient.request(TABLE_NAME, {
       method: 'PATCH',
       query: buildContractorQuery(contractorId, {
         id: `eq.${id}`,
       }),
       body: payload,
+      prefer: 'return=representation,count=exact',
+      includeResponseMetadata: true,
     })
+    const row = readResponseRow(response)
+
+    if (!row?.id || response?.count === 0) {
+      return { data: null, error: createNoRowsError('update', id, response), skipped: false }
+    }
 
     return {
-      data: toAppEstimate(readSingleRow(data) || { id, contractor_id: contractorId, ...payload }),
+      data: toAppEstimate(row),
       error: null,
       skipped: false,
+      affectedRowCount: response?.count ?? 1,
     }
   } catch (error) {
     return {

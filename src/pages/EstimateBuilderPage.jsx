@@ -589,6 +589,13 @@ export function EstimateBuilderPage({ lead, clientRecord = null, t, appLanguage 
     return {
       id: savedEstimate.id || undefined,
       number: savedEstimate.number || generateEstimateNumber(lead),
+      contractorId: savedEstimate.contractorId || savedEstimate.contractor_id || lead?.contractorId || lead?.contractor_id || undefined,
+      clientId: savedEstimate.clientId || savedEstimate.client_id || lead?.clientId || lead?.client_id || undefined,
+      client_id: savedEstimate.clientId || savedEstimate.client_id || lead?.clientId || lead?.client_id || undefined,
+      leadId: savedEstimate.leadId || savedEstimate.lead_id || lead?.leadId || lead?.lead_id || undefined,
+      lead_id: savedEstimate.leadId || savedEstimate.lead_id || lead?.leadId || lead?.lead_id || undefined,
+      projectId: savedEstimate.projectId || savedEstimate.project_id || lead?.projectId || lead?.project_id || undefined,
+      project_id: savedEstimate.projectId || savedEstimate.project_id || lead?.projectId || lead?.project_id || undefined,
       optionName: optionName.trim() || null,
       total: estimateTotal,
       summary: hasMeaningfulEstimateFormattedText(sanitizedScope) ? sanitizedScope : '',
@@ -1993,19 +2000,33 @@ export function EstimateBuilderRoute({ companySettings, leads, clients = [], pro
     )
   }
 
-  const clientRecord = findRelatedClient(clients, lead || {})
+  const clientRecord = findRelatedClient(clients, {
+    ...(lead || {}),
+    clientId: lead?.clientId || lead?.client_id || resolvedEstimate?.clientId || resolvedEstimate?.client_id || linkedProject?.clientId || linkedProject?.client_id || '',
+  })
 
-  const mergedLead = loadedEstimate
-    ? {
-        ...lead,
-        value: Number(loadedEstimate.total ?? lead.value ?? 0),
-        estimatedValue: Number(loadedEstimate.total ?? lead.estimatedValue ?? lead.value ?? 0),
-        portal: {
-          ...(lead.portal || {}),
-          estimate: loadedEstimate,
-        },
-      }
-    : lead
+  const mergedLead = {
+    ...lead,
+    clientId: lead?.clientId || lead?.client_id || loadedEstimate?.clientId || loadedEstimate?.client_id || linkedProject?.clientId || linkedProject?.client_id || null,
+    client_id: lead?.clientId || lead?.client_id || loadedEstimate?.clientId || loadedEstimate?.client_id || linkedProject?.clientId || linkedProject?.client_id || null,
+    client: clientRecord?.displayName || clientRecord?.name || lead?.client || lead?.clientName || lead?.customerName || t('customer'),
+    clientName: clientRecord?.displayName || clientRecord?.name || lead?.clientName || lead?.client || t('customer'),
+    email: lead?.email || clientRecord?.email || '',
+    phone: lead?.phone || clientRecord?.phone || '',
+    address: lead?.address || lead?.location || clientRecord?.address || '',
+    projectId: lead?.projectId || lead?.project_id || loadedEstimate?.projectId || loadedEstimate?.project_id || linkedProject?.id || linkedProject?.projectId || null,
+    project_id: lead?.projectId || lead?.project_id || loadedEstimate?.projectId || loadedEstimate?.project_id || linkedProject?.id || linkedProject?.projectId || null,
+    ...(loadedEstimate
+      ? {
+          value: Number(loadedEstimate.total ?? lead.value ?? 0),
+          estimatedValue: Number(loadedEstimate.total ?? lead.estimatedValue ?? lead.value ?? 0),
+          portal: {
+            ...(lead.portal || {}),
+            estimate: loadedEstimate,
+          },
+        }
+      : {}),
+  }
   const publicEstimateLink = resolvePublicEstimateShareUrl(resolvedEstimate || loadedEstimate || lead?.portal?.estimate || {})
   const estimateArchiveState = resolveEstimateArchiveState({
     estimate: resolvedEstimate || loadedEstimate || lead?.portal?.estimate || {},
