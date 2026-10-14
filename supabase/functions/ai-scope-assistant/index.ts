@@ -2,16 +2,22 @@ import { createClient } from 'npm:@supabase/supabase-js@2'
 import { isPostgresUuid } from '../_shared/saasBillingIdentity.js'
 import {
   AI_SCOPE_ACTIONS,
+  AI_SCOPE_CONTROLLED_PIPELINE_VERSIONS,
   AI_SCOPE_LIMITS,
   AI_SCOPE_PROMPT_VERSIONS,
   AiScopeContractError,
   buildAiScopeResponsesRequest,
-  classifyAiScopeProviderStatus,
+  buildConstructionAnalysisRequest,
+  buildControlledTranslationRequest,
+  buildProfessionalScopeRequest,
   createAiScopeFingerprint,
+  mergeAiScopeProviderUsage,
   normalizeAiScopeLanguage,
   normalizeAiScopeProviderUsage,
+  parseConstructionAnalysisResponse,
   parseAiScopeProviderResponse,
 } from '../_shared/aiScopeAssistant.js'
+import { requestAiScopeProvider } from '../_shared/aiScopeAssistantProvider.js'
 
 const corsHeaders = {
   'Access-Control-Allow-Origin': '*',
@@ -23,7 +29,7 @@ const corsHeaders = {
 const editableEstimateStatuses = new Set(['draft', 'saved', 'sent', 'rejected'])
 const allowedBodyKeys = new Set(['action', 'estimateId'])
 const defaultModel = 'gpt-5.6-terra'
-const providerTimeoutMs = 25000
+const requestOpenAi = requestAiScopeProvider
 
 function jsonResponse(body: unknown, status = 200) {
   return new Response(JSON.stringify(body), {
@@ -53,38 +59,6 @@ function safeErrorDetails(error: unknown) {
   }
 }
 
-async function requestOpenAi({
-  apiKey,
-  requestBody,
-}: {
-  apiKey: string
-  requestBody: Record<string, unknown>
-}) {
-  const controller = new AbortController()
-  const timeoutId = setTimeout(() => controller.abort(), providerTimeoutMs)
-  try {
-    const response = await fetch('https://api.openai.com/v1/responses', {
-      method: 'POST',
-      headers: {
-        Authorization: `Bearer ${apiKey}`,
-        'Content-Type': 'application/json',
-      },
-      body: JSON.stringify(requestBody),
-      signal: controller.signal,
-    })
-    const data = await response.json().catch(() => null)
-    if (!response.ok) {
-      const error = new Error(`OpenAI Responses request failed with status ${response.status}.`)
-      ;(error as Error & { code?: string }).code = classifyAiScopeProviderStatus(response.status)
-      ;(error as Error & { providerStatus?: number }).providerStatus = response.status
-      throw error
-    }
-    return data
-  } finally {
-    clearTimeout(timeoutId)
-  }
-}
-
 Deno.serve(async (request) => {
   if (request.method === 'OPTIONS') return new Response('ok', { headers: corsHeaders })
   if (request.method !== 'POST') return jsonResponse({ error: 'Method not allowed.', code: 'METHOD_NOT_ALLOWED' }, 405)
@@ -97,6 +71,7 @@ Deno.serve(async (request) => {
   const serviceRoleKey = String(Deno.env.get('SUPABASE_SERVICE_ROLE_KEY') || '').trim()
   const openAiApiKey = String(Deno.env.get('OPENAI_API_KEY') || '').trim()
   const model = String(Deno.env.get('AI_SCOPE_MODEL') || defaultModel).trim()
+  const controlledPipelineEnabled = String(Deno.env.get('AI_SCOPE_CONTROLLED_PIPELINE_ENABLED') || '').trim().toLowerCase() === 'true'
   if (!supabaseUrl || !serviceRoleKey || !openAiApiKey || !model) {
     return jsonResponse({ error: 'Scope Assistant is unavailable.', code: 'AI_SCOPE_CONFIGURATION_MISSING' }, 503)
   }
@@ -190,7 +165,9 @@ Deno.serve(async (request) => {
     }
   }
 
-  const promptVersion = AI_SCOPE_PROMPT_VERSIONS[action]
+  const promptVersion = controlledPipelineEnabled
+    ? AI_SCOPE_CONTROLLED_PIPELINE_VERSIONS[action]
+    : AI_SCOPE_PROMPT_VERSIONS[action]
   const sourceFingerprint = await createAiScopeFingerprint(source)
   const generatedAt = new Date().toISOString()
 
@@ -200,12 +177,95 @@ Deno.serve(async (request) => {
       estimateId,
       scope: approvedSource,
       translationRequired: false,
-      metadata: { model: null, promptVersion, generatedAt, sourceFingerprint },
+      metadata: {
+        model: null,
+        promptVersion,
+        generatedAt,
+        sourceFingerprint,
+        ...(controlledPipelineEnabled ? {
+          pipeline: AI_SCOPE_CONTROLLED_PIPELINE_VERSIONS.pipeline,
+          modelCalls: 0,
+        } : {}),
+      },
     })
   }
 
   const startedAt = Date.now()
   try {
+    if (controlledPipelineEnabled && action === AI_SCOPE_ACTIONS.PROFESSIONALIZE) {
+      const analysisRequest = buildConstructionAnalysisRequest({
+        model,
+        source,
+        sourceLanguage,
+      })
+      const analysisResponse = await requestOpenAi({ apiKey: openAiApiKey, requestBody: analysisRequest })
+      const interpretation = parseConstructionAnalysisResponse(analysisResponse, sourceLanguage)
+      const writingRequest = buildProfessionalScopeRequest({
+        model,
+        interpretation,
+        sourceLanguage,
+      })
+      const writingResponse = await requestOpenAi({ apiKey: openAiApiKey, requestBody: writingRequest })
+      const writtenResult = parseAiScopeProviderResponse(action, writingResponse)
+      const reviewWarnings = [...new Set([
+        ...interpretation.reviewWarnings,
+        ...writtenResult.reviewWarnings,
+      ])].slice(0, AI_SCOPE_LIMITS.warningCount)
+      const result = { scope: writtenResult.scope, reviewWarnings }
+      const analysisUsage = normalizeAiScopeProviderUsage(analysisResponse?.usage)
+      const writingUsage = normalizeAiScopeProviderUsage(writingResponse?.usage)
+
+      return jsonResponse({
+        action,
+        estimateId,
+        ...result,
+        metadata: {
+          model,
+          promptVersion,
+          generatedAt,
+          sourceFingerprint,
+          usage: mergeAiScopeProviderUsage(analysisResponse?.usage, writingResponse?.usage),
+          pipeline: AI_SCOPE_CONTROLLED_PIPELINE_VERSIONS.pipeline,
+          stageVersions: {
+            constructionAnalysis: AI_SCOPE_CONTROLLED_PIPELINE_VERSIONS.constructionAnalysis,
+            professionalScope: AI_SCOPE_CONTROLLED_PIPELINE_VERSIONS.professionalize,
+          },
+          stageUsage: { constructionAnalysis: analysisUsage, professionalScope: writingUsage },
+          modelCalls: 2,
+        },
+      })
+    }
+
+    if (controlledPipelineEnabled && action === AI_SCOPE_ACTIONS.TRANSLATE) {
+      const requestBody = buildControlledTranslationRequest({
+        model,
+        source,
+        sourceLanguage,
+        targetLanguage: clientLanguage,
+      })
+      const providerResponse = await requestOpenAi({ apiKey: openAiApiKey, requestBody })
+      const result = parseAiScopeProviderResponse(action, providerResponse)
+      const usage = normalizeAiScopeProviderUsage(providerResponse?.usage)
+
+      return jsonResponse({
+        action,
+        estimateId,
+        ...result,
+        translationRequired: true,
+        metadata: {
+          model,
+          promptVersion,
+          generatedAt,
+          sourceFingerprint,
+          usage,
+          pipeline: AI_SCOPE_CONTROLLED_PIPELINE_VERSIONS.pipeline,
+          stageVersions: { translation: AI_SCOPE_CONTROLLED_PIPELINE_VERSIONS.translate },
+          stageUsage: { translation: usage },
+          modelCalls: 1,
+        },
+      })
+    }
+
     const requestBody = buildAiScopeResponsesRequest({
       action,
       model,
@@ -236,6 +296,7 @@ Deno.serve(async (request) => {
       estimateId,
       promptVersion,
       model,
+      pipeline: controlledPipelineEnabled ? AI_SCOPE_CONTROLLED_PIPELINE_VERSIONS.pipeline : 'legacy',
       elapsedMs: Date.now() - startedAt,
       ...safeDetails,
     })
