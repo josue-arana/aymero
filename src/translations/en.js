@@ -1511,6 +1511,7 @@ export const en = {
   "uploadedFromPhone": "Uploaded from device",
   "estimateSaved": "Estimate saved",
   "estimateSaveFailed": "Estimate could not be saved.",
+  "estimateSaveContextMissing": "This estimate could not be saved because its project or lead link is unavailable. Refresh and reopen it from the project or Estimates list.",
   "contractSaved": "Contract saved",
   "contractSaveFailed": "Unable to save contract",
   "contractSigned": "Contract signed",

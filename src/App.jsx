@@ -3001,7 +3001,15 @@ function buildWorkspaceJobRecord(job, clientRecord = null) {
         ? persistedEstimates.find((item) => item.id === estimate.id) || null
         : (!createNew ? getSelectedEstimateForProject(sourceProject, projectEstimates) : null)
 
-      if (!sourceProject?.id) return null
+      if (!sourceProject?.id) {
+        if (!silent) showToast(t('estimateSaveContextMissing'), 'error')
+        logEstimateDevError('[dev] Estimate save stopped before persistence because its project could not be resolved.', {
+          leadId,
+          estimateId: estimate?.id || null,
+          projectId: estimate?.projectId || estimate?.project_id || null,
+        })
+        return null
+      }
       if (!createNew && !estimate?.id && projectEstimates.length > 1 && !directEstimate) {
         showToast(t('estimateSelectionRequired'), 'error')
         return null
@@ -3032,12 +3040,15 @@ function buildWorkspaceJobRecord(job, clientRecord = null) {
       }
 
       try {
-        const response = directEstimate?.id
-          ? await dataProvider.estimates.update(directEstimate.id, directEstimateDraft, { contractorId: projectsContractorId })
+        const existingDirectEstimateId = !createNew
+          ? estimate?.id || directEstimate?.id || null
+          : null
+        const response = existingDirectEstimateId
+          ? await dataProvider.estimates.update(existingDirectEstimateId, directEstimateDraft, { contractorId: projectsContractorId })
           : await dataProvider.estimates.create(directEstimateDraft, { contractorId: projectsContractorId })
 
         if (response?.error) {
-          showToast(t('estimateSaveFailed'), 'error')
+          showToast(response.error.message || t('estimateSaveFailed'), 'error')
           logEstimateDevError('[dev] Direct-project estimate persistence failed.', response.error, {
             projectId: sourceProject.id,
             estimate: directEstimateDraft,
@@ -3048,7 +3059,7 @@ function buildWorkspaceJobRecord(job, clientRecord = null) {
         const persistedEstimate = {
           ...directEstimateDraft,
           ...(response?.data || {}),
-          id: response?.data?.id || directEstimate?.id || nextEstimateId,
+          id: response?.data?.id || existingDirectEstimateId || nextEstimateId,
         }
         upsertPersistedEstimateRecord(persistedEstimate)
         const shouldSyncProjectBasis = shouldSyncEstimateCommercialBasis(sourceProject, persistedEstimate, persistedEstimates)
@@ -3141,6 +3152,16 @@ function buildWorkspaceJobRecord(job, clientRecord = null) {
       pricingMode: estimate?.pricingMode || (lineItems.length ? 'detailed' : 'simple'),
       status: createNew ? 'Draft' : (estimate?.status || existingEstimate.status || 'Draft'),
       optionName: estimate?.optionName ?? estimate?.option_name ?? existingEstimate.optionName ?? null,
+    }
+
+    if (!sourceLead?.id && !sourceProject?.id) {
+      if (!silent) showToast(t('estimateSaveContextMissing'), 'error')
+      logEstimateDevError('[dev] Estimate save stopped before persistence because its lead/project could not be resolved.', {
+        leadId,
+        estimateId: estimate?.id || null,
+        projectId: estimate?.projectId || estimate?.project_id || null,
+      })
+      return null
     }
 
     try {

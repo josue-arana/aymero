@@ -19,6 +19,7 @@
     "verify:onboarding-lifecycle": "node scripts/verify-onboarding-lifecycle.mjs",
     "verify:payment-terms-flexibility": "node scripts/verify-payment-terms-flexibility.mjs",
     "verify:estimate-contact-fields": "node scripts/verify-estimate-contact-fields.mjs",
+    "verify:estimate-save-reliability": "node scripts/verify-estimate-save-reliability.mjs",
     "verify:estimate-document-date-format": "node scripts/verify-estimate-document-date-format.mjs",
     "verify:archive-workflow": "node scripts/verify-archive-workflow.mjs",
     "verify:lead-lifecycle": "node scripts/verify-lead-lifecycle.mjs",
