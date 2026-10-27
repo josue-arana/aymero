@@ -42,7 +42,7 @@ import { ProjectPaymentSelectionModal } from './components/projects/ProjectPayme
 import { CalendarPage } from './pages/CalendarPage'
 import { AuthSetupPage } from './pages/AuthSetupPage'
 import { PublicEstimatePage } from './pages/PublicEstimatePage'
-import { buildClientProfiles, getClientSlug, mergeClientUpdatesIntoRelatedRecord } from './utils/clients'
+import { buildClientProfiles, getClientSlug } from './utils/clients'
 import { normalizeOptionalEmail } from './utils/email'
 import { appRoutes } from './config/appRoutes'
 import { AuthProvider } from './contexts/AuthContext'
@@ -78,6 +78,7 @@ import { buildPortalShareUrl, resolvePortalRouteId } from './utils/portal'
 import { buildContractWorkBreakdownFromEstimate, isGeneratedContractScopeText } from './utils/contractDocument'
 import { canCreateContractFromEstimate, normalizeEstimateFinalizationStatus } from './utils/estimateFinalization'
 import { resolveNavigationContext, withNavigationContext } from './utils/navigationContext'
+import { getContractCreationLookupIds } from './utils/contractCreationContext'
 import { SAMPLE_GUIDE_ITEM_KEYS, SAMPLE_WORKSPACE_VERSION, createSampleWorkspace, removeSampleWorkspace, updateSampleWorkspaceGuide, upgradeSampleWorkspace as upgradeSampleWorkspaceRecords } from './services/sampleWorkspaceService'
 import { calculateDashboardPipelineValue, getDashboardLeadValue, getDashboardProjectFinancialSummary, selectDashboardOverdueInvoices, selectDashboardTodayEvents } from './utils/dashboardConsistency'
 import { getLeadEstimateRecords } from './utils/leadLifecycle'
@@ -2604,11 +2605,9 @@ function buildWorkspaceJobRecord(job, clientRecord = null) {
       return [{ id: clientId, ...normalizedClient }, ...current]
     })
 
-    setLeads((current) => current.map((lead) => {
-      const leadClientId = lead.clientId || lead.client_id || getClientSlug(lead.client)
-      if (leadClientId !== clientId) return lead
-      return mergeClientUpdatesIntoRelatedRecord(lead, updates)
-    }))
+    // Keep lead/document snapshots unchanged. Active project and draft
+    // document views resolve current contact fields through the Client ID;
+    // issued documents must retain their historical snapshot.
     showToast(t('clientUpdated'))
     addNotification('notificationClientUpdatedTitle', 'notificationClientUpdatedMessage')
   }
@@ -3934,16 +3933,23 @@ function buildWorkspaceJobRecord(job, clientRecord = null) {
     }
 
     const contractPromise = (async () => {
-      const sourceLead = findLeadByProjectLookup(leads, leadId)
+      const creationLookupIds = getContractCreationLookupIds({ leadId, estimate: estimateInput })
+      const sourceLead = findLeadByProjectLookup(leads, creationLookupIds)
       const sourceProject = findProjectByLookup(
         persistedProjects,
-        leadId,
+        creationLookupIds,
         sourceLead?.projectId,
         sourceLead?.project_id,
       )
       const relationshipContext = sourceLead || sourceProject
 
       if (!relationshipContext) {
+        showToast(t('contractRequiresRealProject'), 'error')
+        logLeadDevError('[dev] Contract creation stopped before persistence because its lead/project could not be resolved.', null, {
+          leadId,
+          estimateId: estimateInput?.id || null,
+          projectId: estimateInput?.projectId || estimateInput?.project_id || null,
+        })
         return null
       }
 
@@ -5138,7 +5144,7 @@ function buildWorkspaceJobRecord(job, clientRecord = null) {
       <Route path={appRoutes.jobs} element={<JobsPage leads={visibleLeads} projectRecords={persistedProjects} projectPayments={persistedPayments} projectContracts={persistedContracts} projectEvents={visibleScheduleEvents} clients={clients} archivedIds={archives.projectIds} deletedIds={archives.deletedProjectIds} sampleWorkspace={companySettings?.sampleWorkspace} onViewJob={(projectId, leadId) => openCalendarProject(projectId, leadId, { returnTo: appRoutes.jobs, returnLabelKey: 'backToJobs' })} onViewLead={openLead} onCreateJob={() => openJobModal()} onArchiveJob={archiveRecord.job} onRestoreJob={restoreRecord.job} onDeleteJob={deleteRecord.job} t={t} collectionStatus={[collectionLoadState.leads, collectionLoadState.projects, collectionLoadState.payments, collectionLoadState.contracts, collectionLoadState.events].some(isCollectionInitialLoading) ? 'loading' : 'loaded'} />} />
       <Route path={appRoutes.calendar} element={<CalendarPage leads={activeLeads} scheduleEvents={activeScheduleEvents} onCreateEvent={(event) => createScheduleEvent(event, 'event')} onExportEvent={exportScheduleEvent} onViewProject={openCalendarProject} onViewLead={openLead} onMarkComplete={markScheduleEventComplete} t={t} language={language} collectionStatus={collectionLoadState.events} />} />
       <Route path={appRoutes.clients} element={<ClientsPage leads={visibleLeads} customClients={customClients} archivedClientIds={archives.clientIds} onOpenClient={openClient} onCreateClient={createClient} onArchiveClient={archiveRecord.client} onRestoreClient={restoreRecord.client} onDeleteClient={deleteRecord.client} language={language} t={t} collectionStatus={[collectionLoadState.clients, collectionLoadState.leads].some(isCollectionInitialLoading) ? 'loading' : 'loaded'} />} />
-      <Route path={appRoutes.clientProfile} element={<ClientProfilePage leads={visibleLeads} customClients={customClients} projects={financialProjects} archivedClientIds={archives.clientIds} onBack={() => navigate('/clients')} onOpenProject={openProject} onOpenLead={openLead} onOpenEstimate={openEstimateForLead} onOpenContract={openContractForLead} onCreateJob={(client) => openJobModal({ clientId: client?.id, client })} onUpdateClient={updateClient} onArchiveClient={archiveRecord.client} onRestoreClient={restoreRecord.client} onDeleteClient={deleteRecord.client} language={language} t={t} collectionStatus={[collectionLoadState.clients, collectionLoadState.leads, collectionLoadState.projects].some(isCollectionInitialLoading) ? 'loading' : 'loaded'} />} />
+      <Route path={appRoutes.clientProfile} element={<ClientProfilePage leads={visibleLeads} customClients={customClients} projects={financialProjects} contracts={persistedContracts} archivedClientIds={archives.clientIds} onBack={() => navigate('/clients')} onOpenProject={openProject} onOpenLead={openLead} onOpenEstimate={openEstimateForLead} onOpenContract={openContractForLead} onCreateJob={(client) => openJobModal({ clientId: client?.id, client })} onUpdateClient={updateClient} onArchiveClient={archiveRecord.client} onRestoreClient={restoreRecord.client} onDeleteClient={deleteRecord.client} language={language} t={t} collectionStatus={[collectionLoadState.clients, collectionLoadState.leads, collectionLoadState.projects, collectionLoadState.contracts].some(isCollectionInitialLoading) ? 'loading' : 'loaded'} />} />
       <Route path={appRoutes.invoices} element={<InvoicesPage leads={visibleLeads} clients={clients} projects={persistedProjects} estimates={persistedEstimates} contracts={persistedContracts} payments={persistedPayments} invoices={invoices} archivedIds={archives.invoiceIds} deletedIds={archives.deletedInvoiceIds} onCreateInvoice={() => openInvoiceModal()} onViewInvoice={(invoiceId) => navigate(`/invoices/${invoiceId}`, { state: withNavigationContext({}, appRoutes.invoices, 'backToInvoices') })} onRecordPayment={(invoiceId) => navigate(`/invoices/${invoiceId}`, { state: withNavigationContext({}, appRoutes.invoices, 'backToInvoices') })} onArchiveInvoice={archiveRecord.invoice} onRestoreInvoice={restoreRecord.invoice} onDeleteInvoice={deleteRecord.invoice} onInvoiceSent={markInvoiceSent} t={t} appLanguage={language} collectionStatus={collectionLoadState.invoices} />} />
       <Route path={appRoutes.invoiceDetail} element={<InvoiceDetailRoute companySettings={companySettings} leads={visibleLeads} clients={clients} projects={persistedProjects} estimates={persistedEstimates} contracts={persistedContracts} invoices={invoices} payments={persistedPayments} invoicesLoaded={areInvoicesLoaded} archivedIds={archives.invoiceIds} deletedIds={archives.deletedInvoiceIds} onUpdateInvoice={updateInvoice} onRecordInvoicePayment={recordInvoicePayment} onMarkInvoicePaid={markInvoicePaid} onInvoiceSent={markInvoiceSent} onArchiveInvoice={archiveRecord.invoice} onRestoreInvoice={restoreRecord.invoice} onDeleteInvoice={deleteRecord.invoice} t={t} appLanguage={language} />} />
       <Route path={appRoutes.settings} element={<SettingsPage settings={companySettings} onSaveSettings={(settings) => { setCompanySettings(settings); showToast(t('settingsSaved')) }} onOpenCompanySetup={() => { setIsCompanySetupReopen(true); setOnboardingSessionActive(true) }} onCreateSampleData={installSampleWorkspace} onUpdateSampleData={updateInstalledSampleWorkspace} onRemoveSampleData={uninstallSampleWorkspace} onReopenSampleGuide={async () => { const result = await persistSampleGuide({ ...(companySettings?.sampleWorkspace?.guide || {}), dismissed: false }); if (!result?.error) navigate(appRoutes.dashboard); return result }} onOpenSampleWorkspace={() => navigate(appRoutes.dashboard)} language={language} setLanguage={setLanguage} portalLanguage={portalLanguage} setPortalLanguage={setPortalLanguage} t={t} />} />
@@ -5397,8 +5403,20 @@ function ProjectRoute({ companySettings, leads, projects = [], clients, estimate
   const location = useLocation()
   const navigate = useNavigate()
   const projectId = id || leadId
-  const lead = findLeadByProjectLookup(leads, projectId) || findProjectByLookup(projects, projectId)
-  const leadRecordId = lead?.id || ''
+  const linkedLead = findLeadByProjectLookup(leads, projectId)
+  const linkedProject = findProjectByLookup(projects, projectId)
+  const lead = linkedProject && linkedLead
+    ? {
+        ...linkedLead,
+        ...linkedProject,
+        id: linkedLead.id,
+        portal: {
+          ...(linkedLead.portal || {}),
+          ...(linkedProject.portal || {}),
+        },
+      }
+    : linkedProject || linkedLead
+  const leadRecordId = linkedLead?.id || lead?.id || ''
   const navigationContext = resolveNavigationContext(location.state, { returnTo: appRoutes.jobs, returnLabelKey: 'backToJobs' })
 
   return (

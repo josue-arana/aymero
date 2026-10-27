@@ -22,8 +22,11 @@ function isArchivedRecord(record = {}) {
 const storedProjectStatusLabels = {
   lead: 'Lead',
   estimate: 'Estimate',
-  contract: 'Signed',
-  signed: 'Signed',
+  // Legacy project lifecycle values are not evidence that a persisted
+  // Contract was signed. The canonical Contract record below owns signing
+  // state, so keep an orphaned contract-stage project conservative.
+  contract: PROJECT_LIFECYCLE_STATUS.CONTRACT_DRAFT,
+  signed: PROJECT_LIFECYCLE_STATUS.CONTRACT_DRAFT,
   scheduled: PROJECT_LIFECYCLE_STATUS.SCHEDULED,
   in_progress: PROJECT_LIFECYCLE_STATUS.IN_PROGRESS,
   waiting_on_client: 'Waiting on Client',

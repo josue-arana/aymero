@@ -104,7 +104,8 @@ assert.deepEqual(
 )
 assert.deepEqual(mapOptionalClientUpdatesToPersistence({ email: '' }), { email: null })
 assert.match(clientServiceSource, /Object\.assign\(payload, mapOptionalClientUpdatesToPersistence\(updates\)\)/)
-assert.match(appSource, /mergeClientUpdatesIntoRelatedRecord\(lead, updates\)/)
+assert.doesNotMatch(appSource, /mergeClientUpdatesIntoRelatedRecord\(lead, updates\)/)
+assert.match(appSource, /Keep lead\/document snapshots unchanged/)
 assert.doesNotMatch(appSource, /email: updates\.email \|\| lead\.email/)
 
 const relatedRecord = mergeClientUpdatesIntoRelatedRecord(

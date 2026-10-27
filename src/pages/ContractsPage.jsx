@@ -5,6 +5,7 @@ import { ActionMenu } from '../components/common/ActionMenu'
 import { RecordBackButton } from '../components/common/RecordBackButton'
 import { ContractPdfTemplate } from '../components/contracts/ContractPdfTemplate'
 import { PaginatedContractPreview } from '../components/contracts/PaginatedContractPreview'
+import { ContractWorkBreakdownEditor } from '../components/contracts/ContractWorkBreakdownEditor'
 import { SelectField } from '../components/ui/SelectField'
 import { FilterChip } from '../components/ui/FilterChip'
 import { StatusBadge } from '../components/ui/StatusBadge'
@@ -27,8 +28,10 @@ import { shouldUseGeneratedPdfForPrint } from '../utils/documentOutput'
 import { isPrintWindowBlockedError, printDocumentElement } from '../utils/printDocument'
 import { dedupeById, findLeadByProjectLookup, findProjectByLookup, resolveLinkedProjectId } from '../utils/projectIdentity'
 import { createTranslator } from '../translations'
-import { findRelatedClient } from '../utils/clients'
-import { buildContractNotesAndTermsItems, buildContractWorkBreakdownFromEstimate, buildGeneratedContractPaymentTerms, hasContractWorkBreakdown, normalizeContractWorkBreakdown, resolveContractAcceptanceLegalText, stripLeadingBulletMarker } from '../utils/contractDocument'
+import { findClientById } from '../utils/clients'
+import { mergeDocumentContactIntoLead } from '../utils/documentContact'
+import { buildContractNotesAndTermsItems, hasContractWorkBreakdown } from '../utils/contractDocument'
+import { buildContractEditorState } from '../utils/contractEditorState'
 import { normalizeDocumentLanguageOverride, resolveClientFacingLanguage } from '../utils/language'
 import { ESTIMATE_PAPER_MARGIN } from '../utils/estimatePagination'
 import { archiveMenuItemClasses } from '../utils/buttonStyles'
@@ -71,40 +74,6 @@ function selectPreferredContractRecord(contracts = []) {
   return contracts.find((contract) => !isArchivedContractRecord(contract)) || contracts[0]
 }
 
-function buildContractEditorState({ lead, portal, savedContract, estimate, contractTotal, t }) {
-  const savedWorkBreakdown = normalizeContractWorkBreakdown(savedContract.workBreakdown || [])
-  const estimateWorkBreakdown = buildContractWorkBreakdownFromEstimate(estimate)
-  const workBreakdown = savedWorkBreakdown.length > 0
-    ? savedWorkBreakdown
-    : savedContract?.id
-      ? []
-      : estimateWorkBreakdown
-  const depositAmount = savedContract.depositAmount ?? savedContract.deposit_amount ?? null
-  const acceptanceLegalText = resolveContractAcceptanceLegalText({
-    acceptanceLegalText: savedContract.acceptanceLegalText,
-    legacyAcceptanceText: savedContract.warrantyDisclaimer,
-    t,
-  })
-
-  return {
-    scope: savedContract.scope || savedContract.scopeOfWork || estimate.summary || estimate.scopeOfWork || '',
-    workBreakdown,
-    paymentTerms: buildGeneratedContractPaymentTerms({
-      paymentTerms: savedContract.paymentTerms || estimate.paymentTerms || '',
-      total: contractTotal,
-      depositAmount,
-      t,
-    }),
-    acceptanceLegalText,
-    materials: savedContract.materials || t('materialsText'),
-    timeline: savedContract.timeline || `${t('timelineTextPrefix')} ${portal.startDate}. ${t('estimatedCompletion')} ${portal.estimatedCompletion}.`,
-    changeOrders: savedContract.changeOrders || t('changeOrdersText'),
-    clientResponsibilities: savedContract.clientResponsibilities || t('clientResponsibilitiesText'),
-    warrantyDisclaimer: savedContract.warrantyDisclaimer || t('warrantyDisclaimerText'),
-    depositAmount,
-  }
-}
-
 export function ContractPreviewPage({ lead, clientRecord = null, t, appLanguage = 'en', companySettings, publicPortalLink = '', onBack, backLabel, onSaveContract, onMarkSigned, onMarkUnsigned, onArchiveContract }) {
   const { showToast } = useToast()
   const pdfTemplateRef = useRef(null)
@@ -112,6 +81,12 @@ export function ContractPreviewPage({ lead, clientRecord = null, t, appLanguage 
   const contractorId = getProjectsContractorId({ contractor, company, session })
   const portal = getPortalData(lead)
   const savedContract = lead.portal?.contract || readLinkedContractDraft(lead, [lead.id, lead.projectId, lead.estimateId]) || portal.contract || {}
+  const documentLead = useMemo(() => mergeDocumentContactIntoLead({
+    lead,
+    clientRecord,
+    document: savedContract,
+    documentType: 'contract',
+  }), [clientRecord, lead, savedContract])
   const estimate = lead.portal?.estimate || portal.estimate || {}
   const [showSendModal, setShowSendModal] = useState(false)
   const [showPreviewModal, setShowPreviewModal] = useState(false)
@@ -132,6 +107,7 @@ export function ContractPreviewPage({ lead, clientRecord = null, t, appLanguage 
   const shouldUsePdfForPrint = useMemo(() => shouldUseGeneratedPdfForPrint(), [])
   const contractTotal = Number(savedContract.total || lead.portal?.contractAmount || lead.portal?.estimate?.total || lead.value || 0)
   const editorState = buildContractEditorState({ lead, portal, savedContract, estimate, contractTotal, t: contractT })
+  const [contractTitle, setContractTitle] = useState(editorState.title)
   const [scope, setScope] = useState(editorState.scope)
   const [workBreakdown, setWorkBreakdown] = useState(editorState.workBreakdown)
   const [paymentTerms, setPaymentTerms] = useState(editorState.paymentTerms)
@@ -163,15 +139,16 @@ export function ContractPreviewPage({ lead, clientRecord = null, t, appLanguage 
   )
   const contractPreviewProps = useMemo(() => ({
     company: companySettings?.company,
-    lead,
+    lead: documentLead,
     contractNumber: previewContractNumber,
     contractDate: previewContractDate,
+    contractTitle,
     notesAndTermsItems,
     scope,
     workBreakdown,
     total: contractTotal,
     t: contractT,
-  }), [companySettings?.company, contractT, contractTotal, lead, notesAndTermsItems, previewContractDate, previewContractNumber, scope, workBreakdown])
+  }), [companySettings?.company, contractT, contractTitle, contractTotal, documentLead, notesAndTermsItems, previewContractDate, previewContractNumber, scope, workBreakdown])
   const isSigned = Boolean(
     savedContract?.status === 'Signed'
       || savedContract?.signed
@@ -190,6 +167,7 @@ export function ContractPreviewPage({ lead, clientRecord = null, t, appLanguage 
       t: contractT,
     })
 
+    setContractTitle(nextState.title)
     setScope(nextState.scope)
     setWorkBreakdown(nextState.workBreakdown)
     setPaymentTerms(nextState.paymentTerms)
@@ -226,7 +204,7 @@ export function ContractPreviewPage({ lead, clientRecord = null, t, appLanguage 
         ? (savedContract.estimateId ?? savedContract.estimate_id ?? null)
         : lead.estimateId || lead.portal?.estimate?.id || null,
       projectTitle: savedContract.projectTitle || lead.projectTitle || lead.projectType || 'Contract',
-      title: savedContract.title || lead.projectTitle || lead.projectType || 'Contract',
+      title: contractTitle.trim() || lead.projectTitle || lead.projectType || 'Contract',
       status: savedContract.status || 'Draft',
       signedDate: savedContract.signedDate || '',
       contractLanguage: contractLanguage || '',
@@ -253,11 +231,12 @@ export function ContractPreviewPage({ lead, clientRecord = null, t, appLanguage 
           element: pdfTemplateRef.current,
           contractNumber: previewContractNumber,
           contractDate: previewContractDate,
+          contractTitle,
           notesAndTermsItems,
-          clientName: lead?.client,
+          clientName: documentLead?.client,
           companyName: companySettings?.company?.name,
           company: companySettings?.company || {},
-          lead,
+          lead: documentLead,
           scope,
           workBreakdown,
           acceptanceLegalText,
@@ -276,7 +255,7 @@ export function ContractPreviewPage({ lead, clientRecord = null, t, appLanguage 
       }
 
       await printDocumentElement(pdfTemplateRef.current, {
-        documentTitle: `${previewContractNumber} ${lead?.client || ''}`.trim(),
+        documentTitle: `${previewContractNumber} ${documentLead?.client || ''}`.trim(),
         pageMarginInches: ESTIMATE_PAPER_MARGIN / 72,
         safeInsetInches: 0,
         printLabel: t('print'),
@@ -302,7 +281,10 @@ export function ContractPreviewPage({ lead, clientRecord = null, t, appLanguage 
         : await dataProvider.contracts.create(payload, { contractorId })
 
       if (response?.error) {
-        showToast(response.error.message || t(errorKey), 'error')
+        const message = response.error.code?.endsWith('_NO_ROWS')
+          ? t(errorKey)
+          : response.error.message || t(errorKey)
+        showToast(message, 'error')
         return null
       }
 
@@ -466,15 +448,18 @@ export function ContractPreviewPage({ lead, clientRecord = null, t, appLanguage 
         </div>
         <ContractDocument
           isEditing={isEditing}
-          lead={lead}
+          lead={documentLead}
           company={companySettings?.company}
           contractDate={previewContractDate}
           contractNumber={previewContractNumber}
           notesAndTermsItems={notesAndTermsItems}
           contractTotal={contractTotal}
+          contractTitle={contractTitle}
+          setContractTitle={setContractTitle}
           scope={scope}
           workBreakdown={workBreakdown}
           setScope={setScope}
+          setWorkBreakdown={setWorkBreakdown}
           paymentTerms={paymentTerms}
           setPaymentTerms={setPaymentTerms}
           acceptanceLegalText={acceptanceLegalText}
@@ -486,7 +471,7 @@ export function ContractPreviewPage({ lead, clientRecord = null, t, appLanguage 
           <button disabled={isSavingContract} onClick={cancelEditing} className="mt-4 rounded-2xl border border-slate-200 px-4 py-3 text-sm font-bold disabled:cursor-not-allowed disabled:opacity-60">{t('cancelEditing')}</button>
         ) : null}
       </section>
-      <SendToCustomerModal isOpen={showSendModal} documentType="contract" customer={{ name: lead.client, phone: lead.phone, email: lead.email }} projectTitle={lead.projectTitle || lead.projectType} amountLabel={t('projectTotal')} amountValue={currency.format(contractTotal)} documentLink={publicPortalLink} onClose={() => setShowSendModal(false)} onSent={async () => {
+      <SendToCustomerModal isOpen={showSendModal} documentType="contract" customer={{ name: documentLead.client, phone: documentLead.phone, email: documentLead.email }} projectTitle={lead.projectTitle || lead.projectType} amountLabel={t('projectTotal')} amountValue={currency.format(contractTotal)} documentLink={publicPortalLink} onClose={() => setShowSendModal(false)} onSent={async () => {
         const result = await markSent()
         return Boolean(result)
       }} t={t} contentT={contractT} />
@@ -526,7 +511,7 @@ export function ContractPreviewPage({ lead, clientRecord = null, t, appLanguage 
   )
 }
 
-function ContractDocument({ isEditing, lead, company, contractDate, contractNumber, notesAndTermsItems, contractTotal, scope, workBreakdown, setScope, paymentTerms, setPaymentTerms, acceptanceLegalText, setAcceptanceLegalText, contractT, t }) {
+function ContractDocument({ isEditing, lead, company, contractDate, contractNumber, notesAndTermsItems, contractTotal, contractTitle, setContractTitle, scope, workBreakdown, setScope, setWorkBreakdown, paymentTerms, setPaymentTerms, acceptanceLegalText, setAcceptanceLegalText, contractT, t }) {
   return (
     <div className="space-y-5 text-sm leading-6 text-slate-700">
       {!isEditing ? (
@@ -537,6 +522,7 @@ function ContractDocument({ isEditing, lead, company, contractDate, contractNumb
               lead={lead}
               contractNumber={contractNumber}
               contractDate={contractDate}
+              contractTitle={contractTitle}
               notesAndTermsItems={notesAndTermsItems}
               scope={scope}
               workBreakdown={workBreakdown}
@@ -549,7 +535,19 @@ function ContractDocument({ isEditing, lead, company, contractDate, contractNumb
       {isEditing ? (
         <>
           <div className="flex flex-col gap-4 border-b border-slate-200 pb-6 sm:flex-row sm:items-start sm:justify-between">
-            <DocumentCompanyHeader company={company} t={t} />
+            <div className="min-w-0 flex-1">
+              <DocumentCompanyHeader company={company} t={t} />
+              <label className="mt-4 block max-w-xl text-xs font-bold uppercase tracking-[0.14em] text-slate-400">
+                {t('contractTitle')}
+                <input
+                  type="text"
+                  value={contractTitle}
+                  onChange={(event) => setContractTitle(event.target.value)}
+                  aria-label={t('contractTitle')}
+                  className="mt-2 h-11 w-full rounded-xl border border-slate-200 bg-white px-3 text-sm font-semibold normal-case tracking-normal text-slate-900 outline-none placeholder:text-slate-300 focus:border-blue-500 focus:ring-4 focus:ring-blue-100"
+                />
+              </label>
+            </div>
             <div className="min-w-0 sm:text-right">
               <p className="text-xs font-bold uppercase tracking-[0.25em] text-blue-500">{t('contract')}</p>
               <p className="mt-1 break-words text-sm font-bold text-slate-900">{contractNumber}</p>
@@ -561,7 +559,7 @@ function ContractDocument({ isEditing, lead, company, contractDate, contractNumb
             <div className="rounded-2xl border border-slate-200 bg-slate-50 p-4">
               <p className="text-base font-bold text-slate-950">{t('workBreakdown')}</p>
               <p className="mt-2 text-sm leading-6 text-slate-500">{t('contractWorkBreakdownHelp')}</p>
-              <ContractWorkBreakdownList workBreakdown={workBreakdown} t={t} />
+              <ContractWorkBreakdownEditor workBreakdown={workBreakdown} onChange={setWorkBreakdown} t={t} />
             </div>
           ) : null}
           <ContractSection title={t('projectScope')} value={scope} onChange={setScope} isEditing={isEditing} highlighted formatted t={t} />
@@ -588,44 +586,6 @@ function DocumentCompanyHeader({ company, t }) {
         {company?.licenseNumber ? <p className="break-words text-sm text-slate-600">{t('license')}: {company.licenseNumber}</p> : null}
         <p className="break-words text-sm text-slate-600">{company?.address || ''}</p>
       </div>
-    </div>
-  )
-}
-
-function ContractWorkBreakdownList({ workBreakdown = [], t }) {
-  const normalizedWorkBreakdown = normalizeContractWorkBreakdown(workBreakdown)
-
-  if (normalizedWorkBreakdown.length === 0) {
-    return null
-  }
-
-  return (
-    <div className="mt-4 space-y-3">
-      {normalizedWorkBreakdown.map((item, index) => (
-        <div key={item.id || `${item.title}-${index}`} className="rounded-2xl border border-slate-200 bg-white p-4">
-          <div className="flex items-start justify-between gap-3">
-            <div className="min-w-0">
-              <p className="text-sm font-bold text-slate-950">{item.title || t('item')}</p>
-              {typeof item.materialsIncluded === 'boolean' ? (
-                <p className="mt-2 inline-flex rounded-full bg-slate-100 px-2.5 py-1 text-xs font-bold text-slate-700">
-                  {item.materialsIncluded ? t('includesMaterials') : t('materialsNotIncluded')}
-                </p>
-              ) : null}
-            </div>
-            <p className="shrink-0 text-sm font-bold text-slate-950">{currency.format(item.amount)}</p>
-          </div>
-          {item.details.length > 0 ? (
-            <div className="mt-3 space-y-2">
-              {item.details.map((detail, detailIndex) => (
-                <div key={`${item.id}-${detailIndex}`} className="grid grid-cols-[10px_minmax(0,1fr)] gap-2 text-sm leading-6 text-slate-700">
-                  <span className="mt-2 h-1.5 w-1.5 rounded-full bg-blue-500" />
-                  <span className="whitespace-pre-wrap break-words">{stripLeadingBulletMarker(detail)}</span>
-                </div>
-              ))}
-            </div>
-          ) : null}
-        </div>
-      ))}
     </div>
   )
 }
@@ -840,17 +800,29 @@ export function ContractRoute({ companySettings, leads, clients = [], projects =
     )
   }
 
-  const clientRecord = findRelatedClient(clients, lead || {})
+  const clientRecord = findClientById(
+    clients,
+    linkedProject?.clientId
+      || linkedProject?.client_id
+      || lead?.clientId
+      || lead?.client_id
+  )
 
-  const mergedLead = loadedContract
-    ? {
-        ...lead,
-        portal: {
-          ...(lead.portal || {}),
-          contract: loadedContract,
-        },
-      }
-    : lead
+  const contractDocument = loadedContract || lead.portal?.contract || {}
+  const mergedLead = mergeDocumentContactIntoLead({
+    lead: loadedContract
+      ? {
+          ...lead,
+          portal: {
+            ...(lead.portal || {}),
+            contract: loadedContract,
+          },
+        }
+      : lead,
+    clientRecord,
+    document: contractDocument,
+    documentType: 'contract',
+  })
   const publicPortalLink = resolvePublicPortalShareUrl(
     (USE_SUPABASE || USE_SUPABASE_PROJECTS) ? linkedProject : (linkedProject || lead)
   )
@@ -908,7 +880,7 @@ export function ContractsPage({ leads, contracts = [], onViewContract, onRestore
         sourceLeadId: linkedLead?.id || contract.leadId || contract.lead_id || contract.projectId || contract.project_id || contract.id,
         routeId: resolveLinkedProjectId(linkedLead, contract.projectId || contract.project_id || contract.leadId || contract.lead_id || contract.id),
         client: linkedLead?.client || contract.client || t('customer'),
-        projectTitle: linkedLead?.projectTitle || linkedLead?.projectType || contract.projectTitle || contract.title || t('contract'),
+        projectTitle: contract.title || linkedLead?.projectTitle || linkedLead?.projectType || contract.projectTitle || t('contract'),
         status: contract.status || t('draft'),
         isArchived: isArchivedContractRecord(contract),
       }

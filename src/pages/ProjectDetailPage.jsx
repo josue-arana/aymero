@@ -41,6 +41,7 @@ import { parsePaymentAmount } from '../utils/paymentAmount'
 import { getPaymentPersistenceErrorMessage, logPaymentPersistenceError } from '../utils/paymentErrors'
 import { withNavigationContext } from '../utils/navigationContext'
 import { canCreateContractFromEstimate } from '../utils/estimateFinalization'
+import { findClientById } from '../utils/clients'
 import projectWorkspaceHeroBackground from '../assets/page-heroes/jobs-bg.png'
 
 function logProjectDetailDevError(message, error, meta) {
@@ -457,8 +458,13 @@ function ProjectDetailPageContent({ lead, openRecordPaymentOnLoad = false, compa
     || null
   ), [baseProject, lead, projectId])
   const relatedClient = useMemo(() => (
-    clients.find((client) => client.id === (baseProject?.clientId || baseProject?.client_id || lead?.clientId || lead?.client_id))
-    || null
+    findClientById(
+      clients,
+      baseProject?.clientId
+        || baseProject?.client_id
+        || lead?.clientId
+        || lead?.client_id
+    )
   ), [baseProject?.clientId, baseProject?.client_id, clients, lead?.clientId, lead?.client_id])
   const resolvedEstimate = useMemo(() => normalizeProjectEstimate(
     estimateRecord
@@ -575,11 +581,11 @@ function ProjectDetailPageContent({ lead, openRecordPaymentOnLoad = false, compa
   ), [baseProject?.portal?.timeline, lead?.portal?.timeline, paymentSummary.payments])
   const currentLead = useMemo(() => createSafeProject({
     ...(baseProject || {}),
-    client: baseProject?.client || baseProject?.clientName || lead?.client || lead?.clientName || relatedClient?.displayName || relatedClient?.name || '',
-    clientName: baseProject?.clientName || baseProject?.client || lead?.clientName || lead?.client || relatedClient?.displayName || relatedClient?.name || '',
-    customerName: baseProject?.customerName || baseProject?.clientName || baseProject?.client || lead?.customerName || lead?.client || relatedClient?.displayName || relatedClient?.name || '',
-    phone: baseProject?.phone || lead?.phone || relatedClient?.phone || '',
-    email: baseProject?.email || lead?.email || relatedClient?.email || '',
+    client: relatedClient?.displayName || relatedClient?.name || baseProject?.client || baseProject?.clientName || lead?.client || lead?.clientName || '',
+    clientName: relatedClient?.displayName || relatedClient?.name || baseProject?.clientName || baseProject?.client || lead?.clientName || lead?.client || '',
+    customerName: relatedClient?.displayName || relatedClient?.name || baseProject?.customerName || baseProject?.clientName || baseProject?.client || lead?.customerName || lead?.client || '',
+    phone: relatedClient?.phone || baseProject?.phone || lead?.phone || '',
+    email: relatedClient?.email || baseProject?.email || lead?.email || '',
     address: baseProject?.address || baseProject?.location || lead?.address || lead?.location || relatedClient?.address || '',
     projectTitle: baseProject?.projectTitle || baseProject?.title || lead?.projectTitle || lead?.projectType || '',
     projectType: baseProject?.projectType || lead?.projectType || lead?.projectTitle || '',

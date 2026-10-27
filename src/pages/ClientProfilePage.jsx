@@ -27,6 +27,7 @@ import { deriveProjectStatus } from '../utils/projectLifecycle'
 import { resolveClientContactActions } from '../utils/clientContactActions'
 import { AymeroLoader } from '../components/common/AymeroLoader'
 import { isCollectionInitialLoading } from '../utils/collectionLoading'
+import { isSuccessfulClientUpdateResponse } from '../utils/clientPersistence'
 
 function isClientArchived(client, archivedClientIds = []) {
   return Boolean(
@@ -108,7 +109,18 @@ function getContextualProjectStatus(project = {}, estimate = null, contract = nu
   }
 
   const invoice = getLatestProjectInvoice(project)
-  const baseStatus = contract?.status || estimate?.status || invoice?.status || project?.latestStatus || project?.projectStatus || project?.status || ''
+  const storedProjectStatus = project?.latestStatus || project?.projectStatus || project?.status || ''
+  const normalizedStoredProjectStatus = String(storedProjectStatus)
+    .trim()
+    .toLowerCase()
+    .replace(/[^a-z0-9]+/g, '_')
+    .replace(/^_|_$/g, '')
+
+  if (!contract && ['contract', 'signed'].includes(normalizedStoredProjectStatus)) {
+    return deriveProjectStatus({ project, contract })
+  }
+
+  const baseStatus = contract?.status || estimate?.status || invoice?.status || storedProjectStatus
 
   if (baseStatus !== 'Sent') {
     return baseStatus
@@ -150,7 +162,7 @@ function formatRelativeTimestamp(value, t = (key) => key) {
   return weeks === 1 ? `1 ${t('weekAgo')}` : `${weeks} ${t('weeksAgo')}`
 }
 
-export function ClientProfilePage({ leads, customClients = [], projects = [], archivedClientIds = [], onBack, onOpenProject, onOpenLead, onOpenEstimate, onOpenContract, onCreateJob, onUpdateClient, onArchiveClient, onRestoreClient, onDeleteClient, language = 'en', t, collectionStatus = 'loaded' }) {
+export function ClientProfilePage({ leads, customClients = [], projects = [], contracts = [], archivedClientIds = [], onBack, onOpenProject, onOpenLead, onOpenEstimate, onOpenContract, onCreateJob, onUpdateClient, onArchiveClient, onRestoreClient, onDeleteClient, language = 'en', t, collectionStatus = 'loaded' }) {
   const { clientId } = useParams()
   const [isEditOpen, setIsEditOpen] = useState(false)
   const [confirmAction, setConfirmAction] = useState(null)
@@ -208,7 +220,11 @@ export function ClientProfilePage({ leads, customClients = [], projects = [], ar
   const projectCards = useMemo(() => (
     clientProjects.map((project) => {
       const estimate = getEstimateForProject(project, [project.portal?.estimate])
-      const contract = getContractForProject(project, [project.portal?.contract], estimate)
+      const contract = getContractForProject(project, [
+        ...(Array.isArray(project?.contracts) ? project.contracts : []),
+        ...(project?.portal?.contract ? [project.portal.contract] : []),
+        ...contracts,
+      ], estimate)
       const resolvedProjectId = resolveLinkedProjectId(project)
       const projectPayments = dedupePayments([
         ...(Array.isArray(project?.payments) ? project.payments : []),
@@ -253,7 +269,7 @@ export function ClientProfilePage({ leads, customClients = [], projects = [], ar
         latestPayment: sortedProjectPayments[0] || null,
       }
     })
-  ), [clientProjects, t])
+  ), [clientProjects, contracts, t])
   const customerSinceValue = useMemo(() => {
     const timestamps = [
       client?.createdAt,
@@ -781,19 +797,18 @@ export function ClientProfilePage({ leads, customClients = [], projects = [], ar
         defaultPreferredLanguage={language}
         onClose={() => setIsEditOpen(false)}
         onSave={async (updatedClient) => {
-          let nextClient = updatedClient
-
           try {
             const response = await dataProvider.clients.update(client.id, updatedClient, { contractorId: contractorRuntimeId })
-            if (response?.data && !response?.error) {
-              nextClient = response.data
+            if (!isSuccessfulClientUpdateResponse(response, client.id)) {
+              showToast(response?.error?.message || t('clientUpdateFailed'), 'error')
+              return
             }
-          } catch (err) {
-            // local mode: ignore errors
-          }
 
-          onUpdateClient(client.id, nextClient)
-          setIsEditOpen(false)
+            onUpdateClient(client.id, response.data)
+            setIsEditOpen(false)
+          } catch (err) {
+            showToast(err?.message || t('clientUpdateFailed'), 'error')
+          }
         }}
         t={t}
       />

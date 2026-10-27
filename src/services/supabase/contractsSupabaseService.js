@@ -1,6 +1,7 @@
 import { USE_SUPABASE, USE_SUPABASE_CONTRACTS } from '../../config/backendConfig'
 import { supabaseClient } from '../../lib/supabaseClient'
 import { normalizeContractWorkBreakdown } from '../../utils/contractDocument'
+import { isSuccessfulContractPersistenceResponse } from '../../utils/contractPersistence'
 
 const TABLE_NAME = 'contracts'
 
@@ -67,6 +68,23 @@ function normalizeError(error, fallbackMessage) {
 
 function readSingleRow(data) {
   return Array.isArray(data) ? data[0] ?? null : data ?? null
+}
+
+function readResponseRow(response) {
+  return readSingleRow(response?.data)
+}
+
+function createNoRowsError(methodName, id = null, response = null) {
+  return {
+    code: `CONTRACT_${methodName.toUpperCase()}_NO_ROWS`,
+    message: `The contract ${methodName} did not persist because no authorized row was returned.`,
+    details: {
+      contractId: id,
+      status: response?.status ?? null,
+      contentRange: response?.contentRange ?? null,
+      affectedRowCount: response?.count ?? null,
+    },
+  }
 }
 
 function hasOwn(source, key) {
@@ -480,15 +498,22 @@ export async function create(contractData, { contractorId } = {}) {
   }
 
   try {
-    const data = await supabaseClient.request(TABLE_NAME, {
+    const response = await supabaseClient.request(TABLE_NAME, {
       method: 'POST',
       body: toSupabasePayload(contractorId, contractData, { isCreate: true }),
+      prefer: 'return=representation,count=exact',
+      includeResponseMetadata: true,
     })
 
+    if (!isSuccessfulContractPersistenceResponse(response)) {
+      return { data: null, error: createNoRowsError('create', contractData?.id || null, response), skipped: false }
+    }
+
     return {
-      data: toAppContract(readSingleRow(data)),
+      data: toAppContract(readResponseRow(response)),
       error: null,
       skipped: false,
+      affectedRowCount: response?.count ?? 1,
     }
   } catch (error) {
     return {
@@ -516,18 +541,25 @@ export async function update(id, updates, { contractorId } = {}) {
 
     delete payload.contractor_id
 
-    const data = await supabaseClient.request(TABLE_NAME, {
+    const response = await supabaseClient.request(TABLE_NAME, {
       method: 'PATCH',
       query: buildContractorQuery(contractorId, {
         id: `eq.${id}`,
       }),
       body: payload,
+      prefer: 'return=representation,count=exact',
+      includeResponseMetadata: true,
     })
 
+    if (!isSuccessfulContractPersistenceResponse(response)) {
+      return { data: null, error: createNoRowsError('update', id, response), skipped: false }
+    }
+
     return {
-      data: toAppContract(readSingleRow(data) || { id, contractor_id: contractorId, ...payload }),
+      data: toAppContract(readResponseRow(response)),
       error: null,
       skipped: false,
+      affectedRowCount: response?.count ?? 1,
     }
   } catch (error) {
     return {

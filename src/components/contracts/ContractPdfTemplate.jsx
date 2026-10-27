@@ -250,10 +250,10 @@ function SignatureSection({ contractorName, clientName, t }) {
   )
 }
 
-export function ContractPdfTemplate({ company, lead, contractNumber, contractDate, notesAndTermsItems = [], scope, workBreakdown = [], total, t }) {
+export function ContractPdfTemplate({ company, lead, contractNumber, contractDate, contractTitle = '', notesAndTermsItems = [], scope, workBreakdown = [], total, t }) {
   const billToLines = buildBillToLines(lead, t)
   const workLines = buildWorkLines(lead, t)
-  const projectTitle = lead?.projectTitle || lead?.projectType || t('projectScope')
+  const projectTitle = contractTitle || lead?.projectTitle || lead?.projectType || t('projectScope')
   const normalizedWorkBreakdown = normalizeContractWorkBreakdown(workBreakdown)
   const hasScope = shouldRenderContractScopeText(scope, normalizedWorkBreakdown)
   const { accentColor, accentTextColor } = resolveDocumentBrandTokens(company)

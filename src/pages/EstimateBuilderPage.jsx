@@ -35,7 +35,8 @@ import { shouldUseGeneratedPdfForPrint } from '../utils/documentOutput'
 import { isPrintWindowBlockedError, printDocumentElement } from '../utils/printDocument'
 import { createTranslator, tStatus } from '../translations'
 import { findLeadByProjectLookup, findProjectByLookup, getEstimatesForProject, getSelectedEstimateForProject } from '../utils/projectIdentity'
-import { findRelatedClient } from '../utils/clients'
+import { findClientById } from '../utils/clients'
+import { mergeDocumentContactIntoLead } from '../utils/documentContact'
 import { resolveEstimateArchiveState } from '../utils/archiveLifecycle'
 import {
   ESTIMATE_PRICING_DETAILED,
@@ -527,6 +528,12 @@ export function EstimateBuilderPage({ lead, clientRecord = null, t, appLanguage 
   const estimateUpdatedDate = formatReliableDate(savedEstimate.updatedAt || savedEstimate.updated_at)
   const estimateStatus = tStatus(t, savedEstimate.status || 'Draft')
   const estimateLifecycleStatus = normalizeEstimateFinalizationStatus(savedEstimate.status)
+  const estimateDocumentLead = useMemo(() => mergeDocumentContactIntoLead({
+    lead,
+    clientRecord,
+    document: savedEstimate,
+    documentType: 'estimate',
+  }), [clientRecord, lead, savedEstimate])
   const estimateApprovedDate = formatReliableDate(savedEstimate.approvedAt || savedEstimate.approved_at)
   const estimateRejectedDate = formatReliableDate(savedEstimate.rejectedAt || savedEstimate.rejected_at)
   const estimateCanBeEdited = canEditEstimate(estimateLifecycleStatus)
@@ -565,17 +572,14 @@ export function EstimateBuilderPage({ lead, clientRecord = null, t, appLanguage 
   ])
   const estimatePreviewProps = useMemo(() => ({
     company: companySettings?.company,
-    lead: {
-      ...lead,
-      phone: lead?.phone || clientRecord?.phone || '',
-    },
+    lead: estimateDocumentLead,
     estimateNumber: previewEstimateNumber,
     estimateDate: previewEstimateDate,
     documentModel: estimateDocumentModel,
     paymentTerms: getPaymentTermLabel(paymentTerms, estimateT),
     language: estimateOutputLanguage,
     t: estimateT,
-  }), [clientRecord?.phone, companySettings?.company, estimateDocumentModel, estimateOutputLanguage, estimateT, lead, paymentTerms, previewEstimateDate, previewEstimateNumber])
+  }), [companySettings?.company, estimateDocumentLead, estimateDocumentModel, estimateOutputLanguage, estimateT, paymentTerms, previewEstimateDate, previewEstimateNumber])
 
   function getEstimatePayload() {
     const sanitizedScope = normalizeEstimateFormattedTextForStorage(scope)
@@ -1187,10 +1191,10 @@ export function EstimateBuilderPage({ lead, clientRecord = null, t, appLanguage 
           element: pdfTemplateRef.current,
           estimateNumber: previewEstimateNumber,
           estimateDate: previewEstimateDate,
-          clientName: lead?.client,
+          clientName: estimateDocumentLead?.client,
           companyName: companySettings?.company?.name,
           company: companySettings?.company || {},
-          lead,
+          lead: estimateDocumentLead,
           documentModel: estimateDocumentModel,
           pricingMode,
           scope,
@@ -1210,7 +1214,7 @@ export function EstimateBuilderPage({ lead, clientRecord = null, t, appLanguage 
       }
 
       await printDocumentElement(pdfTemplateRef.current, {
-        documentTitle: `${previewEstimateNumber} ${lead?.client || ''}`.trim(),
+        documentTitle: `${previewEstimateNumber} ${estimateDocumentLead?.client || ''}`.trim(),
         pageMarginInches: ESTIMATE_PAPER_MARGIN / 72,
         safeInsetInches: 0,
         printLabel: t('print'),
@@ -1228,7 +1232,7 @@ export function EstimateBuilderPage({ lead, clientRecord = null, t, appLanguage 
 
     try {
       await printDocumentElement(pdfTemplateRef.current, {
-        documentTitle: `${previewEstimateNumber} ${lead?.client || ''}`.trim(),
+        documentTitle: `${previewEstimateNumber} ${estimateDocumentLead?.client || ''}`.trim(),
         pageMarginInches: ESTIMATE_PAPER_MARGIN / 72,
         safeInsetInches: 0,
         printLabel: t('print'),
@@ -1637,7 +1641,7 @@ export function EstimateBuilderPage({ lead, clientRecord = null, t, appLanguage 
         </aside>
       </div>
       <ConfirmRecordModal isOpen={Boolean(confirmAction)} mode={confirmAction?.mode === 'delete' ? 'delete' : 'archive'} title={confirmAction?.mode === 'delete' ? t('confirmPermanentDelete') : confirmAction?.mode === 'sync-contract' ? t('confirmSyncSignedContract') : t('confirmArchive')} message={confirmAction?.mode === 'delete' ? t('permanentDeleteHelp') : confirmAction?.mode === 'sync-contract' ? t('signedContractSyncWarning') : t('archiveHelp')} confirmLabel={confirmAction?.mode === 'delete' ? t('deletePermanently') : confirmAction?.mode === 'sync-contract' ? t('syncContractFromEstimate') : t('archive')} onCancel={() => setConfirmAction(null)} onConfirm={async () => { if (confirmAction?.mode === 'archive') { await onArchiveEstimate?.() } if (confirmAction?.mode === 'delete') { await onDeleteEstimate?.(); onBack?.() } if (confirmAction?.mode === 'sync-contract') { await handleSyncContract(true) } setConfirmAction(null) }} t={t} />
-      <SendToCustomerModal isOpen={showSendModal} documentType="estimate" customer={{ name: lead.client, phone: lead.phone, email: lead.email }} projectTitle={lead.projectTitle || lead.projectType} amountLabel={t('estimatedTotal')} amountValue={currency.format(estimateTotal)} documentLink={sendDocumentLink} companyName={companySettings?.company?.name || ''} onClose={() => setShowSendModal(false)} onSent={async () => {
+      <SendToCustomerModal isOpen={showSendModal} documentType="estimate" customer={{ name: estimateDocumentLead.client, phone: estimateDocumentLead.phone, email: estimateDocumentLead.email }} projectTitle={lead.projectTitle || lead.projectType} amountLabel={t('estimatedTotal')} amountValue={currency.format(estimateTotal)} documentLink={sendDocumentLink} companyName={companySettings?.company?.name || ''} onClose={() => setShowSendModal(false)} onSent={async () => {
         const result = await persistEstimate(buildEstimateResendTransition(), { closeSendModal: true, stopEditing: true })
         return Boolean(result)
       }} t={t} contentT={estimateT} />
@@ -2000,19 +2004,24 @@ export function EstimateBuilderRoute({ companySettings, leads, clients = [], pro
     )
   }
 
-  const clientRecord = findRelatedClient(clients, {
-    ...(lead || {}),
-    clientId: lead?.clientId || lead?.client_id || resolvedEstimate?.clientId || resolvedEstimate?.client_id || linkedProject?.clientId || linkedProject?.client_id || '',
-  })
+  const clientRecord = findClientById(clients, linkedProject?.clientId
+    || linkedProject?.client_id
+    || resolvedEstimate?.clientId
+    || resolvedEstimate?.client_id
+    || lead?.clientId
+    || lead?.client_id
+    || '')
 
+  const estimateDocument = resolvedEstimate || loadedEstimate || lead?.portal?.estimate || {}
   const mergedLead = {
-    ...lead,
-    clientId: lead?.clientId || lead?.client_id || loadedEstimate?.clientId || loadedEstimate?.client_id || linkedProject?.clientId || linkedProject?.client_id || null,
-    client_id: lead?.clientId || lead?.client_id || loadedEstimate?.clientId || loadedEstimate?.client_id || linkedProject?.clientId || linkedProject?.client_id || null,
-    client: clientRecord?.displayName || clientRecord?.name || lead?.client || lead?.clientName || lead?.customerName || t('customer'),
-    clientName: clientRecord?.displayName || clientRecord?.name || lead?.clientName || lead?.client || t('customer'),
-    email: lead?.email || clientRecord?.email || '',
-    phone: lead?.phone || clientRecord?.phone || '',
+    ...mergeDocumentContactIntoLead({
+      lead,
+      clientRecord,
+      document: estimateDocument,
+      documentType: 'estimate',
+    }),
+    clientId: linkedProject?.clientId || linkedProject?.client_id || lead?.clientId || lead?.client_id || loadedEstimate?.clientId || loadedEstimate?.client_id || null,
+    client_id: linkedProject?.clientId || linkedProject?.client_id || lead?.clientId || lead?.client_id || loadedEstimate?.clientId || loadedEstimate?.client_id || null,
     address: lead?.address || lead?.location || clientRecord?.address || '',
     projectId: lead?.projectId || lead?.project_id || loadedEstimate?.projectId || loadedEstimate?.project_id || linkedProject?.id || linkedProject?.projectId || null,
     project_id: lead?.projectId || lead?.project_id || loadedEstimate?.projectId || loadedEstimate?.project_id || linkedProject?.id || linkedProject?.projectId || null,

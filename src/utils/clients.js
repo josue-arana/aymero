@@ -10,6 +10,13 @@ export function getClientSlug(name = '') {
     .replace(/^-+|-+$/g, '')
 }
 
+export function findClientById(clients = [], clientId = '') {
+  const normalizedClientId = String(clientId || '').trim()
+  if (!normalizedClientId) return null
+
+  return clients.find((client) => String(client?.id || '').trim() === normalizedClientId) || null
+}
+
 export function findRelatedClient(clients = [], record = {}) {
   const recordClientId = String(record?.clientId || record?.client_id || '').trim()
   const recordClientSlug = getClientSlug(
