@@ -79,6 +79,7 @@ import {
   changeScopeAssistantClientLanguage,
   createScopeAssistantState,
   editContractorDraft,
+  editScopeAssistantCanonicalScope,
   editRawContractorInput,
   editScopeAssistantClientScope,
   getScopeAssistantSendReadiness,
@@ -123,7 +124,7 @@ function getScopeAssistantErrorMessage(t, error, fallbackKey = 'scopeAssistantRe
 }
 
 function readEstimateScopeText(estimate = {}) {
-  return estimate?.summary || estimate?.scopeOfWork || estimate?.scope_of_work || ''
+  return estimate?.summary ?? estimate?.scopeOfWork ?? estimate?.scope_of_work ?? ''
 }
 
 function readEstimateContractorMessage(estimate = {}) {
@@ -740,6 +741,7 @@ export function EstimateBuilderPage({ lead, clientRecord = null, t, appLanguage 
 
   function handleManualScopeChange(nextValue) {
     markDraftDirty()
+    setScopeAssistantState((current) => editScopeAssistantCanonicalScope(current, scope, nextValue))
     setScope(nextValue)
   }
 

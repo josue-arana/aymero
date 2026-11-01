@@ -321,7 +321,7 @@ export function PortalSummary({
       estimate?.pricingMode || estimate?.pricing_mode,
       estimate?.lineItems
     ),
-    scope: estimate?.summary || estimate?.scopeOfWork || '',
+    scope: estimate?.summary ?? estimate?.scopeOfWork ?? '',
     materialsIncluded: estimate?.materialsIncluded ?? estimate?.materials_included ?? true,
     paymentTerms: getPaymentTermLabel(estimate?.paymentTerms, t) || t('contractTermsText'),
     total: Number(estimate?.total ?? estimate?.totalAmount ?? estimate?.amount ?? 0),

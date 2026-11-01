@@ -115,7 +115,7 @@ export function PublicEstimatePage() {
     }
     const documentModel = normalizeEstimateDocument({
       pricingMode,
-      scope: estimate.scopeOfWork || estimate.summary || '',
+      scope: estimate.summary ?? estimate.scopeOfWork ?? '',
       lineItems,
       total: Number(estimate.total ?? estimate.totalAmount ?? 0),
       subtotal: Number(estimate.subtotal ?? 0),

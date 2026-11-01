@@ -48,6 +48,8 @@
     "verify:client-save-contact-sync": "node scripts/verify-client-save-contact-sync.mjs",
     "verify:estimate-alternatives-foundation": "node scripts/verify-estimate-alternatives-foundation.mjs",
     "verify:estimate-alternatives-workflow": "node scripts/verify-estimate-alternatives-workflow.mjs",
+    "verify:estimate-duplication-reliability": "node scripts/verify-estimate-duplication-reliability.mjs",
+    "verify:estimate-scope-document-consistency": "node scripts/verify-estimate-scope-document-consistency.mjs",
     "verify:lead-estimate-alternatives": "node scripts/verify-lead-estimate-alternatives.mjs",
     "verify:flexible-contract-handoff": "node scripts/verify-flexible-contract-handoff.mjs",
     "verify:financial-foundation": "node scripts/verify-financial-foundation.mjs",

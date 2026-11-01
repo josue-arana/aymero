@@ -443,6 +443,16 @@ export function editScopeAssistantClientScope(state, clientScope) {
   })
 }
 
+// Editing the document itself does not select a pending suggestion or alter the
+// approved source/translation snapshots. It does revoke acceptance of the old
+// document text, so Send cannot treat a changed scope as the accepted version.
+export function editScopeAssistantCanonicalScope(state, previousScope, nextScope) {
+  const current = normalizeScopeAssistantState(state)
+  if (isEmptyScopeAssistantState(current) || readText(previousScope) === readText(nextScope)) return current
+
+  return clearCanonicalAcceptance(cloneState(current))
+}
+
 export async function isScopeAssistantApprovalCurrent(state) {
   const current = normalizeScopeAssistantState(state)
   if (isEmptyScopeAssistantState(current) || current.approvalStatus !== SCOPE_ASSISTANT_STATUS.APPROVED) return false

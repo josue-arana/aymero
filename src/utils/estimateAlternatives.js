@@ -34,18 +34,30 @@ export function sumUnambiguousEstimateValues(estimates = [], projects = []) {
   }, 0)
 }
 
-const IDENTITY_FIELDS = new Set([
+const NON_DUPLICATED_FIELDS = new Set([
   'id', 'number', 'estimateNumber', 'estimate_number',
+  'contractorId', 'contractor_id', 'clientId', 'client_id', 'leadId', 'lead_id', 'projectId', 'project_id',
   'publicShareToken', 'public_share_token', 'shareToken', 'share_token',
   'createdAt', 'created_at', 'updatedAt', 'updated_at',
   'archivedAt', 'archived_at', 'isArchived', 'archived',
   'sentAt', 'sent_at', 'approvedAt', 'approved_at', 'rejectedAt', 'rejected_at',
   'finalizedAt', 'finalized_at', 'convertedAt', 'converted_at',
+  'customerResponseAt', 'customer_response_at', 'customerResponse', 'customer_response',
+  'signedAt', 'signed_at', 'signedDate', 'signed_date', 'signature', 'signature_data',
+  'paymentStatus', 'payment_status', 'paidAt', 'paid_at', 'amountPaid', 'amount_paid',
+  'publicUrl', 'public_url', 'shareUrl', 'share_url', 'deliveryStatus', 'delivery_status',
   'status', 'scopeAssistantState', 'scope_assistant_state',
 ])
 
+function cloneEstimateValue(value) {
+  if (Array.isArray(value)) return value.map(cloneEstimateValue)
+  if (!value || typeof value !== 'object') return value
+
+  return Object.fromEntries(Object.entries(value).map(([key, nestedValue]) => [key, cloneEstimateValue(nestedValue)]))
+}
+
 function copyLineItems(value) {
-  return Array.isArray(value) ? value.map((item) => ({ ...item })) : []
+  return Array.isArray(value) ? value.map(cloneEstimateValue) : []
 }
 
 function readOptionProjectId(project = {}) {
@@ -100,11 +112,15 @@ export function buildNewEstimateOptionDraft({ project = {}, lead = {} } = {}) {
 export function buildDuplicatedEstimateDraft({ project = {}, lead = {}, estimate = {} } = {}) {
   const base = buildNewEstimateOptionDraft({ project, lead })
   const draft = Object.entries(estimate || {}).reduce((result, [key, value]) => {
-    if (!IDENTITY_FIELDS.has(key)) {
-      result[key] = key === 'lineItems' || key === 'line_items' ? copyLineItems(value) : value
+    if (!NON_DUPLICATED_FIELDS.has(key)) {
+      result[key] = cloneEstimateValue(value)
     }
     return result
   }, {})
+  const sourcePricingMode = String(estimate?.pricingMode || estimate?.pricing_mode || '').trim().toLowerCase()
+  const sourceLineItems = sourcePricingMode === 'simple'
+    ? []
+    : estimate?.lineItems || estimate?.line_items
 
   return {
     ...base,
@@ -121,6 +137,8 @@ export function buildDuplicatedEstimateDraft({ project = {}, lead = {}, estimate
     publicShareToken: createEstimateShareToken(),
     public_share_token: undefined,
     scopeAssistantState: {},
-    lineItems: copyLineItems(estimate?.lineItems || estimate?.line_items),
+    scope_assistant_state: undefined,
+    lineItems: copyLineItems(sourceLineItems),
+    line_items: undefined,
   }
 }
