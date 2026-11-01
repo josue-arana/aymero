@@ -56,10 +56,15 @@ export function resolveDocumentContact({ clientRecord = null, snapshot = {}, doc
   const documentPhone = readDocumentValue(document, ['clientPhone', 'client_phone'])
   const documentEmail = readDocumentValue(document, ['clientEmail', 'client_email'])
   const documentAddress = readDocumentValue(document, ['clientAddress', 'client_address'])
+  const liveName = readValue(liveContact, ['displayName', 'name', 'clientName', 'client'])
+  const snapshotName = readValue(snapshot, ['displayName', 'name', 'clientName', 'client'])
+  const resolvedName = historical || documentType !== 'estimate'
+    ? (documentName !== null ? documentName : readValue(preferredContact, ['displayName', 'name', 'clientName', 'client']))
+      || readValue(fallbackContact, ['displayName', 'name', 'clientName', 'client'])
+    : documentName || liveName || snapshotName
 
   return {
-    name: (documentName !== null ? documentName : readValue(preferredContact, ['displayName', 'name', 'clientName', 'client']))
-      || readValue(fallbackContact, ['displayName', 'name', 'clientName', 'client']),
+    name: resolvedName,
     phone: (documentPhone !== null ? documentPhone : readValue(preferredContact, ['phone']))
       || readValue(fallbackContact, ['phone']),
     email: (documentEmail !== null ? documentEmail : readValue(preferredContact, ['email']))
