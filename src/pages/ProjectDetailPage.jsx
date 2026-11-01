@@ -41,6 +41,8 @@ import { parsePaymentAmount } from '../utils/paymentAmount'
 import { getPaymentPersistenceErrorMessage, logPaymentPersistenceError } from '../utils/paymentErrors'
 import { withNavigationContext } from '../utils/navigationContext'
 import { canCreateContractFromEstimate } from '../utils/estimateFinalization'
+import { isEstimatePriceEntered, readEstimateTotalValue } from '../utils/estimateDocument'
+import { findClientById } from '../utils/clients'
 import projectWorkspaceHeroBackground from '../assets/page-heroes/jobs-bg.png'
 
 function logProjectDetailDevError(message, error, meta) {
@@ -457,8 +459,13 @@ function ProjectDetailPageContent({ lead, openRecordPaymentOnLoad = false, compa
     || null
   ), [baseProject, lead, projectId])
   const relatedClient = useMemo(() => (
-    clients.find((client) => client.id === (baseProject?.clientId || baseProject?.client_id || lead?.clientId || lead?.client_id))
-    || null
+    findClientById(
+      clients,
+      baseProject?.clientId
+        || baseProject?.client_id
+        || lead?.clientId
+        || lead?.client_id
+    )
   ), [baseProject?.clientId, baseProject?.client_id, clients, lead?.clientId, lead?.client_id])
   const resolvedEstimate = useMemo(() => normalizeProjectEstimate(
     estimateRecord
@@ -575,11 +582,11 @@ function ProjectDetailPageContent({ lead, openRecordPaymentOnLoad = false, compa
   ), [baseProject?.portal?.timeline, lead?.portal?.timeline, paymentSummary.payments])
   const currentLead = useMemo(() => createSafeProject({
     ...(baseProject || {}),
-    client: baseProject?.client || baseProject?.clientName || lead?.client || lead?.clientName || relatedClient?.displayName || relatedClient?.name || '',
-    clientName: baseProject?.clientName || baseProject?.client || lead?.clientName || lead?.client || relatedClient?.displayName || relatedClient?.name || '',
-    customerName: baseProject?.customerName || baseProject?.clientName || baseProject?.client || lead?.customerName || lead?.client || relatedClient?.displayName || relatedClient?.name || '',
-    phone: baseProject?.phone || lead?.phone || relatedClient?.phone || '',
-    email: baseProject?.email || lead?.email || relatedClient?.email || '',
+    client: relatedClient?.displayName || relatedClient?.name || baseProject?.client || baseProject?.clientName || lead?.client || lead?.clientName || '',
+    clientName: relatedClient?.displayName || relatedClient?.name || baseProject?.clientName || baseProject?.client || lead?.clientName || lead?.client || '',
+    customerName: relatedClient?.displayName || relatedClient?.name || baseProject?.customerName || baseProject?.clientName || baseProject?.client || lead?.customerName || lead?.client || '',
+    phone: relatedClient?.phone || baseProject?.phone || lead?.phone || '',
+    email: relatedClient?.email || baseProject?.email || lead?.email || '',
     address: baseProject?.address || baseProject?.location || lead?.address || lead?.location || relatedClient?.address || '',
     projectTitle: baseProject?.projectTitle || baseProject?.title || lead?.projectTitle || lead?.projectType || '',
     projectType: baseProject?.projectType || lead?.projectType || lead?.projectTitle || '',
@@ -1991,7 +1998,7 @@ function ProjectDetailPageContent({ lead, openRecordPaymentOnLoad = false, compa
                         </div>
                         <p className="mt-1 break-words font-bold text-slate-950 [overflow-wrap:anywhere]">{formatEstimateDisplayNumber(estimate.number || estimate.estimateNumber || '', currentLead)}</p>
                         <div className="mt-1 flex flex-wrap items-center gap-x-3 gap-y-1 text-sm text-slate-600">
-                          <span>{currency.format(Number(estimate.total || 0))}</span>
+                          <span>{isEstimatePriceEntered(readEstimateTotalValue(estimate)) ? currency.format(Number(readEstimateTotalValue(estimate))) : ''}</span>
                           <span>{estimate.title || t('estimate')}</span>
                         </div>
                       </div>
@@ -2340,7 +2347,7 @@ function ProjectDetailPageContent({ lead, openRecordPaymentOnLoad = false, compa
                 >
                   <span className="min-w-0">
                     <span className="block break-words font-bold text-slate-950">{estimate.optionName || estimate.option_name || estimate.title || t('estimate')}</span>
-                    <span className="mt-1 block break-words text-sm text-slate-600">{formatEstimateDisplayNumber(estimate.number || estimate.estimateNumber || '', currentLead)} · {currency.format(Number(estimate.total || 0))}</span>
+                    <span className="mt-1 block break-words text-sm text-slate-600">{formatEstimateDisplayNumber(estimate.number || estimate.estimateNumber || '', currentLead)} · {isEstimatePriceEntered(readEstimateTotalValue(estimate)) ? currency.format(Number(readEstimateTotalValue(estimate))) : ''}</span>
                   </span>
                   <span className="flex shrink-0 flex-col items-end gap-1 pt-0.5"><StatusBadge status={estimate.status || 'Draft'} t={t} />{isSelected ? <span className="text-xs font-bold text-blue-700">{t('selectedEstimateOption')}</span> : null}</span>
                 </button>

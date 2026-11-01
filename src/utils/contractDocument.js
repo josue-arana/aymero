@@ -3,6 +3,7 @@ import { getPaymentTermLabel } from './paymentTerms'
 import {
   ESTIMATE_LABOR_ONLY,
   ESTIMATE_MATERIALS_INCLUDED,
+  ESTIMATE_MATERIALS_UNSPECIFIED,
   ESTIMATE_OWNER_SUPPLIED_MATERIALS,
   normalizeEstimateLineItemForDocument,
   resolveEstimateLineItemQuantity,
@@ -30,6 +31,9 @@ function normalizeMaterialsIncluded(value, fallbackValue = null) {
 }
 
 function normalizeMaterialsStatus(item = {}, materialsIncluded = null) {
+  if (item?.materialsStatus === ESTIMATE_MATERIALS_UNSPECIFIED) {
+    return null
+  }
   if (item?.materialsStatus === ESTIMATE_OWNER_SUPPLIED_MATERIALS) {
     return ESTIMATE_OWNER_SUPPLIED_MATERIALS
   }
@@ -98,14 +102,17 @@ export function normalizeContractWorkBreakdown(items = [], fallbackMaterialsIncl
       )
       const amount = toSafeNumber(item?.amount)
       const quantity = resolveEstimateLineItemQuantity(item)
-      const materialsIncluded = normalizeMaterialsIncluded(item?.materialsIncluded, fallbackMaterialsIncluded)
+      const materialsUnspecified = item?.materialsStatus === ESTIMATE_MATERIALS_UNSPECIFIED
+      const materialsIncluded = materialsUnspecified
+        ? null
+        : normalizeMaterialsIncluded(item?.materialsIncluded, fallbackMaterialsIncluded)
       const materialsStatus = normalizeMaterialsStatus(item, materialsIncluded)
       const normalizedRichItem = normalizeEstimateLineItemForDocument({
         ...item,
         ...(hasStructuredText ? {} : { name: rawText }),
       }, {
         displayOrder: index,
-        fallbackMaterialsIncluded: Boolean(materialsIncluded),
+        fallbackMaterialsIncluded: materialsIncluded,
       })
 
       return {

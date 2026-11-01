@@ -35,18 +35,27 @@ import { shouldUseGeneratedPdfForPrint } from '../utils/documentOutput'
 import { isPrintWindowBlockedError, printDocumentElement } from '../utils/printDocument'
 import { createTranslator, tStatus } from '../translations'
 import { findLeadByProjectLookup, findProjectByLookup, getEstimatesForProject, getSelectedEstimateForProject } from '../utils/projectIdentity'
-import { findRelatedClient } from '../utils/clients'
+import { findClientById } from '../utils/clients'
+import { mergeDocumentContactIntoLead } from '../utils/documentContact'
 import { resolveEstimateArchiveState } from '../utils/archiveLifecycle'
 import {
   ESTIMATE_PRICING_DETAILED,
   ESTIMATE_PRICING_SIMPLE,
+  ESTIMATE_LABOR_ONLY,
+  ESTIMATE_MATERIALS_INCLUDED,
+  ESTIMATE_MATERIALS_UNSPECIFIED,
+  ESTIMATE_OWNER_SUPPLIED_MATERIALS,
+  createEmptyEstimateLineItem,
   getValidExplicitEstimateItems,
   hasMeaningfulEstimateContent,
   hasMeaningfulEstimateFormattedText,
+  isEstimateFullyPriced,
+  isEstimatePriceEntered,
   normalizeEstimateDocument,
   normalizeEstimateFormattedTextForStorage,
   normalizeEstimateLineItemForDocument,
   normalizeEstimateLineItemsForStorage,
+  readEstimateTotalValue,
   resolveEstimatePricingMode,
   resolveEstimateValidUntil,
   shouldBypassScopeAssistantForDetailedEstimate,
@@ -78,6 +87,7 @@ import {
   changeScopeAssistantClientLanguage,
   createScopeAssistantState,
   editContractorDraft,
+  editScopeAssistantCanonicalScope,
   editRawContractorInput,
   editScopeAssistantClientScope,
   getScopeAssistantSendReadiness,
@@ -122,7 +132,7 @@ function getScopeAssistantErrorMessage(t, error, fallbackKey = 'scopeAssistantRe
 }
 
 function readEstimateScopeText(estimate = {}) {
-  return estimate?.summary || estimate?.scopeOfWork || estimate?.scope_of_work || ''
+  return estimate?.summary ?? estimate?.scopeOfWork ?? estimate?.scope_of_work ?? ''
 }
 
 function readEstimateContractorMessage(estimate = {}) {
@@ -143,8 +153,11 @@ function resolveMaterialsIncludedDefault(...values) {
   return typeof firstBoolean === 'boolean' ? firstBoolean : false
 }
 
-function createEmptyLineItem(materialsIncluded = false) {
-  return { name: '', title: '', description: '', amount: 0, materialsIncluded }
+function getMaterialsLabelKey(materialsStatus) {
+  if (materialsStatus === ESTIMATE_MATERIALS_UNSPECIFIED) return null
+  if (materialsStatus === ESTIMATE_LABOR_ONLY) return 'laborOnly'
+  if (materialsStatus === ESTIMATE_OWNER_SUPPLIED_MATERIALS) return 'ownerSuppliedMaterials'
+  return 'materialsIncludedTag'
 }
 
 function normalizeLineItems(items = [], fallbackMaterialsIncluded = false) {
@@ -159,11 +172,15 @@ function normalizeLineItems(items = [], fallbackMaterialsIncluded = false) {
 }
 
 function formatAmountInputValue(value) {
-  if (!Number.isFinite(Number(value)) || Number(value) === 0) {
+  if (!isEstimatePriceEntered(value)) {
     return ''
   }
 
   return String(Number(value))
+}
+
+function formatEstimateCurrency(value) {
+  return isEstimatePriceEntered(value) ? currency.format(Number(value)) : ''
 }
 
 function sanitizeAmountInput(value) {
@@ -173,6 +190,10 @@ function sanitizeAmountInput(value) {
   if (firstDotIndex === -1) {
     const normalizedWhole = digitsAndDots.replace(/^0+(?=\d)/, '')
     return normalizedWhole
+  }
+
+  if (firstDotIndex === 0 && digitsAndDots.slice(1).replace(/\./g, '') === '') {
+    return '.'
   }
 
   const wholePart = digitsAndDots.slice(0, firstDotIndex).replace(/^0+(?=\d)/, '') || '0'
@@ -240,8 +261,10 @@ function buildEstimateDraftState({ savedEstimate = {}, lead, companySettings, t 
     optionName: savedEstimate.optionName || savedEstimate.option_name || '',
     scope: readEstimateScopeText(savedEstimate),
     scopeAssistantState: normalizeScopeAssistantState(savedEstimate.scopeAssistantState || savedEstimate.scope_assistant_state),
-    total: Number(savedEstimate.total ?? lead?.value ?? 0),
-    totalInput: formatAmountInputValue(savedEstimate.total ?? lead?.value ?? 0),
+    total: isEstimatePriceEntered(readEstimateTotalValue(savedEstimate))
+      ? Number(readEstimateTotalValue(savedEstimate))
+      : null,
+    totalInput: formatAmountInputValue(readEstimateTotalValue(savedEstimate)),
     materialsIncluded: defaultMaterialsIncluded,
     paymentTerms: savedEstimate.paymentTerms || companySettings?.defaults?.paymentTerms || t('defaultPaymentTerms'),
     estimateLanguage: normalizeDocumentLanguageOverride(savedEstimate.estimateLanguage),
@@ -405,14 +428,19 @@ export function EstimateBuilderPage({ lead, clientRecord = null, t, appLanguage 
     handleOpenSendModal()
   }, [hasExistingEstimate, isArchived, openSendOnLoad])
 
-  const lineTotal = lineItems.reduce((sum, item) => sum + Number(item.amount || 0), 0)
+  const pricedLineItems = getValidExplicitEstimateItems(lineItems)
+  const hasCompleteDetailedPricing = pricedLineItems.length > 0
+    && pricedLineItems.every((item) => isEstimatePriceEntered(item.amount))
+  const lineTotal = hasCompleteDetailedPricing
+    ? pricedLineItems.reduce((sum, item) => sum + Number(item.amount), 0)
+    : null
   const isDetailedPricing = pricingMode === detailedPricingMode
   const isDetailOnlyEstimate = shouldBypassScopeAssistantForDetailedEstimate({
     scope,
     lineItems,
     pricingMode,
   })
-  const estimateTotal = Number(isDetailedPricing ? lineTotal : total || 0)
+  const estimateTotal = isDetailedPricing ? lineTotal : total
   const scopeAssistantFeatureEnabled = isAiScopeAssistantEnabled()
   const isScopeAssistantActionPending = isImprovingScope
     || isRegeneratingScope
@@ -527,6 +555,12 @@ export function EstimateBuilderPage({ lead, clientRecord = null, t, appLanguage 
   const estimateUpdatedDate = formatReliableDate(savedEstimate.updatedAt || savedEstimate.updated_at)
   const estimateStatus = tStatus(t, savedEstimate.status || 'Draft')
   const estimateLifecycleStatus = normalizeEstimateFinalizationStatus(savedEstimate.status)
+  const estimateDocumentLead = useMemo(() => mergeDocumentContactIntoLead({
+    lead,
+    clientRecord,
+    document: savedEstimate,
+    documentType: 'estimate',
+  }), [clientRecord, lead, savedEstimate])
   const estimateApprovedDate = formatReliableDate(savedEstimate.approvedAt || savedEstimate.approved_at)
   const estimateRejectedDate = formatReliableDate(savedEstimate.rejectedAt || savedEstimate.rejected_at)
   const estimateCanBeEdited = canEditEstimate(estimateLifecycleStatus)
@@ -541,7 +575,7 @@ export function EstimateBuilderPage({ lead, clientRecord = null, t, appLanguage 
     total: estimateTotal,
     subtotal: isDetailedPricing
       ? lineTotal
-      : Number(savedEstimate?.subtotal || estimateTotal),
+      : estimateTotal === null ? null : Number(savedEstimate?.subtotal ?? estimateTotal),
     discountAmount: savedEstimate?.discountAmount,
     taxAmount: savedEstimate?.taxAmount,
     materialsIncluded,
@@ -565,17 +599,14 @@ export function EstimateBuilderPage({ lead, clientRecord = null, t, appLanguage 
   ])
   const estimatePreviewProps = useMemo(() => ({
     company: companySettings?.company,
-    lead: {
-      ...lead,
-      phone: lead?.phone || clientRecord?.phone || '',
-    },
+    lead: estimateDocumentLead,
     estimateNumber: previewEstimateNumber,
     estimateDate: previewEstimateDate,
     documentModel: estimateDocumentModel,
     paymentTerms: getPaymentTermLabel(paymentTerms, estimateT),
     language: estimateOutputLanguage,
     t: estimateT,
-  }), [clientRecord?.phone, companySettings?.company, estimateDocumentModel, estimateOutputLanguage, estimateT, lead, paymentTerms, previewEstimateDate, previewEstimateNumber])
+  }), [companySettings?.company, estimateDocumentLead, estimateDocumentModel, estimateOutputLanguage, estimateT, paymentTerms, previewEstimateDate, previewEstimateNumber])
 
   function getEstimatePayload() {
     const sanitizedScope = normalizeEstimateFormattedTextForStorage(scope)
@@ -736,6 +767,7 @@ export function EstimateBuilderPage({ lead, clientRecord = null, t, appLanguage 
 
   function handleManualScopeChange(nextValue) {
     markDraftDirty()
+    setScopeAssistantState((current) => editScopeAssistantCanonicalScope(current, scope, nextValue))
     setScope(nextValue)
   }
 
@@ -1029,6 +1061,11 @@ export function EstimateBuilderPage({ lead, clientRecord = null, t, appLanguage 
       return null
     }
 
+    if (!isEstimateFullyPriced({ pricingMode, total: estimateTotal, lineItems })) {
+      showToast(t('estimatePricingRequiredForContract'), 'error')
+      return null
+    }
+
     if (estimateConvertGuardRef.current) {
       return null
     }
@@ -1082,13 +1119,22 @@ export function EstimateBuilderPage({ lead, clientRecord = null, t, appLanguage 
       if (field === 'materialsIncluded') {
         delete nextItem.materialsStatus
       }
+      if (field === 'materialsStatus') {
+        const materialsStatus = value || ESTIMATE_MATERIALS_UNSPECIFIED
+        nextItem.materialsStatus = materialsStatus
+        nextItem.materialsIncluded = materialsStatus === ESTIMATE_MATERIALS_INCLUDED
+          ? true
+          : materialsStatus === ESTIMATE_LABOR_ONLY
+            ? false
+            : null
+      }
       return nextItem
     }))
   }
 
   function addLineItem() {
     markDraftDirty()
-    setLineItems((items) => [...items, createEmptyLineItem(materialsIncluded)])
+    setLineItems((items) => [...items, createEmptyEstimateLineItem()])
     setLineItemAmountInputs((items) => [...items, ''])
     setPricingMode(detailedPricingMode)
   }
@@ -1096,7 +1142,7 @@ export function EstimateBuilderPage({ lead, clientRecord = null, t, appLanguage 
   function removeLineItem(index) {
     markDraftDirty()
     setLineItems((items) => {
-      if (items.length === 1) return [createEmptyLineItem(materialsIncluded)]
+      if (items.length === 1) return [createEmptyEstimateLineItem()]
       return items.filter((_, itemIndex) => itemIndex !== index)
     })
     setLineItemAmountInputs((items) => {
@@ -1118,21 +1164,21 @@ export function EstimateBuilderPage({ lead, clientRecord = null, t, appLanguage 
 
     markDraftDirty()
     setLineItemAmountInputs((items) => items.map((item, itemIndex) => itemIndex === index ? sanitizedValue : item))
-    updateLineItem(index, 'amount', sanitizedValue === '' ? 0 : Number(sanitizedValue))
+    updateLineItem(index, 'amount', sanitizedValue === '' || sanitizedValue === '.' ? null : Number(sanitizedValue))
   }
 
   function handleLineItemAmountBlur(index) {
     const currentDraftValue = lineItemAmountInputs[index] ?? ''
     const normalizedValue = sanitizeAmountInput(currentDraftValue)
 
-    if (normalizedValue === '' || normalizedValue === '0' || normalizedValue === '0.') {
-      updateLineItem(index, 'amount', 0)
+    if (normalizedValue === '' || normalizedValue === '.') {
+      updateLineItem(index, 'amount', null)
       setLineItemAmountInputs((items) => items.map((item, itemIndex) => itemIndex === index ? '' : item))
       return
     }
 
     const numericValue = Number(normalizedValue)
-    updateLineItem(index, 'amount', Number.isFinite(numericValue) ? numericValue : 0)
+    updateLineItem(index, 'amount', Number.isFinite(numericValue) ? numericValue : null)
     setLineItemAmountInputs((items) => items.map((item, itemIndex) => itemIndex === index ? formatAmountInputValue(numericValue) : item))
   }
 
@@ -1145,20 +1191,20 @@ export function EstimateBuilderPage({ lead, clientRecord = null, t, appLanguage 
     const sanitizedValue = sanitizeAmountInput(rawValue)
     markDraftDirty()
     setTotalInput(sanitizedValue)
-    setTotal(sanitizedValue === '' ? 0 : Number(sanitizedValue))
+    setTotal(sanitizedValue === '' || sanitizedValue === '.' ? null : Number(sanitizedValue))
   }
 
   function handleSimpleTotalBlur() {
     const normalizedValue = sanitizeAmountInput(totalInput)
 
-    if (normalizedValue === '' || normalizedValue === '0' || normalizedValue === '0.') {
-      setTotal(0)
+    if (normalizedValue === '' || normalizedValue === '.') {
+      setTotal(null)
       setTotalInput('')
       return
     }
 
     const numericValue = Number(normalizedValue)
-    const safeValue = Number.isFinite(numericValue) ? numericValue : 0
+    const safeValue = Number.isFinite(numericValue) ? numericValue : null
     setTotal(safeValue)
     setTotalInput(formatAmountInputValue(safeValue))
   }
@@ -1170,7 +1216,7 @@ export function EstimateBuilderPage({ lead, clientRecord = null, t, appLanguage 
           ...item,
           materialsIncluded: item?.materialsIncluded ?? materialsIncluded,
         }))
-      : [createEmptyLineItem(materialsIncluded)])
+      : [createEmptyEstimateLineItem()])
     setLineItemAmountInputs((items) => items.length ? items : [''])
     setPricingMode(detailedPricingMode)
   }
@@ -1187,10 +1233,10 @@ export function EstimateBuilderPage({ lead, clientRecord = null, t, appLanguage 
           element: pdfTemplateRef.current,
           estimateNumber: previewEstimateNumber,
           estimateDate: previewEstimateDate,
-          clientName: lead?.client,
+          clientName: estimateDocumentLead?.client,
           companyName: companySettings?.company?.name,
           company: companySettings?.company || {},
-          lead,
+          lead: estimateDocumentLead,
           documentModel: estimateDocumentModel,
           pricingMode,
           scope,
@@ -1198,7 +1244,7 @@ export function EstimateBuilderPage({ lead, clientRecord = null, t, appLanguage 
           materialsIncluded,
           paymentTerms: getPaymentTermLabel(paymentTerms, estimateT),
           total: estimateTotal,
-          subtotal: isDetailedPricing ? lineTotal : Number(savedEstimate?.subtotal || estimateTotal),
+          subtotal: isDetailedPricing ? lineTotal : estimateTotal === null ? null : Number(savedEstimate?.subtotal ?? estimateTotal),
           discountAmount: savedEstimate?.discountAmount,
           taxAmount: savedEstimate?.taxAmount,
           messageFromContractor: readEstimateContractorMessage(savedEstimate),
@@ -1210,7 +1256,7 @@ export function EstimateBuilderPage({ lead, clientRecord = null, t, appLanguage 
       }
 
       await printDocumentElement(pdfTemplateRef.current, {
-        documentTitle: `${previewEstimateNumber} ${lead?.client || ''}`.trim(),
+        documentTitle: `${previewEstimateNumber} ${estimateDocumentLead?.client || ''}`.trim(),
         pageMarginInches: ESTIMATE_PAPER_MARGIN / 72,
         safeInsetInches: 0,
         printLabel: t('print'),
@@ -1228,7 +1274,7 @@ export function EstimateBuilderPage({ lead, clientRecord = null, t, appLanguage 
 
     try {
       await printDocumentElement(pdfTemplateRef.current, {
-        documentTitle: `${previewEstimateNumber} ${lead?.client || ''}`.trim(),
+        documentTitle: `${previewEstimateNumber} ${estimateDocumentLead?.client || ''}`.trim(),
         pageMarginInches: ESTIMATE_PAPER_MARGIN / 72,
         safeInsetInches: 0,
         printLabel: t('print'),
@@ -1283,7 +1329,7 @@ export function EstimateBuilderPage({ lead, clientRecord = null, t, appLanguage 
             </div>
             <div className="min-w-0 bg-white/[0.04] p-4">
               <dt className="text-[0.68rem] font-bold uppercase tracking-[0.16em] text-slate-400">{t('estimatedTotal')}</dt>
-              <dd className="mt-1 break-words text-lg font-bold text-white">{currency.format(estimateTotal)}</dd>
+              <dd className="mt-1 break-words text-lg font-bold text-white">{formatEstimateCurrency(estimateTotal)}</dd>
             </div>
             <div className={`min-w-0 bg-white/[0.04] p-4 ${estimateUpdatedDate ? '' : 'col-span-2'}`}>
               <dt className="text-[0.68rem] font-bold uppercase tracking-[0.16em] text-slate-400">{t('dateCreated')}</dt>
@@ -1480,25 +1526,19 @@ export function EstimateBuilderPage({ lead, clientRecord = null, t, appLanguage 
                                 </div>
                               </div>
                               <div className="space-y-1">
-                                <span className="block text-[11px] font-bold uppercase tracking-[0.14em] text-slate-400">
-                                  {t('materialsIncluded')}
-                                </span>
-                                <div className="grid min-h-[40px] grid-cols-2 gap-1 rounded-xl bg-slate-100 p-1">
-                                  <button
-                                    type="button"
-                                    onClick={() => updateLineItem(index, 'materialsIncluded', true)}
-                                    className={`rounded-lg px-3 py-2 text-xs font-bold transition ${item.materialsIncluded ? 'bg-emerald-50 text-emerald-700 shadow-sm ring-1 ring-emerald-100' : 'text-slate-600 hover:bg-white'}`}
-                                  >
-                                    {t('yes')}
-                                  </button>
-                                  <button
-                                    type="button"
-                                    onClick={() => updateLineItem(index, 'materialsIncluded', false)}
-                                    className={`rounded-lg px-3 py-2 text-xs font-bold transition ${!item.materialsIncluded ? 'bg-slate-700 text-white shadow-sm' : 'text-slate-600 hover:bg-white'}`}
-                                  >
-                                    {t('no')}
-                                  </button>
-                                </div>
+                                <label className="block text-[11px] font-bold uppercase tracking-[0.14em] text-slate-400">
+                                  {t('materialResponsibility')}
+                                </label>
+                                <SelectField
+                                  value={item.materialsStatus || ESTIMATE_MATERIALS_UNSPECIFIED}
+                                  onChange={(event) => updateLineItem(index, 'materialsStatus', event.target.value)}
+                                  aria-label={t('materialResponsibility')}
+                                  className="min-h-11 rounded-xl px-3 py-2 text-sm"
+                                >
+                                  <option value={ESTIMATE_MATERIALS_UNSPECIFIED}>{t('notSpecified')}</option>
+                                  <option value={ESTIMATE_MATERIALS_INCLUDED}>{t('materialsIncludedTag')}</option>
+                                  <option value={ESTIMATE_LABOR_ONLY}>{t('laborOnly')}</option>
+                                </SelectField>
                               </div>
                               <button type="button" onClick={() => removeLineItem(index)} className="h-10 rounded-xl border border-slate-200 px-3 py-2 text-sm font-bold text-slate-600 hover:bg-slate-50">
                                 {t('remove')}
@@ -1513,10 +1553,12 @@ export function EstimateBuilderPage({ lead, clientRecord = null, t, appLanguage 
                             </div>
                             <div className="space-y-2">
                               {Number(item.quantity) > 0 ? <div className="rounded-xl bg-slate-50 px-3 py-2 text-right text-xs font-bold text-slate-700">{t('quantity')}: {item.quantity}</div> : null}
-                              <div className="rounded-xl bg-slate-50 px-3 py-3 text-right text-sm font-bold text-slate-900">{currency.format(Number(item.amount || 0))}</div>
-                              <div className={`rounded-xl px-3 py-2 text-xs font-bold ${item.materialsIncluded ? 'bg-emerald-50 text-emerald-700 ring-1 ring-emerald-100' : 'bg-slate-50 text-slate-700 ring-1 ring-slate-200'}`}>
-                                {item.materialsIncluded ? `${t('materialsIncluded')}: ${t('yes')}` : `${t('materialsIncluded')}: ${t('no')}`}
-                              </div>
+                              <div className="rounded-xl bg-slate-50 px-3 py-3 text-right text-sm font-bold text-slate-900">{formatEstimateCurrency(item.amount)}</div>
+                              {getMaterialsLabelKey(item.materialsStatus) ? (
+                                <div className={`rounded-xl px-3 py-2 text-xs font-bold ${item.materialsStatus === ESTIMATE_MATERIALS_INCLUDED ? 'bg-emerald-50 text-emerald-700 ring-1 ring-emerald-100' : 'bg-slate-50 text-slate-700 ring-1 ring-slate-200'}`}>
+                                  {t(getMaterialsLabelKey(item.materialsStatus))}
+                                </div>
+                              ) : null}
                             </div>
                           </div>
                         )}
@@ -1530,7 +1572,7 @@ export function EstimateBuilderPage({ lead, clientRecord = null, t, appLanguage 
                   </div>
                   <div className="rounded-2xl bg-blue-50 px-4 py-4 text-blue-700">
                     <p className="text-xs font-bold uppercase tracking-wide">{t('calculatedTotal')}</p>
-                    <p className="mt-1 text-2xl font-bold">{currency.format(lineTotal)}</p>
+                    <p className="mt-1 text-2xl font-bold">{formatEstimateCurrency(lineTotal)}</p>
                   </div>
                 </>
               ) : (
@@ -1562,13 +1604,13 @@ export function EstimateBuilderPage({ lead, clientRecord = null, t, appLanguage 
                       </div>
                       <div className="mt-4 flex items-end justify-between gap-4 border-t border-slate-200 pt-4">
                         <span className="text-xs font-bold uppercase tracking-[0.14em] text-slate-400">{t('estimatedTotal')}</span>
-                        <span className="break-words text-right text-2xl font-bold text-slate-950 sm:text-3xl">{currency.format(estimateTotal)}</span>
+                        <span className="break-words text-right text-2xl font-bold text-slate-950 sm:text-3xl">{formatEstimateCurrency(estimateTotal)}</span>
                       </div>
                     </div>
                   ) : (
                     <div className="rounded-2xl bg-slate-50 px-5 py-5">
                       <p className="text-xs font-bold uppercase tracking-[0.14em] text-slate-400">{t('estimatedTotal')}</p>
-                      <p className="mt-2 break-words text-3xl font-bold text-slate-950">{currency.format(estimateTotal)}</p>
+                      <p className="mt-2 break-words text-3xl font-bold text-slate-950">{formatEstimateCurrency(estimateTotal)}</p>
                     </div>
                   )}
                 </>
@@ -1637,7 +1679,7 @@ export function EstimateBuilderPage({ lead, clientRecord = null, t, appLanguage 
         </aside>
       </div>
       <ConfirmRecordModal isOpen={Boolean(confirmAction)} mode={confirmAction?.mode === 'delete' ? 'delete' : 'archive'} title={confirmAction?.mode === 'delete' ? t('confirmPermanentDelete') : confirmAction?.mode === 'sync-contract' ? t('confirmSyncSignedContract') : t('confirmArchive')} message={confirmAction?.mode === 'delete' ? t('permanentDeleteHelp') : confirmAction?.mode === 'sync-contract' ? t('signedContractSyncWarning') : t('archiveHelp')} confirmLabel={confirmAction?.mode === 'delete' ? t('deletePermanently') : confirmAction?.mode === 'sync-contract' ? t('syncContractFromEstimate') : t('archive')} onCancel={() => setConfirmAction(null)} onConfirm={async () => { if (confirmAction?.mode === 'archive') { await onArchiveEstimate?.() } if (confirmAction?.mode === 'delete') { await onDeleteEstimate?.(); onBack?.() } if (confirmAction?.mode === 'sync-contract') { await handleSyncContract(true) } setConfirmAction(null) }} t={t} />
-      <SendToCustomerModal isOpen={showSendModal} documentType="estimate" customer={{ name: lead.client, phone: lead.phone, email: lead.email }} projectTitle={lead.projectTitle || lead.projectType} amountLabel={t('estimatedTotal')} amountValue={currency.format(estimateTotal)} documentLink={sendDocumentLink} companyName={companySettings?.company?.name || ''} onClose={() => setShowSendModal(false)} onSent={async () => {
+      <SendToCustomerModal isOpen={showSendModal} documentType="estimate" customer={{ name: estimateDocumentLead.client, phone: estimateDocumentLead.phone, email: estimateDocumentLead.email }} projectTitle={lead.projectTitle || lead.projectType} amountLabel={t('estimatedTotal')} amountValue={formatEstimateCurrency(estimateTotal)} documentLink={sendDocumentLink} companyName={companySettings?.company?.name || ''} onClose={() => setShowSendModal(false)} onSent={async () => {
         const result = await persistEstimate(buildEstimateResendTransition(), { closeSendModal: true, stopEditing: true })
         return Boolean(result)
       }} t={t} contentT={estimateT} />
@@ -2000,19 +2042,24 @@ export function EstimateBuilderRoute({ companySettings, leads, clients = [], pro
     )
   }
 
-  const clientRecord = findRelatedClient(clients, {
-    ...(lead || {}),
-    clientId: lead?.clientId || lead?.client_id || resolvedEstimate?.clientId || resolvedEstimate?.client_id || linkedProject?.clientId || linkedProject?.client_id || '',
-  })
+  const clientRecord = findClientById(clients, linkedProject?.clientId
+    || linkedProject?.client_id
+    || resolvedEstimate?.clientId
+    || resolvedEstimate?.client_id
+    || lead?.clientId
+    || lead?.client_id
+    || '')
 
+  const estimateDocument = resolvedEstimate || loadedEstimate || lead?.portal?.estimate || {}
   const mergedLead = {
-    ...lead,
-    clientId: lead?.clientId || lead?.client_id || loadedEstimate?.clientId || loadedEstimate?.client_id || linkedProject?.clientId || linkedProject?.client_id || null,
-    client_id: lead?.clientId || lead?.client_id || loadedEstimate?.clientId || loadedEstimate?.client_id || linkedProject?.clientId || linkedProject?.client_id || null,
-    client: clientRecord?.displayName || clientRecord?.name || lead?.client || lead?.clientName || lead?.customerName || t('customer'),
-    clientName: clientRecord?.displayName || clientRecord?.name || lead?.clientName || lead?.client || t('customer'),
-    email: lead?.email || clientRecord?.email || '',
-    phone: lead?.phone || clientRecord?.phone || '',
+    ...mergeDocumentContactIntoLead({
+      lead,
+      clientRecord,
+      document: estimateDocument,
+      documentType: 'estimate',
+    }),
+    clientId: linkedProject?.clientId || linkedProject?.client_id || lead?.clientId || lead?.client_id || loadedEstimate?.clientId || loadedEstimate?.client_id || null,
+    client_id: linkedProject?.clientId || linkedProject?.client_id || lead?.clientId || lead?.client_id || loadedEstimate?.clientId || loadedEstimate?.client_id || null,
     address: lead?.address || lead?.location || clientRecord?.address || '',
     projectId: lead?.projectId || lead?.project_id || loadedEstimate?.projectId || loadedEstimate?.project_id || linkedProject?.id || linkedProject?.projectId || null,
     project_id: lead?.projectId || lead?.project_id || loadedEstimate?.projectId || loadedEstimate?.project_id || linkedProject?.id || linkedProject?.projectId || null,

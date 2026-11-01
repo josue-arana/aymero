@@ -6,7 +6,7 @@ import { AymeroLoader } from '../components/common/AymeroLoader'
 import { ModalShell } from '../components/common/ModalShell'
 import { getPublicEstimateByToken, respondToPublicEstimate } from '../services/publicPortalService'
 import { createTranslator } from '../translations'
-import { normalizeEstimateDocument, resolveEstimatePricingMode, resolveEstimateValidUntil } from '../utils/estimateDocument'
+import { normalizeEstimateDocument, readEstimateTotalValue, resolveEstimatePricingMode, resolveEstimateValidUntil } from '../utils/estimateDocument'
 import { getPaymentTermLabel } from '../utils/paymentTerms'
 import { downloadEstimatePdf } from '../utils/estimatePdf'
 import { shouldUseGeneratedPdfForPrint } from '../utils/documentOutput'
@@ -115,10 +115,10 @@ export function PublicEstimatePage() {
     }
     const documentModel = normalizeEstimateDocument({
       pricingMode,
-      scope: estimate.scopeOfWork || estimate.summary || '',
+      scope: estimate.summary ?? estimate.scopeOfWork ?? '',
       lineItems,
-      total: Number(estimate.total ?? estimate.totalAmount ?? 0),
-      subtotal: Number(estimate.subtotal ?? 0),
+      total: readEstimateTotalValue(estimate),
+      subtotal: estimate.subtotal ?? null,
       discountAmount: Number(estimate.discountAmount ?? 0),
       taxAmount: Number(estimate.taxAmount ?? 0),
       materialsIncluded: estimate.materialsIncluded !== false,

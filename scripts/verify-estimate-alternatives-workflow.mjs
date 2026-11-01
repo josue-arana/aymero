@@ -17,7 +17,7 @@ const original = {
 }
 const fresh = buildNewEstimateOptionDraft({ project })
 assert.equal(fresh.status, 'Draft')
-assert.equal(fresh.total, 0)
+assert.equal(fresh.total, null)
 assert.deepEqual(fresh.lineItems, [])
 assert.equal(fresh.optionName, null)
 assert.ok(fresh.publicShareToken)

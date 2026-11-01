@@ -25,9 +25,8 @@ import { isUpcomingClientScheduleEvent } from '../../utils/scheduleEvents'
 import { getEstimatePortalStatusPresentation } from '../../utils/estimateClientResponse'
 import {
   buildContractNotesAndTermsItems as buildCanonicalContractNotesAndTermsItems,
-  buildContractWorkBreakdownFromEstimate,
-  normalizeContractWorkBreakdown,
 } from '../../utils/contractDocument'
+import { buildContractEditorState } from '../../utils/contractEditorState'
 import {
   ESTIMATE_DOCUMENT_SOURCE_PADDING,
   ESTIMATE_DOCUMENT_SOURCE_WIDTH,
@@ -182,17 +181,6 @@ function buildPreviewLead(project = {}, client = {}) {
   }
 }
 
-function buildContractNotesAndTermsItems(contract = {}, t = (key) => key) {
-  return buildCanonicalContractNotesAndTermsItems({
-    paymentTerms: contract?.paymentTerms || '',
-    total: Number(contract?.total ?? contract?.totalAmount ?? contract?.contractAmount ?? 0),
-    depositAmount: contract?.depositAmount ?? contract?.deposit_amount ?? null,
-    acceptanceLegalText: contract?.acceptanceLegalText || contract?.acceptance_legal_text || '',
-    legacyAcceptanceText: contract?.warrantyDisclaimer || '',
-    t,
-  })
-}
-
 function DocumentPreviewModal({ isOpen, title, onClose, onPrimaryAction, primaryLabel, onDownload, downloadLabel, children, t = (key) => key }) {
   const showsStandaloneDownload = primaryLabel !== t('downloadPdf')
 
@@ -333,7 +321,7 @@ export function PortalSummary({
       estimate?.pricingMode || estimate?.pricing_mode,
       estimate?.lineItems
     ),
-    scope: estimate?.summary || estimate?.scopeOfWork || '',
+    scope: estimate?.summary ?? estimate?.scopeOfWork ?? '',
     materialsIncluded: estimate?.materialsIncluded ?? estimate?.materials_included ?? true,
     paymentTerms: getPaymentTermLabel(estimate?.paymentTerms, t) || t('contractTermsText'),
     total: Number(estimate?.total ?? estimate?.totalAmount ?? estimate?.amount ?? 0),
@@ -362,19 +350,32 @@ export function PortalSummary({
     lineItems: Array.isArray(estimate?.lineItems) ? estimate.lineItems : [],
     t,
   }), [company, estimate, estimateNumber, previewLead, t])
+  const contractTotal = Number(contract?.total ?? contract?.totalAmount ?? contract?.contractAmount ?? 0)
+  const contractDocumentState = useMemo(() => buildContractEditorState({
+    savedContract: contract || {},
+    estimate,
+    contractTotal,
+    t: contractDocumentT,
+  }), [contract, contractDocumentT, contractTotal, estimate])
   const contractPreviewProps = useMemo(() => ({
     company,
     lead: previewLead,
     contractNumber,
     contractDate: contract?.signedDate || formatDisplayDate(contract?.updatedAt || contract?.updated_at || new Date()),
-    notesAndTermsItems: buildContractNotesAndTermsItems(contract, contractDocumentT),
-    scope: contract?.scope || contract?.scopeOfWork || estimate?.summary || '',
-    workBreakdown: normalizeContractWorkBreakdown(contract?.workBreakdown || contract?.work_breakdown || []).length
-      ? normalizeContractWorkBreakdown(contract?.workBreakdown || contract?.work_breakdown || [])
-      : buildContractWorkBreakdownFromEstimate(estimate),
-    total: Number(contract?.total ?? contract?.totalAmount ?? contract?.contractAmount ?? 0),
+    contractTitle: contractDocumentState.title,
+    notesAndTermsItems: buildCanonicalContractNotesAndTermsItems({
+      paymentTerms: contractDocumentState.paymentTerms,
+      total: contractTotal,
+      depositAmount: contractDocumentState.depositAmount,
+      acceptanceLegalText: contractDocumentState.acceptanceLegalText,
+      legacyAcceptanceText: contractDocumentState.warrantyDisclaimer,
+      t: contractDocumentT,
+    }),
+    scope: contractDocumentState.scope,
+    workBreakdown: contractDocumentState.workBreakdown,
+    total: contractTotal,
     t: contractDocumentT,
-  }), [company, contract, contractDocumentT, contractNumber, estimate, previewLead])
+  }), [company, contract, contractDocumentState, contractDocumentT, contractNumber, contractTotal, previewLead])
   const openDocument = searchParams.get('document') || ''
 
   function setOpenDocument(nextDocument) {

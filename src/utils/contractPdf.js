@@ -190,6 +190,7 @@ function sanitizeCloneTree(root, clonedDoc) {
 function buildFallbackPdf({
   contractNumber = '',
   contractDate = '',
+  contractTitle = '',
   notesAndTermsItems = [],
   clientName = '',
   companyName = '',
@@ -407,7 +408,7 @@ function buildFallbackPdf({
   pdf.line(totalDividerX, cursorY, totalDividerX, cursorY + descriptionHeaderHeight)
   drawText(t('project').toUpperCase(), innerX + 14, cursorY + 17, { bold: true, size: 9, color: safeColors.slate900 })
   drawText(t('projectTotal').toUpperCase(), innerX + descriptionSectionWidth - 14, cursorY + 17, { bold: true, size: 9, color: safeColors.slate900, align: 'right' })
-  drawText(lead?.projectTitle || lead?.projectType || t('projectScope'), innerX + 14, cursorY + 40, { bold: true, size: 11 })
+  drawText(contractTitle || lead?.projectTitle || lead?.projectType || t('projectScope'), innerX + 14, cursorY + 40, { bold: true, size: 11 })
   drawText(currency.format(Number(total || 0)), innerX + descriptionSectionWidth - 14, cursorY + 40, { bold: true, size: 15, align: 'right' })
   cursorY += 56
 
@@ -516,6 +517,7 @@ export async function downloadContractPdf({
   element,
   contractNumber = '',
   contractDate = '',
+  contractTitle = '',
   notesAndTermsItems = [],
   clientName = '',
   companyName = '',
@@ -597,6 +599,7 @@ export async function downloadContractPdf({
     return buildFallbackPdf({
       contractNumber,
       contractDate,
+      contractTitle,
       notesAndTermsItems,
       clientName,
       companyName,

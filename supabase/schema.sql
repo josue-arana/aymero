@@ -249,7 +249,7 @@ create table estimates (
   subtotal numeric(12,2) not null default 0,
   discount_amount numeric(12,2) not null default 0,
   tax_amount numeric(12,2) not null default 0,
-  total_amount numeric(12,2) not null default 0,
+  total_amount numeric(12,2) default 0,
   deposit_percentage numeric(5,2),
   materials_included boolean not null default true,
   payment_terms text,

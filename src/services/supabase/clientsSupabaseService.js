@@ -61,6 +61,24 @@ function readSingleRow(data) {
   return Array.isArray(data) ? data[0] ?? null : data ?? null
 }
 
+function readResponseRow(response) {
+  return readSingleRow(response?.data)
+}
+
+function createNoRowsError(id, response = null, contractorId = null) {
+  return {
+    code: 'CLIENT_UPDATE_NO_ROWS',
+    message: 'The client could not be updated because no authorized record was returned.',
+    details: {
+      clientId: id,
+      contractorId,
+      status: response?.status ?? null,
+      contentRange: response?.contentRange ?? null,
+      affectedRowCount: response?.count ?? 0,
+    },
+  }
+}
+
 function readClientName(client = {}) {
   return String(
     client.name
@@ -361,18 +379,31 @@ export async function update(id, updates, { contractorId } = {}) {
 
     delete payload.contractor_id
 
-    const data = await supabaseClient.request(TABLE_NAME, {
+    const response = await supabaseClient.request(TABLE_NAME, {
       method: 'PATCH',
       query: buildContractorQuery(contractorId, {
         id: `eq.${id}`,
       }),
       body: payload,
+      prefer: 'return=representation,count=exact',
+      includeResponseMetadata: true,
     })
 
+    const row = readResponseRow(response)
+
+    if (!row?.id || response?.count === 0) {
+      return {
+        data: null,
+        error: createNoRowsError(id, response, contractorId),
+        skipped: false,
+      }
+    }
+
     return {
-      data: mapClientRowToUiClient(readSingleRow(data) || { id, contractor_id: contractorId, ...(updates || {}), ...payload }),
+      data: mapClientRowToUiClient(row),
       error: null,
       skipped: false,
+      affectedRowCount: response?.count ?? 1,
     }
   } catch (error) {
     return {

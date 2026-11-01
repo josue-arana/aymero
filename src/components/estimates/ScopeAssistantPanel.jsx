@@ -169,6 +169,24 @@ export function ScopeAssistantPanel({
 
   return (
     <div className="min-w-0 space-y-4">
+      <section className="space-y-2 rounded-2xl border border-slate-200 bg-white p-3 sm:p-4">
+        <p className="text-sm font-bold text-slate-900">{t('scopeAssistantDocumentScope')}</p>
+        <p className="text-sm leading-6 text-slate-600">{t('scopeAssistantDocumentScopeHelp')}</p>
+        {isEditing ? (
+          <LightweightFormattedTextarea
+            value={canonicalScope}
+            onChange={onManualScopeChange}
+            rows={6}
+            minHeight={152}
+            maxHeight={560}
+            ariaLabel={t('scopeAssistantDocumentScope')}
+            t={t}
+            className="p-4 text-sm leading-6"
+          />
+        ) : hasMeaningfulEstimateFormattedText(canonicalScope) ? (
+          <EstimateFormattedText value={canonicalScope} className="rounded-xl bg-slate-50 p-4 text-sm leading-6 text-slate-700" />
+        ) : null}
+      </section>
       {readiness && !readiness.ready && readinessMessage ? (
         <div role="status" className="rounded-2xl border border-amber-200 bg-amber-50 px-4 py-3 text-sm font-semibold leading-6 text-amber-900">
           {readinessMessage}

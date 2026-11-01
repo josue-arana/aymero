@@ -22,9 +22,9 @@ export function DocumentMaterialLabel({ accentTextColor, children }) {
       data-document-material-label="true"
       style={{
         color: accentTextColor,
-        fontSize: '9px',
-        lineHeight: 1.3,
-        fontWeight: 650,
+        fontSize: '10.25pt',
+        lineHeight: 1.4,
+        fontWeight: 500,
         overflowWrap: 'anywhere',
       }}
     >

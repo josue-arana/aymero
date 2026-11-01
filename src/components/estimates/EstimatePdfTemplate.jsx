@@ -4,6 +4,8 @@ import { getDocumentDensityVariables } from '../../utils/documentDensity'
 import {
   ensureNormalizedEstimateDocument,
   ESTIMATE_LABOR_ONLY,
+  ESTIMATE_MATERIALS_INCLUDED,
+  ESTIMATE_MATERIALS_UNSPECIFIED,
   ESTIMATE_OWNER_SUPPLIED_MATERIALS,
   getEstimateTextSizeCss,
 } from '../../utils/estimateDocument'
@@ -204,13 +206,15 @@ function getMaterialsTagLabel(materialsStatus, t) {
     return t('laborOnly')
   }
 
-  return t('materialsIncludedTag')
+  return materialsStatus === ESTIMATE_MATERIALS_INCLUDED ? t('materialsIncludedTag') : null
 }
 
 function MaterialTag({ materialsStatus, accentTextColor, t }) {
+  const label = getMaterialsTagLabel(materialsStatus, t)
+  if (!label || materialsStatus === ESTIMATE_MATERIALS_UNSPECIFIED) return null
   return (
-    <DocumentMaterialLabel accentTextColor={accentTextColor}>
-      {getMaterialsTagLabel(materialsStatus, t)}
+    <DocumentMaterialLabel accentTextColor={materialsStatus === ESTIMATE_LABOR_ONLY ? colors.slate500 : accentTextColor}>
+      {label}
     </DocumentMaterialLabel>
   )
 }
@@ -316,7 +320,7 @@ function WorkBreakdownItem({ item, index, accentColor, accentTextColor, showQuan
           }}
         >
           {item?.title ? <EstimateInlineText segments={item?.titleSegments} /> : null}
-          {item?.title ? <span aria-hidden="true"> — </span> : null}
+          {item?.title && item?.materialsStatus !== ESTIMATE_MATERIALS_UNSPECIFIED ? <span aria-hidden="true"> — </span> : null}
           <MaterialTag materialsStatus={item?.materialsStatus} accentTextColor={accentTextColor} t={t} />
         </p>
         {descriptionBlocks.length ? (
@@ -331,7 +335,7 @@ function WorkBreakdownItem({ item, index, accentColor, accentTextColor, showQuan
         </div>
       ) : null}
       <div data-estimate-item-amount="true" style={{ display: 'flex', minHeight: 0, alignItems: 'center', justifyContent: 'flex-end', textAlign: 'right', whiteSpace: 'nowrap', fontSize: '11.5px', lineHeight: 1.4, fontWeight: 700, color: colors.ink }}>
-        {currency.format(Number(item?.amount || 0))}
+        {item?.amount === null || item?.amount === undefined || item?.amount === '' ? '' : currency.format(Number(item.amount))}
       </div>
     </div>
   )
@@ -389,7 +393,7 @@ function EstimateTotalRow({ label, value, emphasized = false, accentTextColor })
           whiteSpace: 'nowrap',
         }}
       >
-        {currency.format(Number(value || 0))}
+        {value === null || value === undefined || value === '' ? '' : currency.format(Number(value))}
       </span>
     </div>
   )
@@ -544,7 +548,7 @@ export function EstimatePdfTemplate({
           >
             <SummaryBlock label={t('totalEstimate')} align="right">
               <div style={{ fontSize: '25px', lineHeight: 1, fontWeight: 700, letterSpacing: '-0.025em', color: colors.ink }}>
-                {currency.format(documentTotal)}
+                {documentTotal === null || documentTotal === undefined ? '' : currency.format(Number(documentTotal))}
               </div>
             </SummaryBlock>
           </div>
