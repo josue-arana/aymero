@@ -93,7 +93,7 @@ assert.match(localServiceSource, /lineItems: normalizeEstimateLineItemsForStorag
 assert.match(supabaseServiceSource, /payload\.project_id = readField\(estimate, \['projectId', 'project_id'\]\) \|\| null/)
 assert.match(supabaseServiceSource, /payload\.scope_of_work = normalizeEstimateFormattedTextForStorage\(scopeInput\) \|\| null/)
 assert.match(supabaseServiceSource, /payload\.line_items = lineItems \|\| \[\]/)
-assert.match(supabaseServiceSource, /payload\.total_amount = toNumber\(totalInput\)/)
+assert.match(supabaseServiceSource, /payload\.total_amount = toNullableNumber\(totalInput\)/)
 assert.match(supabaseServiceSource, /payload\.deposit_percentage = /)
 assert.match(supabaseServiceSource, /payload\.payment_terms = readField\(estimate, \['paymentTerms', 'payment_terms'\]\) \|\| null/)
 assert.match(supabaseServiceSource, /payload\.estimate_language = normalizeSupportedLanguageOrEmpty\(estimateLanguageInput\) \|\| null/)

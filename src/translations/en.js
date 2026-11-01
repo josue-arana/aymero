@@ -147,6 +147,7 @@ export const en = {
   "createFromProjectDetails": "Create from Project Details",
   "selectedContractSource": "Selected source",
   "contractSourceUnavailable": "This estimate cannot be used to create a contract.",
+  "estimatePricingRequiredForContract": "Enter prices for this estimate before creating a contract.",
   "contractRequiresClient": "A client is required before creating a contract.",
   "resendEstimate": "Resend Estimate",
   "saved": "Saved",

@@ -159,6 +159,12 @@ function toNumber(value, fallback = 0) {
   return Number.isFinite(parsed) ? parsed : fallback
 }
 
+function toNullableNumber(value) {
+  if (value === null || value === undefined || value === '') return null
+  const parsed = Number(value)
+  return Number.isFinite(parsed) ? parsed : null
+}
+
 function normalizeOptionalOptionName(value) {
   if (value === null || value === undefined) return null
   const normalized = String(value).trim()
@@ -170,7 +176,9 @@ function normalizeLineItems(lineItems) {
 }
 
 function sumLineItems(lineItems) {
-  return normalizeLineItems(lineItems).reduce((sum, item) => sum + toNumber(item.amount), 0)
+  const items = normalizeLineItems(lineItems)
+  if (items.some((item) => item.amount === null || item.amount === undefined)) return null
+  return items.reduce((sum, item) => sum + toNumber(item.amount), 0)
 }
 
 function mapStatusToDb(status) {
@@ -227,9 +235,9 @@ export function toAppEstimate(row) {
     subtotal: toNumber(row?.subtotal),
     discountAmount: toNumber(row?.discount_amount),
     taxAmount: toNumber(row?.tax_amount),
-    total: toNumber(row?.total_amount),
-    totalAmount: toNumber(row?.total_amount),
-    amount: toNumber(row?.total_amount),
+    total: toNullableNumber(row?.total_amount),
+    totalAmount: toNullableNumber(row?.total_amount),
+    amount: toNullableNumber(row?.total_amount),
     depositPercentage: row?.deposit_percentage === null || row?.deposit_percentage === undefined ? null : toNumber(row?.deposit_percentage),
     materialsIncluded: Boolean(row?.materials_included),
     paymentTerms: row?.payment_terms || '',
@@ -306,7 +314,7 @@ export function toSupabasePayload(contractorId, estimate = {}, { isCreate = fals
   if (subtotalInput !== undefined) {
     payload.subtotal = toNumber(subtotalInput)
   } else if (lineItems !== undefined) {
-    payload.subtotal = sumLineItems(lineItems)
+    payload.subtotal = sumLineItems(lineItems) ?? 0
   } else if (isCreate) {
     payload.subtotal = 0
   }
@@ -324,12 +332,16 @@ export function toSupabasePayload(contractorId, estimate = {}, { isCreate = fals
   }
 
   if (totalInput !== undefined) {
-    payload.total_amount = toNumber(totalInput)
+    payload.total_amount = toNullableNumber(totalInput)
+  } else if (isCreate && lineItems === undefined && subtotalInput === undefined) {
+    payload.total_amount = null
   } else if (lineItems !== undefined || subtotalInput !== undefined || discountAmountInput !== undefined || taxAmountInput !== undefined || isCreate) {
     const subtotal = payload.subtotal ?? 0
     const discountAmount = payload.discount_amount ?? 0
     const taxAmount = payload.tax_amount ?? 0
-    payload.total_amount = subtotal - discountAmount + taxAmount
+    payload.total_amount = lineItems !== undefined && sumLineItems(lineItems) === null
+      ? null
+      : subtotal - discountAmount + taxAmount
   }
 
   if (isCreate || readField(estimate, ['depositPercentage', 'deposit_percentage']) !== undefined) {

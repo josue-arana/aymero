@@ -49,6 +49,8 @@
     "verify:estimate-alternatives-foundation": "node scripts/verify-estimate-alternatives-foundation.mjs",
     "verify:estimate-alternatives-workflow": "node scripts/verify-estimate-alternatives-workflow.mjs",
     "verify:estimate-duplication-reliability": "node scripts/verify-estimate-duplication-reliability.mjs",
+    "verify:estimate-unpriced-pricing": "node scripts/verify-estimate-unpriced-pricing.mjs",
+    "verify:estimate-material-responsibility": "node scripts/verify-estimate-material-responsibility.mjs",
     "verify:estimate-scope-document-consistency": "node scripts/verify-estimate-scope-document-consistency.mjs",
     "verify:lead-estimate-alternatives": "node scripts/verify-lead-estimate-alternatives.mjs",
     "verify:flexible-contract-handoff": "node scripts/verify-flexible-contract-handoff.mjs",

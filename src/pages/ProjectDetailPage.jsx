@@ -41,6 +41,7 @@ import { parsePaymentAmount } from '../utils/paymentAmount'
 import { getPaymentPersistenceErrorMessage, logPaymentPersistenceError } from '../utils/paymentErrors'
 import { withNavigationContext } from '../utils/navigationContext'
 import { canCreateContractFromEstimate } from '../utils/estimateFinalization'
+import { isEstimatePriceEntered, readEstimateTotalValue } from '../utils/estimateDocument'
 import { findClientById } from '../utils/clients'
 import projectWorkspaceHeroBackground from '../assets/page-heroes/jobs-bg.png'
 
@@ -1997,7 +1998,7 @@ function ProjectDetailPageContent({ lead, openRecordPaymentOnLoad = false, compa
                         </div>
                         <p className="mt-1 break-words font-bold text-slate-950 [overflow-wrap:anywhere]">{formatEstimateDisplayNumber(estimate.number || estimate.estimateNumber || '', currentLead)}</p>
                         <div className="mt-1 flex flex-wrap items-center gap-x-3 gap-y-1 text-sm text-slate-600">
-                          <span>{currency.format(Number(estimate.total || 0))}</span>
+                          <span>{isEstimatePriceEntered(readEstimateTotalValue(estimate)) ? currency.format(Number(readEstimateTotalValue(estimate))) : ''}</span>
                           <span>{estimate.title || t('estimate')}</span>
                         </div>
                       </div>
@@ -2346,7 +2347,7 @@ function ProjectDetailPageContent({ lead, openRecordPaymentOnLoad = false, compa
                 >
                   <span className="min-w-0">
                     <span className="block break-words font-bold text-slate-950">{estimate.optionName || estimate.option_name || estimate.title || t('estimate')}</span>
-                    <span className="mt-1 block break-words text-sm text-slate-600">{formatEstimateDisplayNumber(estimate.number || estimate.estimateNumber || '', currentLead)} · {currency.format(Number(estimate.total || 0))}</span>
+                    <span className="mt-1 block break-words text-sm text-slate-600">{formatEstimateDisplayNumber(estimate.number || estimate.estimateNumber || '', currentLead)} · {isEstimatePriceEntered(readEstimateTotalValue(estimate)) ? currency.format(Number(readEstimateTotalValue(estimate))) : ''}</span>
                   </span>
                   <span className="flex shrink-0 flex-col items-end gap-1 pt-0.5"><StatusBadge status={estimate.status || 'Draft'} t={t} />{isSelected ? <span className="text-xs font-bold text-blue-700">{t('selectedEstimateOption')}</span> : null}</span>
                 </button>

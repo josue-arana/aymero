@@ -76,6 +76,7 @@ import { buildDuplicatedEstimateDraft, buildNewEstimateOptionDraft } from './uti
 import { clearSelectedEstimate, selectEstimateForProject } from './services/estimateSelectionService'
 import { buildPortalShareUrl, resolvePortalRouteId } from './utils/portal'
 import { buildContractWorkBreakdownFromEstimate, isGeneratedContractScopeText } from './utils/contractDocument'
+import { isEstimateFullyPriced, readEstimateTotalValue } from './utils/estimateDocument'
 import { canCreateContractFromEstimate, normalizeEstimateFinalizationStatus } from './utils/estimateFinalization'
 import { resolveNavigationContext, withNavigationContext } from './utils/navigationContext'
 import { getContractCreationLookupIds } from './utils/contractCreationContext'
@@ -3031,7 +3032,7 @@ function buildWorkspaceJobRecord(job, clientRecord = null) {
         number: createNew
           ? generateEstimateNumber({ ...sourceProject, ...estimate, id: nextEstimateId, projectId: sourceProject.id })
           : estimate?.number || directEstimate?.number || generateEstimateNumber({ ...sourceProject, ...estimate, id: nextEstimateId, projectId: sourceProject.id }),
-        total: createNew ? toSafeNumber(estimate?.total) : resolveEstimateTotal(sourceProject, estimate, toSafeNumber(directEstimate?.total)),
+        total: readEstimateTotalValue(estimate) === null ? null : createNew ? toSafeNumber(readEstimateTotalValue(estimate)) : resolveEstimateTotal(sourceProject, estimate, toSafeNumber(directEstimate?.total)),
         lineItems,
         pricingMode: estimate?.pricingMode || (lineItems.length ? 'detailed' : 'simple'),
         status: createNew ? 'Draft' : (estimate?.status || directEstimate?.status || 'Draft'),
@@ -3146,7 +3147,7 @@ function buildWorkspaceJobRecord(job, clientRecord = null) {
       client_id: estimate?.clientId || estimate?.client_id || existingEstimate.clientId || existingEstimate.client_id || sourceLead?.clientId || sourceLead?.client_id || null,
       projectTitle: estimate?.projectTitle || existingEstimate.projectTitle || sourceLead?.projectTitle || sourceLead?.projectType || 'Estimate',
       number: estimateNumber,
-      total: createNew ? toSafeNumber(estimate?.total) : resolveEstimateTotal(sourceLead, estimate, toSafeNumber(existingEstimate.total)),
+      total: readEstimateTotalValue(estimate) === null ? null : createNew ? toSafeNumber(readEstimateTotalValue(estimate)) : resolveEstimateTotal(sourceLead, estimate, toSafeNumber(existingEstimate.total)),
       lineItems,
       pricingMode: estimate?.pricingMode || (lineItems.length ? 'detailed' : 'simple'),
       status: createNew ? 'Draft' : (estimate?.status || existingEstimate.status || 'Draft'),
@@ -3987,6 +3988,14 @@ function buildWorkspaceJobRecord(job, clientRecord = null) {
         const estimateArchiveState = resolveEstimateArchiveState({ estimate: baseEstimate, lead: relationshipContext, archivedLeadIds: archives.leadIds })
         if (estimateArchiveState.isArchived || !canCreateContractFromEstimate(estimateStatus)) {
           showToast(t('contractSourceUnavailable'), 'error')
+          return null
+        }
+        if (!isEstimateFullyPriced({
+          pricingMode: baseEstimate.pricingMode || baseEstimate.pricing_mode,
+          total: readEstimateTotalValue(baseEstimate),
+          lineItems: baseEstimate.lineItems || baseEstimate.line_items || [],
+        })) {
+          showToast(t('estimatePricingRequiredForContract'), 'error')
           return null
         }
       }

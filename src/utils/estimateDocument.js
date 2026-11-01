@@ -8,6 +8,7 @@ const anyEstimateTextSizeMarkerPattern = /\[\[aymero-size:[^\]\r\n]*\]\]/gi
 export const ESTIMATE_MATERIALS_INCLUDED = 'materials_included'
 export const ESTIMATE_LABOR_ONLY = 'labor_only'
 export const ESTIMATE_OWNER_SUPPLIED_MATERIALS = 'owner_supplied_materials'
+export const ESTIMATE_MATERIALS_UNSPECIFIED = 'unspecified'
 export const ESTIMATE_PRICING_SIMPLE = 'simple'
 export const ESTIMATE_PRICING_DETAILED = 'detailed'
 export const ESTIMATE_TEXT_SIZE_SMALL = 'small'
@@ -18,6 +19,17 @@ export const ESTIMATE_TEXT_SIZE_STEPS = [
   ESTIMATE_TEXT_SIZE_STANDARD,
   ESTIMATE_TEXT_SIZE_LARGE,
 ]
+
+export function createEmptyEstimateLineItem() {
+  return {
+    name: '',
+    title: '',
+    description: '',
+    amount: null,
+    materialsIncluded: null,
+    materialsStatus: ESTIMATE_MATERIALS_UNSPECIFIED,
+  }
+}
 
 const estimateTextSizePoints = {
   [ESTIMATE_TEXT_SIZE_SMALL]: 9.25,
@@ -351,18 +363,44 @@ function hasFiniteStoredNumber(value) {
  * protects older JSON records that have no explicit amount without carrying
  * either legacy field into the active model or future persistence payloads.
  */
-export function resolveEstimateLineItemAmount(item = {}, fallback = 0) {
-  for (const explicitAmount of [item?.amount, item?.total]) {
-    if (hasFiniteStoredNumber(explicitAmount)) {
-      return Number(explicitAmount)
-    }
+export function resolveEstimateLineItemAmount(item = {}, fallback = null) {
+  if (Object.prototype.hasOwnProperty.call(item || {}, 'amount')) {
+    return hasFiniteStoredNumber(item.amount) ? Number(item.amount) : null
+  }
+
+  if (Object.prototype.hasOwnProperty.call(item || {}, 'total')) {
+    return hasFiniteStoredNumber(item.total) ? Number(item.total) : null
   }
 
   if (hasFiniteStoredNumber(item?.quantity) && hasFiniteStoredNumber(item?.rate)) {
     return Number(item.quantity) * Number(item.rate)
   }
 
-  return toFiniteNumber(fallback)
+  if (fallback === null || fallback === undefined || fallback === '') return null
+  return Number.isFinite(Number(fallback)) ? Number(fallback) : null
+}
+
+export function isEstimatePriceEntered(value) {
+  return value !== null
+    && value !== undefined
+    && value !== ''
+    && Number.isFinite(Number(value))
+}
+
+export function readEstimateTotalValue(estimate = {}) {
+  for (const field of ['total', 'totalAmount', 'total_amount', 'amount']) {
+    if (estimate?.[field] !== undefined) return estimate[field]
+  }
+  return undefined
+}
+
+export function isEstimateFullyPriced({ pricingMode, total, lineItems = [] } = {}) {
+  if (resolveEstimatePricingMode(pricingMode, lineItems) !== ESTIMATE_PRICING_DETAILED) {
+    return isEstimatePriceEntered(total)
+  }
+
+  const items = getValidExplicitEstimateItems(lineItems)
+  return items.length > 0 && items.every((item) => isEstimatePriceEntered(resolveEstimateLineItemAmount(item)))
 }
 
 /**
@@ -413,7 +451,7 @@ export function isValidExplicitEstimateItem(item = {}) {
     item?.title,
     item?.description,
   ].map(sanitizeEstimateFormattedText).join('\n')
-  const hasStoredAmount = resolveEstimateLineItemAmount(item) !== 0
+  const hasStoredAmount = isEstimatePriceEntered(resolveEstimateLineItemAmount(item))
 
   return Boolean(hasMeaningfulEstimateFormattedText(itemText) || hasStoredAmount)
 }
@@ -593,6 +631,10 @@ function normalizeEstimateMaterialsStatus(item = {}, fallbackMaterialsIncluded =
     return ESTIMATE_MATERIALS_INCLUDED
   }
 
+  if (['unspecified', 'not_specified', 'unknown'].includes(configuredStatus)) {
+    return ESTIMATE_MATERIALS_UNSPECIFIED
+  }
+
   const included = typeof item?.materialsIncluded === 'boolean'
     ? item.materialsIncluded
     : typeof item?.materials_included === 'boolean'
@@ -600,6 +642,12 @@ function normalizeEstimateMaterialsStatus(item = {}, fallbackMaterialsIncluded =
       : Boolean(fallbackMaterialsIncluded)
 
   return included ? ESTIMATE_MATERIALS_INCLUDED : ESTIMATE_LABOR_ONLY
+}
+
+function materialsIncludedValue(materialsStatus) {
+  if (materialsStatus === ESTIMATE_MATERIALS_INCLUDED) return true
+  if ([ESTIMATE_LABOR_ONLY, ESTIMATE_OWNER_SUPPLIED_MATERIALS].includes(materialsStatus)) return false
+  return null
 }
 
 export function normalizeEstimateLineItemsForStorage(lineItems = [], {
@@ -636,7 +684,7 @@ export function normalizeEstimateLineItemsForStorage(lineItems = [], {
       ...(hasStructuredText ? { title, description } : {}),
       amount: resolveEstimateLineItemAmount(source),
       ...(quantity ? { quantity } : {}),
-      materialsIncluded: materialsStatus === ESTIMATE_MATERIALS_INCLUDED,
+      materialsIncluded: materialsIncludedValue(materialsStatus),
       materialsStatus,
       displayOrder,
     }
@@ -701,7 +749,7 @@ function normalizeEstimateWorkItem(item = {}, {
     detailLines: textParts.detailLines,
     amount,
     ...(quantity ? { quantity } : {}),
-    materialsIncluded: materialsStatus === ESTIMATE_MATERIALS_INCLUDED,
+    materialsIncluded: materialsIncludedValue(materialsStatus),
     materialsStatus,
     displayOrder,
     ...(hasStructuredText ? {} : { legacyText: legacyText || undefined }),
@@ -743,15 +791,30 @@ export function normalizeEstimateDocument({
         fallbackMaterialsIncluded: materialsIncluded,
       }))
     : []
+  const hasCompleteDetailedPricing = hasDetailedItems
+    && workItems.every((item) => isEstimatePriceEntered(item.amount))
+  const hasPricingGap = normalizedPricingMode === ESTIMATE_PRICING_DETAILED
+    ? !hasCompleteDetailedPricing
+    : !isEstimatePriceEntered(total)
   const calculatedSubtotal = hasDetailedItems
-    ? workItems.reduce((sum, item) => sum + item.amount, 0)
-    : toFiniteNumber(total)
-  const normalizedSubtotal = subtotal === undefined ? calculatedSubtotal : toFiniteNumber(subtotal)
+    ? hasCompleteDetailedPricing
+      ? workItems.reduce((sum, item) => sum + item.amount, 0)
+      : null
+    : isEstimatePriceEntered(total) ? Number(total) : null
+  const normalizedSubtotal = hasPricingGap || subtotal === null
+    ? null
+    : subtotal === undefined
+      ? calculatedSubtotal
+      : toFiniteNumber(subtotal)
   const normalizedDiscountAmount = toFiniteNumber(discountAmount)
   const normalizedTaxAmount = toFiniteNumber(taxAmount)
-  const normalizedTotal = hasFiniteStoredNumber(total)
-    ? Number(total)
-    : normalizedSubtotal - normalizedDiscountAmount + normalizedTaxAmount
+  const normalizedTotal = hasPricingGap || total === null
+    ? null
+    : hasFiniteStoredNumber(total)
+      ? Number(total)
+      : normalizedSubtotal === null
+        ? null
+        : normalizedSubtotal - normalizedDiscountAmount + normalizedTaxAmount
   const scopeOfWork = {
     text: scopeText,
     contentBlocks: normalizeEstimateRichText(scopeText).blocks,
@@ -809,11 +872,22 @@ export function ensureNormalizedEstimateDocument(documentModel, legacyInput = {}
         ? documentModel.messageFromContractor
         : documentModel?.messageFromContractor?.text
     )
-    const legacySubtotal = documentModel.totals.subtotal === undefined
+    const hasPricingGap = normalizedPricingMode === ESTIMATE_PRICING_DETAILED
+      ? !normalizedWorkItems.length || !normalizedWorkItems.every((item) => isEstimatePriceEntered(resolveEstimateLineItemAmount(item)))
+      : documentModel?.simpleTotal === null || documentModel?.totals?.total === null
+    const legacySubtotal = hasPricingGap
+      ? null
+      : documentModel.totals.subtotal === undefined
       ? normalizedPricingMode === ESTIMATE_PRICING_DETAILED
-        ? normalizedWorkItems.reduce((sum, item) => sum + resolveEstimateLineItemAmount(item), 0)
+        ? normalizedWorkItems.every((item) => isEstimatePriceEntered(resolveEstimateLineItemAmount(item)))
+          ? normalizedWorkItems.reduce((sum, item) => sum + Number(resolveEstimateLineItemAmount(item)), 0)
+          : null
+      : documentModel?.simpleTotal === null || documentModel?.totals?.total === null
+        ? null
         : toFiniteNumber(documentModel?.simpleTotal ?? documentModel?.totals?.total)
-      : toFiniteNumber(documentModel.totals.subtotal)
+      : documentModel.totals.subtotal === null
+        ? null
+        : toFiniteNumber(documentModel.totals.subtotal)
     const legacyScopeText = normalizeEstimateFormattedTextForStorage(
       typeof documentModel.scopeOfWork === 'string'
         ? documentModel.scopeOfWork
@@ -839,7 +913,9 @@ export function ensureNormalizedEstimateDocument(documentModel, legacyInput = {}
       scope: scopeOfWork,
       scopeOfWork,
       simpleTotal: normalizedPricingMode === ESTIMATE_PRICING_SIMPLE
-        ? toFiniteNumber(documentModel?.simpleTotal ?? documentModel?.totals?.total)
+        ? documentModel?.simpleTotal === null || documentModel?.totals?.total === null
+          ? null
+          : toFiniteNumber(documentModel?.simpleTotal ?? documentModel?.totals?.total)
         : null,
       messageFromContractor: {
         text: legacyMessageText,
@@ -852,7 +928,7 @@ export function ensureNormalizedEstimateDocument(documentModel, legacyInput = {}
         subtotal: legacySubtotal,
         discountAmount: toFiniteNumber(documentModel?.totals?.discountAmount),
         taxAmount: toFiniteNumber(documentModel?.totals?.taxAmount),
-        total: toFiniteNumber(documentModel?.totals?.total),
+        total: documentModel?.totals?.total === null ? null : toFiniteNumber(documentModel?.totals?.total),
       },
       workItems: normalizedDocumentWorkItems,
       sections: {

@@ -97,7 +97,7 @@ export function buildNewEstimateOptionDraft({ project = {}, lead = {} } = {}) {
     summary: '',
     scopeOfWork: '',
     lineItems: [],
-    total: 0,
+    total: null,
     subtotal: 0,
     discountAmount: 0,
     taxAmount: 0,

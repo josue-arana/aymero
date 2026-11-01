@@ -19,6 +19,7 @@ import { canCreateContractFromEstimate, canEditEstimate, normalizeEstimateFinali
 import { sumUnambiguousEstimateValues } from '../utils/estimateAlternatives'
 import { AymeroLoader } from '../components/common/AymeroLoader'
 import { isCollectionInitialLoading } from '../utils/collectionLoading'
+import { isEstimatePriceEntered, readEstimateTotalValue } from '../utils/estimateDocument'
 
 const estimateFilters = ['All', 'Archived', 'Draft', 'Saved', 'Sent', 'Approved', 'Rejected', 'Converted to Contract']
 
@@ -52,7 +53,7 @@ export function EstimatesPage({ leads, estimates = [], projects = [], contracts 
       estimateNumber: getEstimateDisplayNumber(estimate, lead),
       client: lead.client,
       projectTitle: lead.projectTitle || lead.projectType,
-      amount: estimate.total || lead.value,
+      amount: readEstimateTotalValue(estimate) !== undefined ? readEstimateTotalValue(estimate) : lead.value,
       status,
       dateCreated: estimate.dateCreated || estimate.createdAt || contract?.signedDate || 'June 2026',
       updatedAt: estimate.updatedAt || estimate.updated_at || '',
@@ -100,7 +101,7 @@ export function EstimatesPage({ leads, estimates = [], projects = [], contracts 
       estimateNumber: getEstimateDisplayNumber(estimate, linkedLead || estimate),
       client: linkedLead?.client || estimate.client || t('customer'),
       projectTitle: linkedLead?.projectTitle || linkedLead?.projectType || estimate.projectTitle || estimate.title || t('estimate'),
-      amount: Number(estimate.total || estimate.totalAmount || estimate.amount || 0),
+      amount: readEstimateTotalValue(estimate),
       status: estimate.status || 'Draft',
       dateCreated: estimate.dateCreated || estimate.createdAt || estimate.created_at || 'June 2026',
       hasLinkedContract: Boolean(linkedContract?.id || linkedContract?.number || linkedContract?.contractNumber),
@@ -310,7 +311,7 @@ export function EstimatesPage({ leads, estimates = [], projects = [], contracts 
                     <div className="min-w-0">
                       <p className="text-sm font-bold text-slate-950">{estimate.estimateNumber}</p>
                       {estimate.optionName ? <p className="mt-1 text-xs font-semibold text-blue-700">{estimate.optionName}</p> : null}
-                      <p className="mt-1 text-sm font-semibold text-slate-600">{currency.format(estimate.amount)}</p>
+                      <p className="mt-1 text-sm font-semibold text-slate-600">{isEstimatePriceEntered(estimate.amount) ? currency.format(Number(estimate.amount)) : ''}</p>
                     </div>
                   </td>
                   <td className="px-4 py-4 align-top">
@@ -358,7 +359,7 @@ export function EstimatesPage({ leads, estimates = [], projects = [], contracts 
                 </div>
                 <div className="sm:col-span-2">
                   <p className="text-xs font-semibold uppercase tracking-wide text-slate-400">{t('estimateAmount')}</p>
-                  <p className="mt-1 text-xl font-bold text-slate-900">{currency.format(estimate.amount)}</p>
+                  <p className="mt-1 text-xl font-bold text-slate-900">{isEstimatePriceEntered(estimate.amount) ? currency.format(Number(estimate.amount)) : ''}</p>
                 </div>
               </div>
               <div className="mt-3">{renderEstimateActions(estimate, true)}</div>
