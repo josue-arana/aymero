@@ -20,7 +20,7 @@ import { isPrintWindowBlockedError, printDocumentElement } from '../../utils/pri
 import { createTranslator } from '../../translations'
 import { tStatus } from '../../translations'
 import { getPaymentTermLabel } from '../../utils/paymentTerms'
-import { resolveEstimatePricingMode } from '../../utils/estimateDocument'
+import { normalizeEstimateDocument, readEstimateTotalValue, resolveEstimatePricingMode } from '../../utils/estimateDocument'
 import { isUpcomingClientScheduleEvent } from '../../utils/scheduleEvents'
 import { getEstimatePortalStatusPresentation } from '../../utils/estimateClientResponse'
 import {
@@ -324,10 +324,14 @@ export function PortalSummary({
     scope: estimate?.summary ?? estimate?.scopeOfWork ?? '',
     materialsIncluded: estimate?.materialsIncluded ?? estimate?.materials_included ?? true,
     paymentTerms: getPaymentTermLabel(estimate?.paymentTerms, t) || t('contractTermsText'),
-    total: Number(estimate?.total ?? estimate?.totalAmount ?? estimate?.amount ?? 0),
+    total: readEstimateTotalValue(estimate),
     subtotal: estimate?.subtotal,
     discountAmount: estimate?.discountAmount ?? estimate?.discount_amount,
     taxAmount: estimate?.taxAmount ?? estimate?.tax_amount,
+    additionalScopeChargeAmount: estimate?.additionalScopeChargeAmount ?? estimate?.additional_scope_charge_amount ?? null,
+    additionalScopeChargeDescription: estimate?.additionalScopeChargeDescription ?? estimate?.additional_scope_charge_description ?? '',
+    manualTotalOverrideEnabled: Boolean(estimate?.manualTotalOverrideEnabled ?? estimate?.manual_total_override_enabled),
+    manualTotalOverrideAmount: estimate?.manualTotalOverrideAmount ?? estimate?.manual_total_override_amount ?? null,
     messageFromContractor: (
       estimate?.messageFromContractor
       || estimate?.message_from_contractor
@@ -348,6 +352,22 @@ export function PortalSummary({
       || ''
     ),
     lineItems: Array.isArray(estimate?.lineItems) ? estimate.lineItems : [],
+    documentModel: normalizeEstimateDocument({
+      pricingMode: resolveEstimatePricingMode(estimate?.pricingMode || estimate?.pricing_mode, estimate?.lineItems),
+      scope: estimate?.summary ?? estimate?.scopeOfWork ?? '',
+      lineItems: Array.isArray(estimate?.lineItems) ? estimate.lineItems : [],
+      total: readEstimateTotalValue(estimate),
+      subtotal: estimate?.subtotal,
+      discountAmount: estimate?.discountAmount ?? estimate?.discount_amount,
+      taxAmount: estimate?.taxAmount ?? estimate?.tax_amount,
+      additionalScopeChargeAmount: estimate?.additionalScopeChargeAmount ?? estimate?.additional_scope_charge_amount ?? null,
+      additionalScopeChargeDescription: estimate?.additionalScopeChargeDescription ?? estimate?.additional_scope_charge_description ?? '',
+      manualTotalOverrideEnabled: Boolean(estimate?.manualTotalOverrideEnabled ?? estimate?.manual_total_override_enabled),
+      manualTotalOverrideAmount: estimate?.manualTotalOverrideAmount ?? estimate?.manual_total_override_amount ?? null,
+      materialsIncluded: estimate?.materialsIncluded ?? estimate?.materials_included ?? true,
+      messageFromContractor: estimate?.messageFromContractor || estimate?.message_from_contractor || estimate?.customerMessage || estimate?.customer_message || estimate?.publicNotes || estimate?.public_notes || estimate?.notes || '',
+      validUntil: estimate?.validUntil || estimate?.valid_until || estimate?.expirationDate || estimate?.expiration_date || estimate?.expiresAt || estimate?.expires_at || '',
+    }),
     t,
   }), [company, estimate, estimateNumber, previewLead, t])
   const contractTotal = Number(contract?.total ?? contract?.totalAmount ?? contract?.contractAmount ?? 0)

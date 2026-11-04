@@ -121,6 +121,10 @@ export function PublicEstimatePage() {
       subtotal: estimate.subtotal ?? null,
       discountAmount: Number(estimate.discountAmount ?? 0),
       taxAmount: Number(estimate.taxAmount ?? 0),
+      additionalScopeChargeAmount: estimate.additionalScopeChargeAmount ?? null,
+      additionalScopeChargeDescription: estimate.additionalScopeChargeDescription || '',
+      manualTotalOverrideEnabled: Boolean(estimate.manualTotalOverrideEnabled),
+      manualTotalOverrideAmount: estimate.manualTotalOverrideAmount ?? null,
       materialsIncluded: estimate.materialsIncluded !== false,
       validUntil,
     })

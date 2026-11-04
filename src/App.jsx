@@ -76,7 +76,7 @@ import { buildDuplicatedEstimateDraft, buildNewEstimateOptionDraft } from './uti
 import { clearSelectedEstimate, selectEstimateForProject } from './services/estimateSelectionService'
 import { buildPortalShareUrl, resolvePortalRouteId } from './utils/portal'
 import { buildContractWorkBreakdownFromEstimate, isGeneratedContractScopeText } from './utils/contractDocument'
-import { isEstimateFullyPriced, readEstimateTotalValue } from './utils/estimateDocument'
+import { isEstimateFullyPriced, readEstimateTotalValue, resolveEstimatePricing } from './utils/estimateDocument'
 import { canCreateContractFromEstimate, normalizeEstimateFinalizationStatus } from './utils/estimateFinalization'
 import { resolveNavigationContext, withNavigationContext } from './utils/navigationContext'
 import { getContractCreationLookupIds } from './utils/contractCreationContext'
@@ -635,7 +635,6 @@ function ContractorFlowApp() {
     }
   })
   const t = useMemo(() => createTranslator(language), [language])
-  const portalT = useMemo(() => createTranslator(portalLanguage), [portalLanguage])
   const navigate = useNavigate()
   const location = useLocation()
   const { showToast } = useToast()
@@ -3017,6 +3016,7 @@ function buildWorkspaceJobRecord(job, clientRecord = null) {
 
       const nextEstimateId = estimate?.id || directEstimate?.id || createLocalRecordId('estimate')
       const lineItems = Array.isArray(estimate?.lineItems) ? estimate.lineItems : []
+      const submittedTotal = readEstimateTotalValue(estimate)
       const directEstimateDraft = {
         ...(directEstimate || {}),
         ...estimate,
@@ -3032,7 +3032,9 @@ function buildWorkspaceJobRecord(job, clientRecord = null) {
         number: createNew
           ? generateEstimateNumber({ ...sourceProject, ...estimate, id: nextEstimateId, projectId: sourceProject.id })
           : estimate?.number || directEstimate?.number || generateEstimateNumber({ ...sourceProject, ...estimate, id: nextEstimateId, projectId: sourceProject.id }),
-        total: readEstimateTotalValue(estimate) === null ? null : createNew ? toSafeNumber(readEstimateTotalValue(estimate)) : resolveEstimateTotal(sourceProject, estimate, toSafeNumber(directEstimate?.total)),
+        total: submittedTotal !== undefined
+          ? submittedTotal === null || submittedTotal === '' ? null : toSafeNumber(submittedTotal)
+          : createNew ? null : resolveEstimateTotal(sourceProject, estimate, toSafeNumber(directEstimate?.total)),
         lineItems,
         pricingMode: estimate?.pricingMode || (lineItems.length ? 'detailed' : 'simple'),
         status: createNew ? 'Draft' : (estimate?.status || directEstimate?.status || 'Draft'),
@@ -3115,6 +3117,7 @@ function buildWorkspaceJobRecord(job, clientRecord = null) {
         ? portal.estimate
         : readLinkedEstimateDraft(sourceLead || leadId, leadId) || {}
     const lineItems = Array.isArray(estimate?.lineItems) ? estimate.lineItems : []
+    const submittedTotal = readEstimateTotalValue(estimate)
     const relatedProjectId = leadOnly ? null : resolvePersistedProjectLink(estimate, existingEstimate, sourceLead)
     const nextEstimateId = createNew ? createLocalRecordId('estimate') : (estimate?.id || existingEstimate.id || createLocalRecordId('estimate'))
     const estimateNumber = createNew
@@ -3147,7 +3150,9 @@ function buildWorkspaceJobRecord(job, clientRecord = null) {
       client_id: estimate?.clientId || estimate?.client_id || existingEstimate.clientId || existingEstimate.client_id || sourceLead?.clientId || sourceLead?.client_id || null,
       projectTitle: estimate?.projectTitle || existingEstimate.projectTitle || sourceLead?.projectTitle || sourceLead?.projectType || 'Estimate',
       number: estimateNumber,
-      total: readEstimateTotalValue(estimate) === null ? null : createNew ? toSafeNumber(readEstimateTotalValue(estimate)) : resolveEstimateTotal(sourceLead, estimate, toSafeNumber(existingEstimate.total)),
+      total: submittedTotal !== undefined
+        ? submittedTotal === null || submittedTotal === '' ? null : toSafeNumber(submittedTotal)
+        : createNew ? null : resolveEstimateTotal(sourceLead, estimate, toSafeNumber(existingEstimate.total)),
       lineItems,
       pricingMode: estimate?.pricingMode || (lineItems.length ? 'detailed' : 'simple'),
       status: createNew ? 'Draft' : (estimate?.status || existingEstimate.status || 'Draft'),
@@ -3891,17 +3896,22 @@ function buildWorkspaceJobRecord(job, clientRecord = null) {
     const contractProjectId = contract.projectId || contract.project_id || null
     if (contractProjectId) {
       const contractValue = toSafeNumber(contract.total ?? contract.totalAmount ?? contract.contractAmount)
+      const hasContractValue = contract.total !== null && contract.total !== undefined
+        || contract.totalAmount !== null && contract.totalAmount !== undefined
+        || contract.contractAmount !== null && contract.contractAmount !== undefined
       setPersistedProjects((current) => current.map((project) => (
         project.id === contractProjectId
           ? {
               ...project,
-              value: contractValue || project.value,
-              estimatedValue: contractValue || project.estimatedValue,
-              contractValue: contractValue || project.contractValue,
+              ...(hasContractValue ? {
+                value: contractValue,
+                estimatedValue: contractValue,
+                contractValue,
+              } : {}),
               portal: {
                 ...(project.portal || {}),
                 contract: { ...(project.portal?.contract || {}), ...contract },
-                contractAmount: contractValue || project.portal?.contractAmount || 0,
+                ...(hasContractValue ? { contractAmount: contractValue } : {}),
               },
             }
           : project
@@ -3910,7 +3920,20 @@ function buildWorkspaceJobRecord(job, clientRecord = null) {
   }
 
   function buildEstimateDerivedContractValues(leadRecord, estimateRecord) {
-    const contractAmount = resolveEstimateTotal(leadRecord, estimateRecord, toSafeNumber(leadRecord?.value))
+    const pricing = resolveEstimatePricing({
+      pricingMode: estimateRecord?.pricingMode || estimateRecord?.pricing_mode,
+      total: readEstimateTotalValue(estimateRecord),
+      lineItems: estimateRecord?.lineItems || estimateRecord?.line_items || [],
+      discountAmount: estimateRecord?.discountAmount ?? estimateRecord?.discount_amount,
+      taxAmount: estimateRecord?.taxAmount ?? estimateRecord?.tax_amount,
+      additionalScopeChargeAmount: estimateRecord?.additionalScopeChargeAmount ?? estimateRecord?.additional_scope_charge_amount,
+      additionalScopeChargeDescription: estimateRecord?.additionalScopeChargeDescription ?? estimateRecord?.additional_scope_charge_description,
+      manualTotalOverrideEnabled: estimateRecord?.manualTotalOverrideEnabled ?? estimateRecord?.manual_total_override_enabled,
+      manualTotalOverrideAmount: estimateRecord?.manualTotalOverrideAmount ?? estimateRecord?.manual_total_override_amount,
+    })
+    const contractAmount = hasEstimateData(estimateRecord)
+      ? pricing.authoritativeTotal
+      : resolveEstimateTotal(leadRecord, estimateRecord, toSafeNumber(leadRecord?.value))
     const derivedWorkBreakdown = buildContractWorkBreakdownFromEstimate(estimateRecord)
     const estimateDepositPercentage = Number(estimateRecord?.depositPercentage ?? estimateRecord?.deposit_percentage)
     const derivedDepositAmount = Number.isFinite(estimateDepositPercentage) && estimateDepositPercentage > 0
@@ -3924,6 +3947,9 @@ function buildWorkspaceJobRecord(job, clientRecord = null) {
       derivedScope: estimateRecord?.summary || estimateRecord?.scopeOfWork || '',
       derivedPaymentTerms: estimateRecord?.paymentTerms || '',
       derivedContractLanguage: normalizeDocumentLanguageOverride(estimateRecord?.estimateLanguage),
+      isFixedTotalQuote: pricing.isManualFixedTotal,
+      additionalScopeChargeAmount: pricing.additionalScopeChargeAmount,
+      additionalScopeChargeDescription: pricing.additionalScopeChargeDescription,
     }
   }
 
@@ -3990,11 +4016,26 @@ function buildWorkspaceJobRecord(job, clientRecord = null) {
           showToast(t('contractSourceUnavailable'), 'error')
           return null
         }
+        const estimatePricing = resolveEstimatePricing({
+          pricingMode: baseEstimate.pricingMode || baseEstimate.pricing_mode,
+          total: readEstimateTotalValue(baseEstimate),
+          lineItems: baseEstimate.lineItems || baseEstimate.line_items || [],
+          discountAmount: baseEstimate.discountAmount ?? baseEstimate.discount_amount,
+          taxAmount: baseEstimate.taxAmount ?? baseEstimate.tax_amount,
+          additionalScopeChargeAmount: baseEstimate.additionalScopeChargeAmount ?? baseEstimate.additional_scope_charge_amount,
+          additionalScopeChargeDescription: baseEstimate.additionalScopeChargeDescription ?? baseEstimate.additional_scope_charge_description,
+          manualTotalOverrideEnabled: baseEstimate.manualTotalOverrideEnabled ?? baseEstimate.manual_total_override_enabled,
+          manualTotalOverrideAmount: baseEstimate.manualTotalOverrideAmount ?? baseEstimate.manual_total_override_amount,
+        })
         if (!isEstimateFullyPriced({
           pricingMode: baseEstimate.pricingMode || baseEstimate.pricing_mode,
           total: readEstimateTotalValue(baseEstimate),
           lineItems: baseEstimate.lineItems || baseEstimate.line_items || [],
-        })) {
+          manualTotalOverrideEnabled: baseEstimate.manualTotalOverrideEnabled ?? baseEstimate.manual_total_override_enabled,
+          manualTotalOverrideAmount: baseEstimate.manualTotalOverrideAmount ?? baseEstimate.manual_total_override_amount,
+          additionalScopeChargeAmount: baseEstimate.additionalScopeChargeAmount ?? baseEstimate.additional_scope_charge_amount,
+          additionalScopeChargeDescription: baseEstimate.additionalScopeChargeDescription ?? baseEstimate.additional_scope_charge_description,
+        }) || !estimatePricing.isFinalizable) {
           showToast(t('estimatePricingRequiredForContract'), 'error')
           return null
         }
@@ -4007,6 +4048,10 @@ function buildWorkspaceJobRecord(job, clientRecord = null) {
             clientId: baseEstimate?.clientId || relationshipContext?.clientId || relationshipContext?.client_id || null,
           })
         : null
+
+      if (hasEstimateData(baseEstimate) && !hasEstimateData(persistedEstimate)) {
+        return null
+      }
 
       const estimateRecord = persistedEstimate || baseEstimate || null
       const conversionResult = sourceLead && !directProject
@@ -4068,6 +4113,9 @@ function buildWorkspaceJobRecord(job, clientRecord = null) {
         derivedScope,
         derivedPaymentTerms,
         derivedContractLanguage,
+        isFixedTotalQuote,
+        additionalScopeChargeAmount,
+        additionalScopeChargeDescription,
       } = buildEstimateDerivedContractValues(refreshedLead, linkedEstimateRecord)
       const existingContract = await findExistingLinkedContract({
         sourceLead: refreshedLead,
@@ -4095,6 +4143,10 @@ function buildWorkspaceJobRecord(job, clientRecord = null) {
           contractLanguage: existingContract.contractLanguage || derivedContractLanguage,
           depositAmount: existingContract.depositAmount ?? derivedDepositAmount,
           workBreakdown: shouldBackfillWorkBreakdown ? derivedWorkBreakdown : existingWorkBreakdown,
+          total: existingContract.total ?? existingContract.totalAmount ?? contractAmount,
+          isFixedTotalQuote: existingContract.isFixedTotalQuote ?? (isSignedContractRecord(existingContract) ? false : isFixedTotalQuote),
+          additionalScopeChargeAmount: existingContract.additionalScopeChargeAmount ?? (isSignedContractRecord(existingContract) ? null : additionalScopeChargeAmount),
+          additionalScopeChargeDescription: existingContract.additionalScopeChargeDescription || (isSignedContractRecord(existingContract) ? '' : additionalScopeChargeDescription),
         }
 
         if (existingContract.id && (
@@ -4105,6 +4157,10 @@ function buildWorkspaceJobRecord(job, clientRecord = null) {
           || updatedExistingContract.paymentTerms !== existingContract.paymentTerms
           || updatedExistingContract.contractLanguage !== existingContract.contractLanguage
           || updatedExistingContract.depositAmount !== existingContract.depositAmount
+          || updatedExistingContract.total !== (existingContract.total ?? existingContract.totalAmount)
+          || updatedExistingContract.isFixedTotalQuote !== existingContract.isFixedTotalQuote
+          || updatedExistingContract.additionalScopeChargeAmount !== existingContract.additionalScopeChargeAmount
+          || updatedExistingContract.additionalScopeChargeDescription !== existingContract.additionalScopeChargeDescription
           || updatedExistingContract.workBreakdown !== existingWorkBreakdown
         )) {
           try {
@@ -4145,6 +4201,9 @@ function buildWorkspaceJobRecord(job, clientRecord = null) {
         depositAmount: derivedDepositAmount,
         workBreakdown: derivedWorkBreakdown,
         total: contractAmount,
+        isFixedTotalQuote,
+        additionalScopeChargeAmount,
+        additionalScopeChargeDescription,
         status: 'Draft',
         updatedAt: new Date().toISOString(),
       }
@@ -4199,7 +4258,7 @@ function buildWorkspaceJobRecord(job, clientRecord = null) {
       if (lead.id !== leadId) return lead
       const portal = lead.portal || {}
       persistedEstimate = hasEstimateData(portal.estimate) ? portal.estimate : null
-      const contractAmount = Number(contract?.total || portal.contractAmount || portal.estimate?.total || lead.value || 0)
+      const contractAmount = toSafeNumber(contract?.total ?? contract?.totalAmount ?? portal.contractAmount ?? portal.estimate?.total ?? lead.value ?? 0)
       const amountPaid = Number(portal.amountPaid || 0)
       return {
         ...lead,
@@ -4229,7 +4288,7 @@ function buildWorkspaceJobRecord(job, clientRecord = null) {
       if (lead.id !== leadId) return lead
       const portal = lead.portal || {}
       persistedEstimate = hasEstimateData(portal.estimate) ? portal.estimate : null
-      const contractAmount = Number(contract?.total || portal.contractAmount || portal.estimate?.total || lead.value || 0)
+      const contractAmount = toSafeNumber(contract?.total ?? contract?.totalAmount ?? portal.contractAmount ?? portal.estimate?.total ?? lead.value ?? 0)
       const signedDate = contract?.signedDate || new Date().toLocaleDateString(undefined, { month: 'long', day: 'numeric', year: 'numeric' })
       const timeline = (portal.timeline || []).map((item) => (
         item.title === 'Contract Signed'
@@ -4278,7 +4337,7 @@ function buildWorkspaceJobRecord(job, clientRecord = null) {
       if (lead.id !== leadId) return lead
       const portal = lead.portal || {}
       persistedEstimate = hasEstimateData(portal.estimate) ? portal.estimate : null
-      const contractAmount = Number(contract?.total || portal.contractAmount || portal.estimate?.total || lead.value || 0)
+      const contractAmount = toSafeNumber(contract?.total ?? contract?.totalAmount ?? portal.contractAmount ?? portal.estimate?.total ?? lead.value ?? 0)
 
       return {
         ...lead,
@@ -4331,6 +4390,24 @@ function buildWorkspaceJobRecord(job, clientRecord = null) {
           ? relationshipContext.portal.estimate
           : readLinkedEstimateDraft(relationshipContext, leadId))
 
+    if (hasEstimateData(baseEstimate)) {
+      const pricing = resolveEstimatePricing({
+        pricingMode: baseEstimate.pricingMode || baseEstimate.pricing_mode,
+        total: readEstimateTotalValue(baseEstimate),
+        lineItems: baseEstimate.lineItems || baseEstimate.line_items || [],
+        discountAmount: baseEstimate.discountAmount ?? baseEstimate.discount_amount,
+        taxAmount: baseEstimate.taxAmount ?? baseEstimate.tax_amount,
+        additionalScopeChargeAmount: baseEstimate.additionalScopeChargeAmount ?? baseEstimate.additional_scope_charge_amount,
+        additionalScopeChargeDescription: baseEstimate.additionalScopeChargeDescription ?? baseEstimate.additional_scope_charge_description,
+        manualTotalOverrideEnabled: baseEstimate.manualTotalOverrideEnabled ?? baseEstimate.manual_total_override_enabled,
+        manualTotalOverrideAmount: baseEstimate.manualTotalOverrideAmount ?? baseEstimate.manual_total_override_amount,
+      })
+      if (!pricing.isFinalizable) {
+        showToast(t(pricing.requiresAdditionalChargeDescription ? 'additionalChargeDescriptionRequired' : 'estimatePricingRequiredForContract'), 'error')
+        return { contract: null, blockedReason: 'pricing_incomplete' }
+      }
+    }
+
     const persistedEstimate = hasEstimateData(baseEstimate)
       ? await saveEstimate(leadId, {
           ...baseEstimate,
@@ -4338,6 +4415,10 @@ function buildWorkspaceJobRecord(job, clientRecord = null) {
           clientId: baseEstimate?.clientId || relationshipContext?.clientId || relationshipContext?.client_id || null,
         })
       : null
+
+    if (hasEstimateData(baseEstimate) && !hasEstimateData(persistedEstimate)) {
+      return { contract: null, blockedReason: 'estimate_save_failed' }
+    }
 
     const estimateRecord = persistedEstimate || baseEstimate || null
     const conversionResult = sourceLead
@@ -4385,6 +4466,9 @@ function buildWorkspaceJobRecord(job, clientRecord = null) {
       derivedScope,
       derivedPaymentTerms,
       derivedContractLanguage,
+      isFixedTotalQuote,
+      additionalScopeChargeAmount,
+      additionalScopeChargeDescription,
     } = buildEstimateDerivedContractValues(refreshedLead, linkedEstimateRecord)
 
     const syncedContractPayload = {
@@ -4402,6 +4486,9 @@ function buildWorkspaceJobRecord(job, clientRecord = null) {
       contractLanguage: existingContract.contractLanguage || derivedContractLanguage,
       depositAmount: derivedDepositAmount,
       total: contractAmount,
+      isFixedTotalQuote,
+      additionalScopeChargeAmount,
+      additionalScopeChargeDescription,
       updatedAt: new Date().toISOString(),
     }
 
@@ -5160,8 +5247,8 @@ function buildWorkspaceJobRecord(job, clientRecord = null) {
       <Route path={appRoutes.subscription} element={<SubscriptionPage language={language} t={t} />} />
       <Route path={appRoutes.projects} element={<ProjectRoute companySettings={companySettings} leads={visibleLeads} projects={persistedProjects} clients={clients} estimates={persistedEstimates} invoices={activeInvoices} scheduleEvents={visibleScheduleEvents} archivedIds={archives.projectIds} archivedScheduleEventIds={archives.scheduleEventIds} onBack={() => navigate('/dashboard')} onOpenPortal={openPortal} onOpenContract={openContractForLead} onConvertEstimate={async (leadId, estimate, options = {}) => { const contract = await ensureContractForLead(leadId, estimate, options); if (contract) openContractForLead(leadId, { source: 'project', projectId: contract.projectId || contract.project_id || undefined, leadId }) }} onCreateInvoice={(projectId) => openInvoiceModal({ projectId, lockProject: true, returnTo: `/projects/${projectId}`, returnLabelKey: 'backToProjectWorkspace' })} onMarkProjectComplete={markProjectComplete} onUpdateLead={updateLead} onRecordPayment={recordProjectPayment} onUpdatePayment={updateProjectPayment} onDeletePayment={deleteProjectPayment} onUploadPhotos={uploadProjectPhotos} onScheduleEvent={openScheduleModal} onExportEvent={exportScheduleEvent} onArchiveScheduleEvent={archiveRecord.scheduleEvent} onRestoreScheduleEvent={restoreRecord.scheduleEvent} onDeleteScheduleEvent={deleteRecord.scheduleEvent} onArchiveProject={archiveRecord.project} onRestoreProject={restoreRecord.project} onDeleteProject={deleteRecord.project} onCreateEstimateOption={createEstimateOption} onDuplicateEstimateOption={duplicateEstimateOption} onSelectEstimate={selectProjectEstimate} onClearEstimateSelection={clearProjectEstimateSelection} language={language} t={t} />} />
       <Route path={appRoutes.projectEstimate} element={<EstimateBuilderRoute companySettings={companySettings} leads={visibleLeads} clients={clients} projects={persistedProjects} estimates={persistedEstimates} archivedIds={archives.leadIds} onSaveEstimate={saveEstimate} onDuplicateEstimate={duplicateEstimateFromBuilder} onConvertEstimate={async (leadId, estimate) => { const contract = await ensureContractForLead(leadId, estimate); if (contract) openContractForLead(leadId, { source: 'estimate', estimateId: estimate?.id, projectId: contract.projectId || contract.project_id || undefined, leadId }); return contract }} onSyncEstimateContract={async (leadId, estimate, options = {}) => syncContractFromEstimate(leadId, estimate, options)} onArchiveEstimate={archiveEstimateRecord} onRestoreEstimate={restoreEstimateRecord} onDeleteEstimate={deleteEstimateRecord} t={t} appLanguage={language} />} />
-      <Route path={appRoutes.projectContract} element={<ContractRoute companySettings={companySettings} leads={visibleLeads} clients={clients} projects={persistedProjects} onSaveContract={saveContract} onMarkContractSigned={markContractSigned} onMarkContractUnsigned={markContractUnsigned} onArchiveContract={archiveContractRecord} t={t} appLanguage={language} />} />
-      <Route path={appRoutes.portal} element={<PortalRoute companySettings={companySettings} projects={visibleLeads} clients={clients} onBack={() => navigate(-1)} t={portalT} language={portalLanguage} setLanguage={setPortalLanguage} />} />
+      <Route path={appRoutes.projectContract} element={<ContractRoute companySettings={companySettings} leads={visibleLeads} clients={clients} projects={persistedProjects} estimates={persistedEstimates} onSaveContract={saveContract} onMarkContractSigned={markContractSigned} onMarkContractUnsigned={markContractUnsigned} onArchiveContract={archiveContractRecord} t={t} appLanguage={language} />} />
+      <Route path={appRoutes.portal} element={<PortalRoute companySettings={companySettings} projects={visibleLeads} clients={clients} onBack={() => navigate(-1)} />} />
       <Route path={appRoutes.login} element={<LoginPage t={t} language={language} setLanguage={setLanguage} />} />
       <Route path={appRoutes.signup} element={<SignupPage t={t} language={language} setLanguage={setLanguage} />} />
       <Route path={appRoutes.forgotPassword} element={<ForgotPasswordPage t={t} language={language} setLanguage={setLanguage} />} />
@@ -5498,8 +5585,14 @@ function LeadRoute({ leads, clients, estimates = [], archivedIds = [], onBack, o
   )
 }
 
-function PortalRoute({ companySettings, projects, clients, onBack, t, language, setLanguage }) {
-  return <CustomerPortalPage projects={projects} clients={clients} onBack={onBack} t={t} language={language} setLanguage={setLanguage} companySettings={companySettings} />
+function PortalRoute({ companySettings, projects, clients, onBack }) {
+  const [customerPortalLanguage, setCustomerPortalLanguage] = useState('en')
+  const customerPortalTranslator = useMemo(
+    () => createTranslator(customerPortalLanguage),
+    [customerPortalLanguage]
+  )
+
+  return <CustomerPortalPage projects={projects} clients={clients} onBack={onBack} t={customerPortalTranslator} language={customerPortalLanguage} setLanguage={setCustomerPortalLanguage} companySettings={companySettings} />
 }
 
 function ProjectNotFound({ onBack, t }) {

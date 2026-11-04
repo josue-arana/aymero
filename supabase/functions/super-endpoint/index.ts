@@ -31,7 +31,7 @@ const estimateStatusLabels: Record<string, string> = {
   rejected: 'Rejected',
   converted: 'Converted to Contract',
 }
-const estimateSelect = 'contractor_id, client_id, lead_id, estimate_number, title, scope_of_work, line_items, subtotal, discount_amount, tax_amount, total_amount, deposit_percentage, materials_included, payment_terms, estimate_language, status, sent_at, approved_at, rejected_at, converted_at, created_at, updated_at'
+const estimateSelect = 'contractor_id, client_id, lead_id, estimate_number, title, scope_of_work, line_items, subtotal, discount_amount, tax_amount, total_amount, additional_scope_charge_amount, additional_scope_charge_description, manual_total_override_enabled, manual_total_override_amount, deposit_percentage, materials_included, payment_terms, estimate_language, status, sent_at, approved_at, rejected_at, converted_at, created_at, updated_at'
 
 function isValidOpaquePublicToken(token: unknown) {
   const normalizedToken = String(token || '').trim()
@@ -67,6 +67,29 @@ function jsonResponse(body: unknown, status = 200) {
   })
 }
 
+function portalQueryFailure(step: string, error: { code?: string } | null, requestId: string) {
+  const code = String(error?.code || '')
+  const safeCode = /^[A-Z0-9]{4,10}$/.test(code) ? code : 'unknown'
+  const message = safeCode === '42703' || safeCode === 'PGRST204'
+    ? 'Selected database column is unavailable.'
+    : safeCode === '42501'
+      ? 'Database permission denied.'
+      : 'Database request failed.'
+
+  console.error('[super-endpoint] Portal query failed', {
+    operation: 'portal',
+    step,
+    requestId,
+    code: safeCode,
+    message,
+  })
+
+  return new Response(JSON.stringify({ error: 'Portal service unavailable.' }), {
+    status: 500,
+    headers: { ...corsHeaders, 'Content-Type': 'application/json', 'X-Request-Id': requestId },
+  })
+}
+
 function mapEstimate(row: Record<string, unknown> | null) {
   if (!row) return null
 
@@ -78,11 +101,16 @@ function mapEstimate(row: Record<string, unknown> | null) {
     summary: row.scope_of_work || '',
     scopeOfWork: row.scope_of_work || '',
     lineItems: Array.isArray(row.line_items) ? row.line_items : [],
+    pricingMode: Array.isArray(row.line_items) && row.line_items.length ? 'detailed' : 'simple',
     subtotal: Number(row.subtotal || 0),
     discountAmount: Number(row.discount_amount || 0),
     taxAmount: Number(row.tax_amount || 0),
-    total: Number(row.total_amount || 0),
-    totalAmount: Number(row.total_amount || 0),
+    total: row.total_amount === null || row.total_amount === undefined ? null : Number(row.total_amount),
+    totalAmount: row.total_amount === null || row.total_amount === undefined ? null : Number(row.total_amount),
+    additionalScopeChargeAmount: row.additional_scope_charge_amount === null || row.additional_scope_charge_amount === undefined ? null : Number(row.additional_scope_charge_amount),
+    additionalScopeChargeDescription: row.additional_scope_charge_description || '',
+    manualTotalOverrideEnabled: Boolean(row.manual_total_override_enabled),
+    manualTotalOverrideAmount: row.manual_total_override_amount === null || row.manual_total_override_amount === undefined ? null : Number(row.manual_total_override_amount),
     depositPercentage: row.deposit_percentage === null || row.deposit_percentage === undefined
       ? null
       : Number(row.deposit_percentage),
@@ -121,6 +149,9 @@ function mapContract(row: Record<string, unknown> | null) {
     acceptanceLegalText: parsedTerms.acceptanceLegalText || '',
     contractLanguage: parsedTerms.contractLanguage || '',
     workBreakdown: Array.isArray(parsedTerms.workBreakdown) ? parsedTerms.workBreakdown : [],
+    isFixedTotalQuote: Boolean((parsedTerms.pricingContext as Record<string, unknown> | undefined)?.isFixedTotalQuote),
+    additionalScopeChargeAmount: (parsedTerms.pricingContext as Record<string, unknown> | undefined)?.additionalScopeChargeAmount ?? null,
+    additionalScopeChargeDescription: (parsedTerms.pricingContext as Record<string, unknown> | undefined)?.additionalScopeChargeDescription || '',
     materials: (parsedTerms.sections as Record<string, unknown> | undefined)?.materials || '',
     timeline: (parsedTerms.sections as Record<string, unknown> | undefined)?.timeline || '',
     changeOrders: (parsedTerms.sections as Record<string, unknown> | undefined)?.changeOrders || '',
@@ -357,6 +388,7 @@ Deno.serve(async (request) => {
     })
   }
 
+  const portalRequestId = crypto.randomUUID()
   const { data: project, error: projectError } = await admin
     .from('projects')
     .select('id, contractor_id, client_id, lead_id, public_portal_token, title, project_type, address, status, estimated_value, contract_value, start_date, target_end_date, created_at, updated_at')
@@ -364,12 +396,12 @@ Deno.serve(async (request) => {
     .is('archived_at', null)
     .maybeSingle()
 
-  if (projectError) return jsonResponse({ error: 'Portal service unavailable.' }, 500)
+  if (projectError) return portalQueryFailure('project_lookup', projectError, portalRequestId)
   if (!project) return jsonResponse({ error: 'Client Portal Not Found.' }, 404)
 
   const contractorId = project.contractor_id
   const projectId = project.id
-  const [settingsResult, clientResult] = await Promise.all([
+  const [settingsResult, clientResult, leadResult] = await Promise.all([
     admin
       .from('company_settings')
       .select('company_name, owner_name, phone, email, business_address, website, license_number, logo_file_path, primary_brand_color, accepted_payment_methods, default_payment_terms, customer_portal_language, show_payments_in_portal, show_photos_in_portal, show_documents_in_portal')
@@ -385,9 +417,20 @@ Deno.serve(async (request) => {
           .is('archived_at', null)
           .maybeSingle()
       : Promise.resolve({ data: null, error: null }),
+    project.lead_id
+      ? admin
+          .from('leads')
+          .select('name, phone, email, address, client_language')
+          .eq('contractor_id', contractorId)
+          .eq('id', project.lead_id)
+          .is('archived_at', null)
+          .maybeSingle()
+      : Promise.resolve({ data: null, error: null }),
   ])
 
-  if (settingsResult.error || clientResult.error) return jsonResponse({ error: 'Portal service unavailable.' }, 500)
+  if (settingsResult.error) return portalQueryFailure('company_settings', settingsResult.error, portalRequestId)
+  if (clientResult.error) return portalQueryFailure('linked_client', clientResult.error, portalRequestId)
+  if (leadResult.error) return portalQueryFailure('linked_lead', leadResult.error, portalRequestId)
 
   const settings = settingsResult.data || {}
   const showPayments = settings.show_payments_in_portal !== false
@@ -399,7 +442,7 @@ Deno.serve(async (request) => {
 
   const [estimateResult, contractResult, paymentResult, eventResult, photoResult] = await Promise.all([
     showDocuments
-      ? admin.from('estimates').select('estimate_number, title, scope_of_work, line_items, subtotal, discount_amount, tax_amount, total_amount, deposit_percentage, materials_included, payment_terms, estimate_language, status, created_at, updated_at').eq('contractor_id', contractorId).eq('project_id', projectId).is('archived_at', null).order('created_at', { ascending: false }).limit(1).maybeSingle()
+      ? admin.from('estimates').select('estimate_number, title, scope_of_work, line_items, subtotal, discount_amount, tax_amount, total_amount, additional_scope_charge_amount, additional_scope_charge_description, manual_total_override_enabled, manual_total_override_amount, deposit_percentage, materials_included, payment_terms, estimate_language, status, created_at, updated_at').eq('contractor_id', contractorId).eq('project_id', projectId).is('archived_at', null).order('created_at', { ascending: false }).limit(1).maybeSingle()
       : Promise.resolve({ data: null, error: null }),
     showDocuments
       ? admin.from('contracts').select('contract_number, title, scope_of_work, terms, total_amount, deposit_amount, payment_terms, status, sent_at, signed_at, signed_by, created_at, updated_at').eq('contractor_id', contractorId).eq('project_id', projectId).is('archived_at', null).order('created_at', { ascending: false }).limit(1).maybeSingle()
@@ -413,8 +456,15 @@ Deno.serve(async (request) => {
       : Promise.resolve({ data: [], error: null }),
   ])
 
-  const queryError = [estimateResult.error, contractResult.error, paymentResult.error, eventResult.error, photoResult.error].find(Boolean)
-  if (queryError) return jsonResponse({ error: 'Portal service unavailable.' }, 500)
+  const relatedQueries = [
+    ['estimate', estimateResult.error],
+    ['contract', contractResult.error],
+    ['payments', paymentResult.error],
+    ['events', eventResult.error],
+    ['photos', photoResult.error],
+  ] as const
+  const failedQuery = relatedQueries.find(([, error]) => Boolean(error))
+  if (failedQuery) return portalQueryFailure(failedQuery[0], failedQuery[1], portalRequestId)
 
   const photos = await Promise.all((photoResult.data || []).map(async (photo) => {
     const storagePath = photo.thumbnail_path || photo.file_path
@@ -433,8 +483,15 @@ Deno.serve(async (request) => {
   }))
 
   const client = clientResult.data || {}
+  const relatedLead = leadResult.data || {}
   const estimate = mapEstimate(estimateResult.data)
   const contract = mapContract(contractResult.data)
+  const useDraftLeadContact = !contract || String(contract.status || '').toLowerCase() === 'draft'
+  const customerName = client.display_name || (useDraftLeadContact ? relatedLead.name : '') || ''
+  const customerPhone = client.phone || (useDraftLeadContact ? relatedLead.phone : '') || ''
+  const customerEmail = client.email || (useDraftLeadContact ? relatedLead.email : '') || ''
+  const customerAddress = client.address || (useDraftLeadContact ? relatedLead.address : '') || ''
+  const customerPreferredLanguage = client.preferred_language || relatedLead.client_language || ''
   const publicProjectId = project.public_portal_token
   const projectStatus = projectStatusLabels[String(project.status || '')] || project.status || ''
   const publicPayments = (paymentResult.data || []).map((payment) => mapPublicPayment(payment, publicProjectId))
@@ -448,8 +505,8 @@ Deno.serve(async (request) => {
       title: project.title || '',
       projectTitle: project.title || '',
       projectType: project.project_type || '',
-      address: project.address || client.address || '',
-      location: project.address || client.address || '',
+      address: project.address || customerAddress,
+      location: project.address || customerAddress,
       status: projectStatus,
       projectStatus,
       estimatedValue: Number(project.estimated_value || 0),
@@ -459,9 +516,12 @@ Deno.serve(async (request) => {
       targetCompletion: project.target_end_date || '',
       createdAt: project.created_at || '',
       updatedAt: project.updated_at || '',
-      client: client.display_name || '',
-      clientName: client.display_name || '',
-      phone: client.phone || '',
+      client: customerName,
+      clientName: customerName,
+      preferredLanguage: customerPreferredLanguage,
+      phone: customerPhone,
+      email: customerEmail,
+      clientAddress: customerAddress,
       portal: {
         estimate: estimate || {},
         contract: contract || {},
@@ -471,14 +531,15 @@ Deno.serve(async (request) => {
       },
     },
     client: {
-      name: client.display_name || '',
-      displayName: client.display_name || '',
-      phone: client.phone || '',
-      address: client.address || '',
+      name: customerName,
+      displayName: customerName,
+      phone: customerPhone,
+      email: customerEmail,
+      address: customerAddress,
       city: client.city || '',
       state: client.state || '',
       postalCode: client.postal_code || '',
-      preferredLanguage: client.preferred_language || '',
+      preferredLanguage: customerPreferredLanguage,
     },
     estimate,
     contract,
@@ -500,7 +561,7 @@ Deno.serve(async (request) => {
       },
       defaults: { paymentTerms: settings.default_payment_terms || '' },
       portal: {
-        defaultLanguage: settings.customer_portal_language || client.preferred_language || 'en',
+        defaultLanguage: customerPreferredLanguage || 'en',
         showPayments,
         showPhotos,
         showDocuments,

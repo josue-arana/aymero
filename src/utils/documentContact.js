@@ -25,6 +25,16 @@ function readDocumentValue(document = {}, keys = []) {
   return null
 }
 
+function readMeaningfulDocumentValue(document = {}, keys = []) {
+  for (const key of keys) {
+    if (!Object.prototype.hasOwnProperty.call(document, key)) continue
+    const value = String(document?.[key] ?? '').trim()
+    if (value) return value
+  }
+
+  return ''
+}
+
 function hasSignedContract(document = {}) {
   return Boolean(
     document?.signed
@@ -58,19 +68,25 @@ export function resolveDocumentContact({ clientRecord = null, snapshot = {}, doc
   const documentAddress = readDocumentValue(document, ['clientAddress', 'client_address'])
   const liveName = readValue(liveContact, ['displayName', 'name', 'clientName', 'client'])
   const snapshotName = readValue(snapshot, ['displayName', 'name', 'clientName', 'client'])
-  const resolvedName = historical || documentType !== 'estimate'
-    ? (documentName !== null ? documentName : readValue(preferredContact, ['displayName', 'name', 'clientName', 'client']))
+  const resolvedName = historical
+    ? (documentName || readValue(preferredContact, ['displayName', 'name', 'clientName', 'client']))
       || readValue(fallbackContact, ['displayName', 'name', 'clientName', 'client'])
-    : documentName || liveName || snapshotName
+    : readMeaningfulDocumentValue(document, ['clientName', 'client_name', 'client']) || liveName || snapshotName
 
   return {
     name: resolvedName,
-    phone: (documentPhone !== null ? documentPhone : readValue(preferredContact, ['phone']))
-      || readValue(fallbackContact, ['phone']),
-    email: (documentEmail !== null ? documentEmail : readValue(preferredContact, ['email']))
-      || readValue(fallbackContact, ['email']),
-    address: (documentAddress !== null ? documentAddress : readValue(preferredContact, ['address', 'clientAddress', 'client_address']))
-      || readValue(fallbackContact, ['address', 'clientAddress', 'client_address']),
+    phone: historical
+      ? (documentPhone || readValue(preferredContact, ['phone'])) || readValue(fallbackContact, ['phone'])
+      : readMeaningfulDocumentValue(document, ['clientPhone', 'client_phone']) || readValue(liveContact, ['phone']) || readValue(snapshot, ['phone']),
+    email: historical
+      ? (documentEmail || readValue(preferredContact, ['email'])) || readValue(fallbackContact, ['email'])
+      : readMeaningfulDocumentValue(document, ['clientEmail', 'client_email']) || readValue(liveContact, ['email']) || readValue(snapshot, ['email']),
+    address: historical
+      ? (documentAddress || readValue(preferredContact, ['address', 'clientAddress', 'client_address']))
+        || readValue(fallbackContact, ['address', 'clientAddress', 'client_address'])
+      : readMeaningfulDocumentValue(document, ['clientAddress', 'client_address'])
+        || readValue(liveContact, ['address', 'clientAddress', 'client_address'])
+        || readValue(snapshot, ['address', 'clientAddress', 'client_address']),
   }
 }
 

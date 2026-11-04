@@ -29,7 +29,7 @@ import { isPrintWindowBlockedError, printDocumentElement } from '../utils/printD
 import { dedupeById, findLeadByProjectLookup, findProjectByLookup, resolveLinkedProjectId } from '../utils/projectIdentity'
 import { createTranslator } from '../translations'
 import { findClientById } from '../utils/clients'
-import { mergeDocumentContactIntoLead } from '../utils/documentContact'
+import { mergeDocumentContactIntoLead, shouldUseHistoricalDocumentContact } from '../utils/documentContact'
 import { buildContractNotesAndTermsItems, hasContractWorkBreakdown } from '../utils/contractDocument'
 import { buildContractEditorState } from '../utils/contractEditorState'
 import { normalizeDocumentLanguageOverride, resolveClientFacingLanguage } from '../utils/language'
@@ -105,11 +105,14 @@ export function ContractPreviewPage({ lead, clientRecord = null, t, appLanguage 
   })
   const contractT = useMemo(() => createTranslator(contractOutputLanguage), [contractOutputLanguage])
   const shouldUsePdfForPrint = useMemo(() => shouldUseGeneratedPdfForPrint(), [])
-  const contractTotal = Number(savedContract.total || lead.portal?.contractAmount || lead.portal?.estimate?.total || lead.value || 0)
+  const contractTotal = Number(savedContract.total ?? savedContract.totalAmount ?? lead.portal?.contractAmount ?? lead.portal?.estimate?.total ?? lead.value ?? 0)
   const editorState = buildContractEditorState({ lead, portal, savedContract, estimate, contractTotal, t: contractT })
   const [contractTitle, setContractTitle] = useState(editorState.title)
   const [scope, setScope] = useState(editorState.scope)
   const [workBreakdown, setWorkBreakdown] = useState(editorState.workBreakdown)
+  const [isFixedTotalQuote, setIsFixedTotalQuote] = useState(editorState.isFixedTotalQuote)
+  const [additionalScopeChargeAmount, setAdditionalScopeChargeAmount] = useState(editorState.additionalScopeChargeAmount)
+  const [additionalScopeChargeDescription, setAdditionalScopeChargeDescription] = useState(editorState.additionalScopeChargeDescription)
   const [paymentTerms, setPaymentTerms] = useState(editorState.paymentTerms)
   const [acceptanceLegalText, setAcceptanceLegalText] = useState(editorState.acceptanceLegalText)
   const [materials, setMaterials] = useState(editorState.materials)
@@ -146,9 +149,12 @@ export function ContractPreviewPage({ lead, clientRecord = null, t, appLanguage 
     notesAndTermsItems,
     scope,
     workBreakdown,
+    isFixedTotalQuote,
+    additionalScopeChargeAmount,
+    additionalScopeChargeDescription,
     total: contractTotal,
     t: contractT,
-  }), [companySettings?.company, contractT, contractTitle, contractTotal, documentLead, notesAndTermsItems, previewContractDate, previewContractNumber, scope, workBreakdown])
+  }), [companySettings?.company, contractT, contractTitle, contractTotal, documentLead, notesAndTermsItems, previewContractDate, previewContractNumber, scope, workBreakdown, isFixedTotalQuote, additionalScopeChargeAmount, additionalScopeChargeDescription])
   const isSigned = Boolean(
     savedContract?.status === 'Signed'
       || savedContract?.signed
@@ -170,6 +176,9 @@ export function ContractPreviewPage({ lead, clientRecord = null, t, appLanguage 
     setContractTitle(nextState.title)
     setScope(nextState.scope)
     setWorkBreakdown(nextState.workBreakdown)
+    setIsFixedTotalQuote(nextState.isFixedTotalQuote)
+    setAdditionalScopeChargeAmount(nextState.additionalScopeChargeAmount)
+    setAdditionalScopeChargeDescription(nextState.additionalScopeChargeDescription)
     setPaymentTerms(nextState.paymentTerms)
     setAcceptanceLegalText(nextState.acceptanceLegalText)
     setMaterials(nextState.materials)
@@ -210,6 +219,9 @@ export function ContractPreviewPage({ lead, clientRecord = null, t, appLanguage 
       contractLanguage: contractLanguage || '',
       scope,
       workBreakdown,
+      isFixedTotalQuote,
+      additionalScopeChargeAmount,
+      additionalScopeChargeDescription,
       paymentTerms,
       acceptanceLegalText,
       depositAmount,
@@ -239,6 +251,9 @@ export function ContractPreviewPage({ lead, clientRecord = null, t, appLanguage 
           lead: documentLead,
           scope,
           workBreakdown,
+          isFixedTotalQuote,
+          additionalScopeChargeAmount,
+          additionalScopeChargeDescription,
           acceptanceLegalText,
           depositAmount,
           paymentTerms,
@@ -454,6 +469,9 @@ export function ContractPreviewPage({ lead, clientRecord = null, t, appLanguage 
           contractNumber={previewContractNumber}
           notesAndTermsItems={notesAndTermsItems}
           contractTotal={contractTotal}
+          isFixedTotalQuote={isFixedTotalQuote}
+          additionalScopeChargeAmount={additionalScopeChargeAmount}
+          additionalScopeChargeDescription={additionalScopeChargeDescription}
           contractTitle={contractTitle}
           setContractTitle={setContractTitle}
           scope={scope}
@@ -511,7 +529,7 @@ export function ContractPreviewPage({ lead, clientRecord = null, t, appLanguage 
   )
 }
 
-function ContractDocument({ isEditing, lead, company, contractDate, contractNumber, notesAndTermsItems, contractTotal, contractTitle, setContractTitle, scope, workBreakdown, setScope, setWorkBreakdown, paymentTerms, setPaymentTerms, acceptanceLegalText, setAcceptanceLegalText, contractT, t }) {
+function ContractDocument({ isEditing, lead, company, contractDate, contractNumber, notesAndTermsItems, contractTotal, isFixedTotalQuote, additionalScopeChargeAmount, additionalScopeChargeDescription, contractTitle, setContractTitle, scope, workBreakdown, setScope, setWorkBreakdown, paymentTerms, setPaymentTerms, acceptanceLegalText, setAcceptanceLegalText, contractT, t }) {
   return (
     <div className="space-y-5 text-sm leading-6 text-slate-700">
       {!isEditing ? (
@@ -527,6 +545,9 @@ function ContractDocument({ isEditing, lead, company, contractDate, contractNumb
               scope={scope}
               workBreakdown={workBreakdown}
               total={contractTotal}
+              isFixedTotalQuote={isFixedTotalQuote}
+              additionalScopeChargeAmount={additionalScopeChargeAmount}
+              additionalScopeChargeDescription={additionalScopeChargeDescription}
               t={contractT}
             />
           </PaginatedContractPreview>
@@ -675,7 +696,7 @@ function ScaledContractPreview({ children }) {
   )
 }
 
-export function ContractRoute({ companySettings, leads, clients = [], projects = [], onSaveContract, onMarkContractSigned, onMarkContractUnsigned, onArchiveContract, t, appLanguage = 'en' }) {
+export function ContractRoute({ companySettings, leads, clients = [], projects = [], estimates = [], onSaveContract, onMarkContractSigned, onMarkContractUnsigned, onArchiveContract, t, appLanguage = 'en' }) {
   const { id, leadId } = useParams()
   const location = useLocation()
   const navigate = useNavigate()
@@ -800,25 +821,51 @@ export function ContractRoute({ companySettings, leads, clients = [], projects =
     )
   }
 
+  const contractDocument = loadedContract || lead.portal?.contract || {}
+  const linkedEstimate = estimates.find((estimate) => String(estimate?.id || '') === String(
+    contractDocument.estimateId || contractDocument.estimate_id || lead?.estimateId || lead?.estimate_id || ''
+  )) || null
+  const relatedLead = findLeadByProjectLookup(
+    leads,
+    sourceLeadId,
+    contractDocument.leadId,
+    contractDocument.lead_id,
+    contractDocument.projectId,
+    contractDocument.project_id,
+    linkedProject?.leadId,
+    linkedProject?.lead_id,
+    linkedEstimate?.projectId,
+    linkedEstimate?.project_id,
+    linkedEstimate?.leadId,
+    linkedEstimate?.lead_id,
+    lead?.leadId,
+    lead?.lead_id
+  )
   const clientRecord = findClientById(
     clients,
-    linkedProject?.clientId
+    contractDocument.clientId
+      || contractDocument.client_id
+      || linkedProject?.clientId
       || linkedProject?.client_id
+      || linkedEstimate?.clientId
+      || linkedEstimate?.client_id
+      || relatedLead?.clientId
+      || relatedLead?.client_id
       || lead?.clientId
       || lead?.client_id
   )
-
-  const contractDocument = loadedContract || lead.portal?.contract || {}
+  const preserveHistoricalContact = shouldUseHistoricalDocumentContact(contractDocument, 'contract')
+  const contactSnapshot = !preserveHistoricalContact && relatedLead ? { ...lead, ...relatedLead } : lead
   const mergedLead = mergeDocumentContactIntoLead({
     lead: loadedContract
       ? {
-          ...lead,
+          ...contactSnapshot,
           portal: {
-            ...(lead.portal || {}),
+            ...(contactSnapshot.portal || {}),
             contract: loadedContract,
           },
         }
-      : lead,
+      : contactSnapshot,
     clientRecord,
     document: contractDocument,
     documentType: 'contract',

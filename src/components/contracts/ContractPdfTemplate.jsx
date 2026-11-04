@@ -172,7 +172,7 @@ function ContractWorkBreakdownItem({ item, index, accentColor, accentTextColor, 
         {item.descriptionBlocks?.length ? <div style={{ marginTop: '5px', display: 'grid', gap: '3px' }}><EstimateRichTextBlocks blocks={item.descriptionBlocks} flowTextAttribute="data-contract-flow-text" /></div> : null}
       </div>
       <div style={{ paddingTop: '3px', textAlign: 'right', whiteSpace: 'nowrap', fontSize: '11.5px', lineHeight: 1.4, fontWeight: 700, color: colors.ink }}>
-        {currency.format(Number(item?.amount || 0))}
+        {item?.amount === null || item?.amount === undefined || item?.amount === '' ? '' : currency.format(Number(item.amount))}
       </div>
     </div>
   )
@@ -250,7 +250,7 @@ function SignatureSection({ contractorName, clientName, t }) {
   )
 }
 
-export function ContractPdfTemplate({ company, lead, contractNumber, contractDate, contractTitle = '', notesAndTermsItems = [], scope, workBreakdown = [], total, t }) {
+export function ContractPdfTemplate({ company, lead, contractNumber, contractDate, contractTitle = '', notesAndTermsItems = [], scope, workBreakdown = [], total, isFixedTotalQuote = false, additionalScopeChargeAmount = null, additionalScopeChargeDescription = '', t }) {
   const billToLines = buildBillToLines(lead, t)
   const workLines = buildWorkLines(lead, t)
   const projectTitle = contractTitle || lead?.projectTitle || lead?.projectType || t('projectScope')
@@ -274,7 +274,7 @@ export function ContractPdfTemplate({ company, lead, contractNumber, contractDat
           <div style={{ minWidth: 0, padding: 'var(--document-summary-padding-y) var(--document-summary-padding-x)' }}><SummaryBlock label={t('billTo')}><div style={{ display: 'grid', gap: '1px' }}>{billToLines.map((line, index) => <div key={`${line}-${index}`}>{line}</div>)}</div></SummaryBlock></div>
           <div style={{ minWidth: 0, borderLeft: `1px solid ${colors.slate200}`, padding: 'var(--document-summary-padding-y) var(--document-summary-padding-x)' }}><SummaryBlock label={t('jobLocation')}><div style={{ display: 'grid', gap: '1px' }}>{workLines.map((line, index) => <div key={`${line}-${index}`}>{line}</div>)}</div></SummaryBlock></div>
           <div style={{ minWidth: 0, borderLeft: `1px solid ${colors.slate200}`, padding: 'var(--document-summary-padding-y) var(--document-summary-padding-x)' }}><SummaryBlock label={t('date')}><div>{contractDate}</div></SummaryBlock></div>
-          <div style={{ borderLeft: `1px solid ${colors.slate300}`, padding: 'var(--document-summary-padding-y) var(--document-summary-padding-x)', display: 'flex', flexDirection: 'column', justifyContent: 'center', textAlign: 'right' }}><SummaryBlock label={t('projectTotal')} align="right"><div style={{ fontSize: '25px', lineHeight: 1, fontWeight: 700, letterSpacing: '-0.025em', color: colors.ink }}>{currency.format(Number(total || 0))}</div></SummaryBlock></div>
+          <div style={{ borderLeft: `1px solid ${colors.slate300}`, padding: 'var(--document-summary-padding-y) var(--document-summary-padding-x)', display: 'flex', flexDirection: 'column', justifyContent: 'center', textAlign: 'right' }}><SummaryBlock label={isFixedTotalQuote ? t('fixedTotalQuote') : t('projectTotal')} align="right"><div style={{ fontSize: '25px', lineHeight: 1, fontWeight: 700, letterSpacing: '-0.025em', color: colors.ink }}>{currency.format(Number(total ?? 0))}</div></SummaryBlock></div>
         </div>
         <div style={{ display: 'grid', gridTemplateColumns: '118px minmax(0,1fr)', gap: '18px', borderTop: `1px solid ${colors.slate200}`, padding: '12px var(--document-summary-padding-x)', alignItems: 'start' }}>
           <p style={{ margin: 0, fontSize: '11px', lineHeight: 1.35, fontWeight: 700, letterSpacing: '0.18em', textTransform: 'uppercase', color: colors.ink }}>{t('project')}</p>
@@ -284,6 +284,13 @@ export function ContractPdfTemplate({ company, lead, contractNumber, contractDat
 
       <ProjectScopeSection scope={scope} workBreakdown={normalizedWorkBreakdown} t={t} />
       <WorkBreakdownSection workBreakdown={normalizedWorkBreakdown} hasScope={hasScope} accentColor={accentColor} accentTextColor={accentTextColor} t={t} />
+      {additionalScopeChargeAmount !== null && additionalScopeChargeAmount !== undefined ? (
+        <div data-contract-additional-scope-charge="true" data-contract-keep-together="true" style={{ marginTop: 'var(--document-section-gap)', display: 'grid', gridTemplateColumns: 'minmax(0,1fr) auto', gap: '6px 16px', borderTop: `1px solid ${colors.slate200}`, padding: '10px 0', fontSize: '10.5px', color: colors.ink }}>
+          <span>{additionalScopeChargeDescription || t('additionalScopeCharge')}</span>
+          <span style={{ whiteSpace: 'nowrap', fontWeight: 700 }}>{currency.format(Number(additionalScopeChargeAmount))}</span>
+          {isFixedTotalQuote ? <span style={{ gridColumn: '1 / -1', color: colors.slate500 }}>{t('fixedTotalIncludesAdditionalScope')}</span> : null}
+        </div>
+      ) : null}
       <NotesAndTermsSection items={notesAndTermsItems} t={t} />
       <SignatureSection contractorName={company?.ownerName || company?.name || t('brandName')} clientName={lead?.client || ''} t={t} />
     </article>

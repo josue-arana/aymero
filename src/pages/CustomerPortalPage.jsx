@@ -9,6 +9,13 @@ import heroBackground from '../assets/portal/blue-bg.png'
 import dataProvider from '../services/dataProvider'
 import { currency } from '../utils/formatters'
 import { dedupeById, resolveLinkedProjectId } from '../utils/projectIdentity'
+import { resolvePortalRouteId } from '../utils/portal'
+import {
+  persistCustomerPortalLanguageSelection,
+  readCustomerPortalLanguageSelection,
+  resolveCustomerPortalLanguage,
+} from '../utils/customerPortalLanguage'
+import { normalizeSupportedLanguage } from '../utils/language'
 
 function normalizePortalPhoto(photo = {}, fallbackProjectId = '', fallbackContractorId = '', fallbackClientId = null) {
   const previewUrl = photo.previewUrl || photo.url || ''
@@ -126,19 +133,31 @@ export function CustomerPortalPage({ projects = [], clients = [], onBack, t, lan
   const [projectPhotos, setProjectPhotos] = useState([])
   const [isLoadingPhotos, setIsLoadingPhotos] = useState(false)
   const [photosLoadFailed, setPhotosLoadFailed] = useState(false)
-  const hasAppliedPublicLanguage = useRef(false)
+  const resolvedLanguagePortalId = useRef('')
   const resolvedCompanySettings = publicCompanySettings || companySettings
   const showPayments = portalVisibility?.showPayments ?? resolvedCompanySettings?.portal?.showPayments ?? true
   const showPhotos = portalVisibility?.showPhotos ?? resolvedCompanySettings?.portal?.showPhotos ?? true
   const showDocuments = portalVisibility?.showDocuments ?? resolvedCompanySettings?.portal?.showDocuments ?? true
 
   useEffect(() => {
-    const publicLanguage = publicCompanySettings?.portal?.defaultLanguage
-    if (hasAppliedPublicLanguage.current || !publicLanguage) return
+    if (isLoading || !resolvedPortalId || resolvePortalRouteId(project) !== resolvedPortalId || resolvedLanguagePortalId.current === resolvedPortalId) return
 
-    hasAppliedPublicLanguage.current = true
-    if (publicLanguage !== language) setLanguage(publicLanguage)
-  }, [language, publicCompanySettings?.portal?.defaultLanguage, setLanguage])
+    resolvedLanguagePortalId.current = resolvedPortalId
+    const preferredLanguage = resolveCustomerPortalLanguage({
+      explicitSelection: readCustomerPortalLanguageSelection(resolvedPortalId),
+      client,
+      lead: project,
+      project,
+      fallback: 'en',
+    })
+    if (preferredLanguage !== language) setLanguage(preferredLanguage)
+  }, [client, isLoading, language, project, resolvedPortalId, setLanguage])
+
+  function handlePortalLanguageChange(event) {
+    const nextLanguage = normalizeSupportedLanguage(event.target.value, 'en')
+    persistCustomerPortalLanguageSelection(resolvedPortalId, nextLanguage)
+    setLanguage(nextLanguage)
+  }
 
   const resolvedProjectId = useMemo(
     () => resolveLinkedProjectId(project, resolvedPortalId),
@@ -263,7 +282,11 @@ export function CustomerPortalPage({ projects = [], clients = [], onBack, t, lan
             <ArrowLeft className="h-4 w-4" /> {t('back')}
           </button>
         ) : null}
-        <button onClick={() => setLanguage(language === 'en' ? 'es' : 'en')} className="rounded-2xl border border-slate-200 bg-white px-4 py-3 text-xs font-bold text-slate-700 hover:bg-slate-50">{language === 'en' ? '🇪🇸 Español' : '🇺🇸 English'}</button>
+        <label className="sr-only" htmlFor="customer-portal-language">{t('language')}</label>
+        <select id="customer-portal-language" value={language} onChange={handlePortalLanguageChange} className="rounded-2xl border border-slate-200 bg-white px-4 py-3 text-xs font-bold text-slate-700 hover:bg-slate-50 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-blue-500">
+          <option value="en">🇺🇸 {t('english')}</option>
+          <option value="es">🇪🇸 {t('spanish')}</option>
+        </select>
       </div>
 
       <div className="client-portal-page__sections">

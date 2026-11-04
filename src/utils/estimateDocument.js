@@ -357,20 +357,14 @@ function hasFiniteStoredNumber(value) {
 }
 
 /**
- * Amount is the only active estimate-item price. `total` remains an accepted
- * legacy amount alias because normalized document models previously used it.
- * The quantity/rate calculation is deliberately read-only and narrow: it
- * protects older JSON records that have no explicit amount without carrying
- * either legacy field into the active model or future persistence payloads.
+ * Amount is the canonical estimate-item price. `total` and quantity/rate are
+ * read-only compatibility fallbacks for older line items. A finite canonical
+ * amount, including zero, always wins; null/blank canonical values can still
+ * resolve a legacy price before the item is normalized into canonical storage.
  */
 export function resolveEstimateLineItemAmount(item = {}, fallback = null) {
-  if (Object.prototype.hasOwnProperty.call(item || {}, 'amount')) {
-    return hasFiniteStoredNumber(item.amount) ? Number(item.amount) : null
-  }
-
-  if (Object.prototype.hasOwnProperty.call(item || {}, 'total')) {
-    return hasFiniteStoredNumber(item.total) ? Number(item.total) : null
-  }
+  if (hasFiniteStoredNumber(item?.amount)) return Number(item.amount)
+  if (hasFiniteStoredNumber(item?.total)) return Number(item.total)
 
   if (hasFiniteStoredNumber(item?.quantity) && hasFiniteStoredNumber(item?.rate)) {
     return Number(item.quantity) * Number(item.rate)
@@ -394,7 +388,84 @@ export function readEstimateTotalValue(estimate = {}) {
   return undefined
 }
 
-export function isEstimateFullyPriced({ pricingMode, total, lineItems = [] } = {}) {
+export function isEstimateFullyPriced(pricing = {}) {
+  const {
+    authoritativeTotal,
+  } = resolveEstimatePricing(pricing)
+  return isEstimatePriceEntered(authoritativeTotal)
+}
+
+export function roundEstimateMoney(value) {
+  const number = Number(value)
+  return Number.isFinite(number) ? Math.round((number + Number.EPSILON) * 100) / 100 : null
+}
+
+export function resolveEstimatePricing({
+  pricingMode,
+  total = null,
+  lineItems = [],
+  discountAmount = 0,
+  taxAmount = 0,
+  additionalScopeChargeAmount = null,
+  additionalScopeChargeDescription = '',
+  manualTotalOverrideEnabled = false,
+  manualTotalOverrideAmount = null,
+} = {}) {
+  const normalizedMode = resolveEstimatePricingMode(pricingMode, lineItems)
+  const items = normalizedMode === ESTIMATE_PRICING_DETAILED ? getValidExplicitEstimateItems(lineItems) : []
+  const itemAmounts = items.map((item) => resolveEstimateLineItemAmount(item))
+  const pricedAmounts = itemAmounts.filter((amount) => isEstimatePriceEntered(amount))
+  const pricedItemsSubtotal = pricedAmounts.length
+    ? roundEstimateMoney(pricedAmounts.reduce((sum, amount) => sum + Math.round(Number(amount) * 100), 0) / 100)
+    : null
+  const allItemsPriced = items.length > 0 && itemAmounts.every((amount) => isEstimatePriceEntered(amount))
+  const additionalCharge = additionalScopeChargeAmount === null || additionalScopeChargeAmount === undefined || additionalScopeChargeAmount === ''
+    ? null
+    : Number.isFinite(Number(additionalScopeChargeAmount)) && Number(additionalScopeChargeAmount) >= 0
+      ? roundEstimateMoney(additionalScopeChargeAmount)
+      : null
+  const additionalChargeDescription = normalizeEstimateFormattedTextForStorage(additionalScopeChargeDescription)
+  const requiresAdditionalChargeDescription = Number(additionalCharge) > 0 && !hasMeaningfulEstimateFormattedText(additionalChargeDescription)
+  const overrideEnabled = normalizedMode === ESTIMATE_PRICING_DETAILED && Boolean(manualTotalOverrideEnabled)
+  const overrideAmount = manualTotalOverrideAmount === null || manualTotalOverrideAmount === undefined || manualTotalOverrideAmount === ''
+    ? null
+    : Number.isFinite(Number(manualTotalOverrideAmount)) && Number(manualTotalOverrideAmount) >= 0
+      ? roundEstimateMoney(manualTotalOverrideAmount)
+      : null
+  const validDiscount = Number.isFinite(Number(discountAmount)) ? roundEstimateMoney(discountAmount) : 0
+  const validTax = Number.isFinite(Number(taxAmount)) ? roundEstimateMoney(taxAmount) : 0
+  const automaticFinalTotal = normalizedMode === ESTIMATE_PRICING_SIMPLE
+    ? isEstimatePriceEntered(total) && Number(total) >= 0 ? roundEstimateMoney(total) : null
+    : allItemsPriced
+      ? roundEstimateMoney(pricedItemsSubtotal + (additionalCharge ?? 0) - validDiscount + validTax)
+      : null
+  const authoritativeTotal = overrideEnabled
+    ? overrideAmount
+    : automaticFinalTotal
+
+  return {
+    pricingMode: normalizedMode,
+    pricedItemsSubtotal,
+    allItemsPriced,
+    hasPricedItems: pricedAmounts.length > 0,
+    hasUnpricedItems: normalizedMode === ESTIMATE_PRICING_DETAILED && items.length > 0 && !allItemsPriced,
+    additionalScopeChargeAmount: additionalCharge,
+    additionalScopeChargeDescription: additionalChargeDescription,
+    requiresAdditionalChargeDescription,
+    manualTotalOverrideEnabled: overrideEnabled,
+    manualTotalOverrideAmount: overrideAmount,
+    automaticFinalTotal,
+    authoritativeTotal,
+    isManualFixedTotal: overrideEnabled && overrideAmount !== null,
+    isFinalizable: authoritativeTotal !== null && !requiresAdditionalChargeDescription,
+  }
+}
+
+export function isEstimatePricingReadyForDelivery(pricing = {}) {
+  return resolveEstimatePricing(pricing).isFinalizable
+}
+
+export function hasCompleteAutomaticEstimatePricing({ pricingMode, total, lineItems = [] } = {}) {
   if (resolveEstimatePricingMode(pricingMode, lineItems) !== ESTIMATE_PRICING_DETAILED) {
     return isEstimatePriceEntered(total)
   }
@@ -474,6 +545,21 @@ export function getValidExplicitEstimateItems(lineItems = []) {
   return Array.isArray(lineItems)
     ? lineItems.filter((item) => !isLegacySyntheticScopeItem(item) && isValidExplicitEstimateItem(item))
     : []
+}
+
+/**
+ * Returns the derived subtotal for explicitly priced detailed items. Missing
+ * amounts are excluded (not treated as free), while an explicit zero remains
+ * a priced amount. Null means there is nothing priced to subtotal yet.
+ */
+export function calculatePricedEstimateItemsSubtotal(lineItems = []) {
+  const pricedAmounts = getValidExplicitEstimateItems(lineItems)
+    .map((item) => resolveEstimateLineItemAmount(item))
+    .filter((amount) => isEstimatePriceEntered(amount))
+
+  return pricedAmounts.length > 0
+    ? pricedAmounts.reduce((sum, amount) => sum + Number(amount), 0)
+    : null
 }
 
 export function resolveEstimatePricingMode(pricingMode, lineItems = []) {
@@ -775,6 +861,10 @@ export function normalizeEstimateDocument({
   subtotal,
   discountAmount = 0,
   taxAmount = 0,
+  additionalScopeChargeAmount = null,
+  additionalScopeChargeDescription = '',
+  manualTotalOverrideEnabled = false,
+  manualTotalOverrideAmount = null,
   materialsIncluded = false,
   messageFromContractor = '',
   validUntil = '',
@@ -791,30 +881,29 @@ export function normalizeEstimateDocument({
         fallbackMaterialsIncluded: materialsIncluded,
       }))
     : []
-  const hasCompleteDetailedPricing = hasDetailedItems
-    && workItems.every((item) => isEstimatePriceEntered(item.amount))
-  const hasPricingGap = normalizedPricingMode === ESTIMATE_PRICING_DETAILED
-    ? !hasCompleteDetailedPricing
-    : !isEstimatePriceEntered(total)
-  const calculatedSubtotal = hasDetailedItems
-    ? hasCompleteDetailedPricing
-      ? workItems.reduce((sum, item) => sum + item.amount, 0)
-      : null
-    : isEstimatePriceEntered(total) ? Number(total) : null
-  const normalizedSubtotal = hasPricingGap || subtotal === null
-    ? null
-    : subtotal === undefined
-      ? calculatedSubtotal
-      : toFiniteNumber(subtotal)
+  const pricing = resolveEstimatePricing({
+    pricingMode: normalizedPricingMode,
+    total,
+    lineItems: workItems,
+    discountAmount,
+    taxAmount,
+    additionalScopeChargeAmount,
+    additionalScopeChargeDescription,
+    manualTotalOverrideEnabled,
+    manualTotalOverrideAmount,
+  })
+  const normalizedSubtotal = normalizedPricingMode === ESTIMATE_PRICING_DETAILED
+    ? pricing.manualTotalOverrideEnabled
+      ? null
+      : pricing.pricedItemsSubtotal
+    : subtotal === null
+      ? null
+      : subtotal === undefined
+        ? isEstimatePriceEntered(total) ? Number(total) : null
+        : toFiniteNumber(subtotal)
   const normalizedDiscountAmount = toFiniteNumber(discountAmount)
   const normalizedTaxAmount = toFiniteNumber(taxAmount)
-  const normalizedTotal = hasPricingGap || total === null
-    ? null
-    : hasFiniteStoredNumber(total)
-      ? Number(total)
-      : normalizedSubtotal === null
-        ? null
-        : normalizedSubtotal - normalizedDiscountAmount + normalizedTaxAmount
+  const normalizedTotal = pricing.authoritativeTotal
   const scopeOfWork = {
     text: scopeText,
     contentBlocks: normalizeEstimateRichText(scopeText).blocks,
@@ -831,12 +920,21 @@ export function normalizeEstimateDocument({
       contentBlocks: normalizeEstimateRichText(contractorMessageText).blocks,
     },
     validUntil: normalizeText(validUntil),
+    pricing: {
+      manualTotalOverrideEnabled: pricing.manualTotalOverrideEnabled,
+      manualTotalOverrideAmount: pricing.manualTotalOverrideAmount,
+      isManualFixedTotal: pricing.isManualFixedTotal,
+      additionalScopeChargeAmount: pricing.additionalScopeChargeAmount,
+      additionalScopeChargeDescription: pricing.additionalScopeChargeDescription,
+      requiresAdditionalChargeDescription: pricing.requiresAdditionalChargeDescription,
+    },
     workItems,
     totals: {
       subtotal: normalizedSubtotal,
       discountAmount: normalizedDiscountAmount,
       taxAmount: normalizedTaxAmount,
       total: normalizedTotal,
+      pricedItemsSubtotal: pricing.pricedItemsSubtotal,
     },
     defaults: {
       materialsIncluded: Boolean(materialsIncluded),
@@ -856,6 +954,30 @@ export function normalizeEstimateDocument({
 }
 
 export function ensureNormalizedEstimateDocument(documentModel, legacyInput = {}) {
+  if (
+    documentModel?.version === 1
+    && Array.isArray(documentModel?.workItems)
+    && documentModel?.scope
+    && documentModel?.totals
+    && documentModel?.pricing
+  ) {
+    return normalizeEstimateDocument({
+      pricingMode: documentModel.pricingMode,
+      scope: documentModel.scope?.text ?? documentModel.scopeOfWork?.text ?? '',
+      lineItems: documentModel.workItems,
+      total: documentModel.totals.total,
+      subtotal: documentModel.totals.subtotal,
+      discountAmount: documentModel.totals.discountAmount,
+      taxAmount: documentModel.totals.taxAmount,
+      additionalScopeChargeAmount: documentModel.pricing.additionalScopeChargeAmount,
+      additionalScopeChargeDescription: documentModel.pricing.additionalScopeChargeDescription,
+      manualTotalOverrideEnabled: documentModel.pricing.manualTotalOverrideEnabled,
+      manualTotalOverrideAmount: documentModel.pricing.manualTotalOverrideAmount,
+      materialsIncluded: documentModel.defaults?.materialsIncluded,
+      messageFromContractor: documentModel.messageFromContractor?.text,
+      validUntil: documentModel.validUntil,
+    })
+  }
   if (
     documentModel?.version === 1
     && Array.isArray(documentModel?.workItems)

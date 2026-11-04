@@ -56,6 +56,7 @@ import {
   normalizeEstimateLineItemForDocument,
   normalizeEstimateLineItemsForStorage,
   readEstimateTotalValue,
+  resolveEstimatePricing,
   resolveEstimatePricingMode,
   resolveEstimateValidUntil,
   shouldBypassScopeAssistantForDetailedEstimate,
@@ -269,6 +270,12 @@ function buildEstimateDraftState({ savedEstimate = {}, lead, companySettings, t 
     paymentTerms: savedEstimate.paymentTerms || companySettings?.defaults?.paymentTerms || t('defaultPaymentTerms'),
     estimateLanguage: normalizeDocumentLanguageOverride(savedEstimate.estimateLanguage),
     pricingMode: savedPricingMode,
+    additionalScopeChargeAmount: savedEstimate.additionalScopeChargeAmount ?? savedEstimate.additional_scope_charge_amount ?? null,
+    additionalScopeChargeAmountInput: formatAmountInputValue(savedEstimate.additionalScopeChargeAmount ?? savedEstimate.additional_scope_charge_amount),
+    additionalScopeChargeDescription: savedEstimate.additionalScopeChargeDescription || savedEstimate.additional_scope_charge_description || '',
+    manualTotalOverrideEnabled: Boolean(savedEstimate.manualTotalOverrideEnabled ?? savedEstimate.manual_total_override_enabled),
+    manualTotalOverrideAmount: savedEstimate.manualTotalOverrideAmount ?? savedEstimate.manual_total_override_amount ?? null,
+    manualTotalOverrideAmountInput: formatAmountInputValue(savedEstimate.manualTotalOverrideAmount ?? savedEstimate.manual_total_override_amount),
     lineItems: hasSavedLineItems ? explicitSavedLineItems : [],
     lineItemAmountInputs: (hasSavedLineItems ? explicitSavedLineItems : []).map((item) => formatAmountInputValue(item.amount)),
   }
@@ -316,6 +323,12 @@ export function EstimateBuilderPage({ lead, clientRecord = null, t, appLanguage 
   const [paymentTerms, setPaymentTerms] = useState(initialDraftState.paymentTerms)
   const [estimateLanguage, setEstimateLanguage] = useState(initialDraftState.estimateLanguage)
   const [pricingMode, setPricingMode] = useState(initialDraftState.pricingMode)
+  const [additionalScopeChargeAmount, setAdditionalScopeChargeAmount] = useState(initialDraftState.additionalScopeChargeAmount)
+  const [additionalScopeChargeAmountInput, setAdditionalScopeChargeAmountInput] = useState(initialDraftState.additionalScopeChargeAmountInput)
+  const [additionalScopeChargeDescription, setAdditionalScopeChargeDescription] = useState(initialDraftState.additionalScopeChargeDescription)
+  const [manualTotalOverrideEnabled, setManualTotalOverrideEnabled] = useState(initialDraftState.manualTotalOverrideEnabled)
+  const [manualTotalOverrideAmount, setManualTotalOverrideAmount] = useState(initialDraftState.manualTotalOverrideAmount)
+  const [manualTotalOverrideAmountInput, setManualTotalOverrideAmountInput] = useState(initialDraftState.manualTotalOverrideAmountInput)
   const [isSettingsOpen, setIsSettingsOpen] = useState(!hasExistingEstimate)
   const [confirmAction, setConfirmAction] = useState(null)
   const [showSendModal, setShowSendModal] = useState(false)
@@ -349,6 +362,10 @@ export function EstimateBuilderPage({ lead, clientRecord = null, t, appLanguage 
     estimateLanguage: savedEstimate?.estimateLanguage || '',
     optionName: savedEstimate?.optionName || savedEstimate?.option_name || '',
     pricingMode: savedEstimate?.pricingMode || savedEstimate?.pricing_mode || '',
+    additionalScopeChargeAmount: savedEstimate?.additionalScopeChargeAmount ?? savedEstimate?.additional_scope_charge_amount ?? null,
+    additionalScopeChargeDescription: savedEstimate?.additionalScopeChargeDescription ?? savedEstimate?.additional_scope_charge_description ?? '',
+    manualTotalOverrideEnabled: Boolean(savedEstimate?.manualTotalOverrideEnabled ?? savedEstimate?.manual_total_override_enabled),
+    manualTotalOverrideAmount: savedEstimate?.manualTotalOverrideAmount ?? savedEstimate?.manual_total_override_amount ?? null,
     paymentTerms: savedEstimate?.paymentTerms || '',
     materialsIncluded: savedEstimate?.materialsIncluded ?? null,
     lineItems: Array.isArray(savedEstimate?.lineItems) ? savedEstimate.lineItems : [],
@@ -400,6 +417,12 @@ export function EstimateBuilderPage({ lead, clientRecord = null, t, appLanguage 
     setPaymentTerms(nextDraftState.paymentTerms)
     setEstimateLanguage(nextDraftState.estimateLanguage)
     setPricingMode(nextDraftState.pricingMode)
+    setAdditionalScopeChargeAmount(nextDraftState.additionalScopeChargeAmount)
+    setAdditionalScopeChargeAmountInput(nextDraftState.additionalScopeChargeAmountInput)
+    setAdditionalScopeChargeDescription(nextDraftState.additionalScopeChargeDescription)
+    setManualTotalOverrideEnabled(nextDraftState.manualTotalOverrideEnabled)
+    setManualTotalOverrideAmount(nextDraftState.manualTotalOverrideAmount)
+    setManualTotalOverrideAmountInput(nextDraftState.manualTotalOverrideAmountInput)
     setLineItems(nextDraftState.lineItems)
     setLineItemAmountInputs(nextDraftState.lineItemAmountInputs)
 
@@ -428,19 +451,25 @@ export function EstimateBuilderPage({ lead, clientRecord = null, t, appLanguage 
     handleOpenSendModal()
   }, [hasExistingEstimate, isArchived, openSendOnLoad])
 
-  const pricedLineItems = getValidExplicitEstimateItems(lineItems)
-  const hasCompleteDetailedPricing = pricedLineItems.length > 0
-    && pricedLineItems.every((item) => isEstimatePriceEntered(item.amount))
-  const lineTotal = hasCompleteDetailedPricing
-    ? pricedLineItems.reduce((sum, item) => sum + Number(item.amount), 0)
-    : null
+  const pricingResult = resolveEstimatePricing({
+    pricingMode,
+    total,
+    lineItems,
+    discountAmount: savedEstimate.discountAmount,
+    taxAmount: savedEstimate.taxAmount,
+    additionalScopeChargeAmount,
+    additionalScopeChargeDescription,
+    manualTotalOverrideEnabled,
+    manualTotalOverrideAmount,
+  })
+  const pricedItemsSubtotal = pricingResult.pricedItemsSubtotal
   const isDetailedPricing = pricingMode === detailedPricingMode
   const isDetailOnlyEstimate = shouldBypassScopeAssistantForDetailedEstimate({
     scope,
     lineItems,
     pricingMode,
   })
-  const estimateTotal = isDetailedPricing ? lineTotal : total
+  const estimateTotal = isDetailedPricing ? pricingResult.authoritativeTotal : total
   const scopeAssistantFeatureEnabled = isAiScopeAssistantEnabled()
   const isScopeAssistantActionPending = isImprovingScope
     || isRegeneratingScope
@@ -574,10 +603,14 @@ export function EstimateBuilderPage({ lead, clientRecord = null, t, appLanguage 
     lineItems,
     total: estimateTotal,
     subtotal: isDetailedPricing
-      ? lineTotal
+      ? pricedItemsSubtotal
       : estimateTotal === null ? null : Number(savedEstimate?.subtotal ?? estimateTotal),
     discountAmount: savedEstimate?.discountAmount,
     taxAmount: savedEstimate?.taxAmount,
+    additionalScopeChargeAmount,
+    additionalScopeChargeDescription,
+    manualTotalOverrideEnabled,
+    manualTotalOverrideAmount,
     materialsIncluded,
     messageFromContractor: readEstimateContractorMessage(savedEstimate),
     validUntil: resolveEstimateValidUntil(
@@ -588,9 +621,13 @@ export function EstimateBuilderPage({ lead, clientRecord = null, t, appLanguage 
   }), [
     companySettings?.defaults?.estimateExpirationDays,
     estimateTotal,
+    additionalScopeChargeAmount,
+    additionalScopeChargeDescription,
+    manualTotalOverrideEnabled,
+    manualTotalOverrideAmount,
     isDetailedPricing,
     lineItems,
-    lineTotal,
+    pricedItemsSubtotal,
     materialsIncluded,
     previewEstimateDate,
     pricingMode,
@@ -636,6 +673,10 @@ export function EstimateBuilderPage({ lead, clientRecord = null, t, appLanguage 
       estimateLanguage: estimateLanguage || '',
       scopeAssistantState,
       pricingMode,
+      additionalScopeChargeAmount,
+      additionalScopeChargeDescription,
+      manualTotalOverrideEnabled,
+      manualTotalOverrideAmount,
       updatedAt: new Date().toISOString(),
       status: 'Draft',
     }
@@ -694,6 +735,11 @@ export function EstimateBuilderPage({ lead, clientRecord = null, t, appLanguage 
 
   async function handleOpenSendModal() {
     if (isEstimateActionPending || estimateSaveGuardRef.current) return
+
+    if (!pricingResult.isFinalizable) {
+      showToast(t(pricingResult.requiresAdditionalChargeDescription ? 'additionalChargeDescriptionRequired' : 'estimatePricingRequiredForDelivery'), 'error')
+      return
+    }
 
     const readiness = await getEstimateSendReadiness()
     setScopeAssistantReadiness(readiness)
@@ -1061,7 +1107,15 @@ export function EstimateBuilderPage({ lead, clientRecord = null, t, appLanguage 
       return null
     }
 
-    if (!isEstimateFullyPriced({ pricingMode, total: estimateTotal, lineItems })) {
+    if (!isEstimateFullyPriced({
+      pricingMode,
+      total: estimateTotal,
+      lineItems,
+      manualTotalOverrideEnabled,
+      manualTotalOverrideAmount,
+      additionalScopeChargeAmount,
+      additionalScopeChargeDescription,
+    }) || pricingResult.requiresAdditionalChargeDescription) {
       showToast(t('estimatePricingRequiredForContract'), 'error')
       return null
     }
@@ -1187,6 +1241,25 @@ export function EstimateBuilderPage({ lead, clientRecord = null, t, appLanguage 
     updateLineItem(index, 'quantity', Number.isFinite(quantity) && quantity > 0 ? quantity : undefined)
   }
 
+  function handlePricingAmountInput(rawValue, setInput, setAmount) {
+    const sanitizedValue = sanitizeAmountInput(rawValue)
+    markDraftDirty()
+    setInput(sanitizedValue)
+    setAmount(sanitizedValue === '' || sanitizedValue === '.' ? null : Number(sanitizedValue))
+  }
+
+  function handlePricingAmountBlur(inputValue, setInput, setAmount) {
+    const normalizedValue = sanitizeAmountInput(inputValue)
+    if (normalizedValue === '' || normalizedValue === '.') {
+      setInput('')
+      setAmount(null)
+      return
+    }
+    const numericValue = Number(normalizedValue)
+    setInput(formatAmountInputValue(numericValue))
+    setAmount(Number.isFinite(numericValue) ? numericValue : null)
+  }
+
   function handleSimpleTotalInput(rawValue) {
     const sanitizedValue = sanitizeAmountInput(rawValue)
     markDraftDirty()
@@ -1244,7 +1317,7 @@ export function EstimateBuilderPage({ lead, clientRecord = null, t, appLanguage 
           materialsIncluded,
           paymentTerms: getPaymentTermLabel(paymentTerms, estimateT),
           total: estimateTotal,
-          subtotal: isDetailedPricing ? lineTotal : estimateTotal === null ? null : Number(savedEstimate?.subtotal ?? estimateTotal),
+          subtotal: isDetailedPricing ? pricedItemsSubtotal : estimateTotal === null ? null : Number(savedEstimate?.subtotal ?? estimateTotal),
           discountAmount: savedEstimate?.discountAmount,
           taxAmount: savedEstimate?.taxAmount,
           messageFromContractor: readEstimateContractorMessage(savedEstimate),
@@ -1570,9 +1643,86 @@ export function EstimateBuilderPage({ lead, clientRecord = null, t, appLanguage 
                       </div>
                     ) : null}
                   </div>
+                  <div className="grid gap-4 rounded-2xl border border-slate-200 p-4 sm:grid-cols-2">
+                    <div className="space-y-2">
+                      <label className="block text-xs font-bold uppercase tracking-wide text-slate-600">{t('additionalScopeCharge')}</label>
+                      {isEditing ? (
+                        <>
+                          <input
+                            type="text"
+                            inputMode="decimal"
+                            value={additionalScopeChargeAmountInput}
+                            onChange={(event) => handlePricingAmountInput(event.target.value, setAdditionalScopeChargeAmountInput, setAdditionalScopeChargeAmount)}
+                            onBlur={() => handlePricingAmountBlur(additionalScopeChargeAmountInput, setAdditionalScopeChargeAmountInput, setAdditionalScopeChargeAmount)}
+                            placeholder={t('optionalAmount')}
+                            aria-label={t('additionalScopeChargeAmount')}
+                            className="h-11 w-full rounded-xl border border-slate-200 px-3 text-sm outline-none focus:border-blue-500 focus:ring-4 focus:ring-blue-100"
+                          />
+                          <input
+                            type="text"
+                            value={additionalScopeChargeDescription}
+                            onChange={(event) => { markDraftDirty(); setAdditionalScopeChargeDescription(event.target.value) }}
+                            placeholder={t('additionalScopeChargeDescriptionPlaceholder')}
+                            aria-label={t('additionalScopeChargeDescription')}
+                            className="h-11 w-full rounded-xl border border-slate-200 px-3 text-sm outline-none focus:border-blue-500 focus:ring-4 focus:ring-blue-100"
+                          />
+                        </>
+                      ) : additionalScopeChargeAmount !== null ? (
+                        <p className="text-sm text-slate-700">{additionalScopeChargeDescription || t('additionalScopeCharge')} · {formatEstimateCurrency(additionalScopeChargeAmount)}</p>
+                      ) : <p className="text-sm text-slate-500">{t('notSpecified')}</p>}
+                      {pricingResult.requiresAdditionalChargeDescription ? <p className="text-xs text-rose-700">{t('additionalChargeDescriptionRequired')}</p> : null}
+                    </div>
+                    <div className="space-y-2">
+                      {isEditing ? (
+                        <label className="flex min-h-11 items-center gap-3 text-sm font-semibold text-slate-800">
+                          <input
+                            type="checkbox"
+                            checked={manualTotalOverrideEnabled}
+                            onChange={(event) => { markDraftDirty(); setManualTotalOverrideEnabled(event.target.checked) }}
+                            className="h-4 w-4 rounded border-slate-300 text-blue-600 focus:ring-blue-500"
+                          />
+                          {t('manualFinalTotalOverride')}
+                        </label>
+                      ) : manualTotalOverrideEnabled ? <p className="text-sm font-semibold text-slate-800">{t('manualFinalTotalOverride')}</p> : null}
+                      {manualTotalOverrideEnabled ? (
+                        <>
+                          {isEditing ? (
+                            <input
+                              type="text"
+                              inputMode="decimal"
+                              value={manualTotalOverrideAmountInput}
+                              onChange={(event) => handlePricingAmountInput(event.target.value, setManualTotalOverrideAmountInput, setManualTotalOverrideAmount)}
+                              onBlur={() => handlePricingAmountBlur(manualTotalOverrideAmountInput, setManualTotalOverrideAmountInput, setManualTotalOverrideAmount)}
+                              placeholder={t('finalEstimateTotal')}
+                              aria-label={t('manualTotalOverrideAmount')}
+                              className="h-11 w-full rounded-xl border border-slate-200 px-3 text-sm outline-none focus:border-blue-500 focus:ring-4 focus:ring-blue-100"
+                            />
+                          ) : <p className="text-sm font-bold text-slate-900">{formatEstimateCurrency(manualTotalOverrideAmount)}</p>}
+                          <p className="text-xs leading-5 text-slate-500">{t('manualTotalOverrideHelp')}</p>
+                        </>
+                      ) : isEditing ? <p className="text-xs leading-5 text-slate-500">{t('automaticPricingHelp')}</p> : null}
+                    </div>
+                  </div>
                   <div className="rounded-2xl bg-blue-50 px-4 py-4 text-blue-700">
-                    <p className="text-xs font-bold uppercase tracking-wide">{t('calculatedTotal')}</p>
-                    <p className="mt-1 text-2xl font-bold">{formatEstimateCurrency(lineTotal)}</p>
+                    <p className="text-xs font-bold uppercase tracking-wide">{t('pricedItemsSubtotal')}</p>
+                    <p className="mt-1 text-2xl font-bold">{formatEstimateCurrency(pricedItemsSubtotal)}</p>
+                    {additionalScopeChargeAmount !== null ? (
+                      <div className="mt-2 flex items-baseline justify-between gap-3 text-sm">
+                        <span>{additionalScopeChargeDescription || t('additionalScopeCharge')}</span>
+                        <span className="font-semibold">{formatEstimateCurrency(additionalScopeChargeAmount)}</span>
+                      </div>
+                    ) : null}
+                    {estimateTotal !== null ? (
+                      <div className="mt-3 flex items-baseline justify-between gap-3 border-t border-blue-200 pt-3">
+                        <span className="text-xs font-semibold text-blue-700">{t('finalEstimateTotal')}</span>
+                        <span className="text-sm font-bold text-blue-800">{formatEstimateCurrency(estimateTotal)}</span>
+                      </div>
+                    ) : manualTotalOverrideEnabled ? (
+                      <p className="mt-2 text-xs text-blue-700/80">{t('manualOverrideAmountRequired')}</p>
+                    ) : pricingResult.hasUnpricedItems ? (
+                      <p className="mt-2 text-xs text-blue-700/80">{t('someItemsUnpriced')}</p>
+                    ) : null}
+                    {manualTotalOverrideEnabled && estimateTotal !== null ? <p className="mt-2 text-xs text-blue-700/80">{t('fixedTotalIncludesAdditionalScope')}</p> : null}
                   </div>
                 </>
               ) : (

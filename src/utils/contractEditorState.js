@@ -35,6 +35,11 @@ export function buildContractEditorState({ lead = {}, portal = {}, savedContract
   })
   const hasSavedScope = hasStoredContractField(savedContract, ['scope', 'scopeOfWork'])
   const hasSavedPaymentTerms = hasStoredContractField(savedContract, ['paymentTerms', 'payment_terms'])
+  const hasSavedPricingContext = hasStoredContractField(savedContract, [
+    'isFixedTotalQuote', 'is_fixed_total_quote',
+    'additionalScopeChargeAmount', 'additional_scope_charge_amount',
+    'additionalScopeChargeDescription', 'additional_scope_charge_description',
+  ])
 
   return {
     title: savedContract.title || savedContract.projectTitle || lead.projectTitle || lead.projectType || estimate.projectTitle || 'Contract',
@@ -42,6 +47,15 @@ export function buildContractEditorState({ lead = {}, portal = {}, savedContract
       ? readStoredContractField(savedContract, ['scope', 'scopeOfWork'])
       : estimate.summary || estimate.scopeOfWork || '',
     workBreakdown,
+    isFixedTotalQuote: hasSavedPricingContext
+      ? Boolean(savedContract.isFixedTotalQuote ?? savedContract.is_fixed_total_quote)
+      : !savedContract?.id && Boolean(estimate.manualTotalOverrideEnabled ?? estimate.manual_total_override_enabled),
+    additionalScopeChargeAmount: hasSavedPricingContext
+      ? (savedContract.additionalScopeChargeAmount ?? savedContract.additional_scope_charge_amount ?? null)
+      : savedContract?.id ? null : (estimate.additionalScopeChargeAmount ?? estimate.additional_scope_charge_amount ?? null),
+    additionalScopeChargeDescription: hasSavedPricingContext
+      ? (savedContract.additionalScopeChargeDescription || savedContract.additional_scope_charge_description || '')
+      : savedContract?.id ? '' : (estimate.additionalScopeChargeDescription || estimate.additional_scope_charge_description || ''),
     paymentTerms: buildGeneratedContractPaymentTerms({
       paymentTerms: hasSavedPaymentTerms
         ? readStoredContractField(savedContract, ['paymentTerms', 'payment_terms'])
