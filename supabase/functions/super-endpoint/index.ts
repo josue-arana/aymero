@@ -67,6 +67,29 @@ function jsonResponse(body: unknown, status = 200) {
   })
 }
 
+function portalQueryFailure(step: string, error: { code?: string } | null, requestId: string) {
+  const code = String(error?.code || '')
+  const safeCode = /^[A-Z0-9]{4,10}$/.test(code) ? code : 'unknown'
+  const message = safeCode === '42703' || safeCode === 'PGRST204'
+    ? 'Selected database column is unavailable.'
+    : safeCode === '42501'
+      ? 'Database permission denied.'
+      : 'Database request failed.'
+
+  console.error('[super-endpoint] Portal query failed', {
+    operation: 'portal',
+    step,
+    requestId,
+    code: safeCode,
+    message,
+  })
+
+  return new Response(JSON.stringify({ error: 'Portal service unavailable.' }), {
+    status: 500,
+    headers: { ...corsHeaders, 'Content-Type': 'application/json', 'X-Request-Id': requestId },
+  })
+}
+
 function mapEstimate(row: Record<string, unknown> | null) {
   if (!row) return null
 
@@ -365,6 +388,7 @@ Deno.serve(async (request) => {
     })
   }
 
+  const portalRequestId = crypto.randomUUID()
   const { data: project, error: projectError } = await admin
     .from('projects')
     .select('id, contractor_id, client_id, lead_id, public_portal_token, title, project_type, address, status, estimated_value, contract_value, start_date, target_end_date, created_at, updated_at')
@@ -372,7 +396,7 @@ Deno.serve(async (request) => {
     .is('archived_at', null)
     .maybeSingle()
 
-  if (projectError) return jsonResponse({ error: 'Portal service unavailable.' }, 500)
+  if (projectError) return portalQueryFailure('project_lookup', projectError, portalRequestId)
   if (!project) return jsonResponse({ error: 'Client Portal Not Found.' }, 404)
 
   const contractorId = project.contractor_id
@@ -396,7 +420,7 @@ Deno.serve(async (request) => {
     project.lead_id
       ? admin
           .from('leads')
-          .select('name, phone, email, address')
+          .select('name, phone, email, address, client_language')
           .eq('contractor_id', contractorId)
           .eq('id', project.lead_id)
           .is('archived_at', null)
@@ -404,7 +428,9 @@ Deno.serve(async (request) => {
       : Promise.resolve({ data: null, error: null }),
   ])
 
-  if (settingsResult.error || clientResult.error || leadResult.error) return jsonResponse({ error: 'Portal service unavailable.' }, 500)
+  if (settingsResult.error) return portalQueryFailure('company_settings', settingsResult.error, portalRequestId)
+  if (clientResult.error) return portalQueryFailure('linked_client', clientResult.error, portalRequestId)
+  if (leadResult.error) return portalQueryFailure('linked_lead', leadResult.error, portalRequestId)
 
   const settings = settingsResult.data || {}
   const showPayments = settings.show_payments_in_portal !== false
@@ -430,8 +456,15 @@ Deno.serve(async (request) => {
       : Promise.resolve({ data: [], error: null }),
   ])
 
-  const queryError = [estimateResult.error, contractResult.error, paymentResult.error, eventResult.error, photoResult.error].find(Boolean)
-  if (queryError) return jsonResponse({ error: 'Portal service unavailable.' }, 500)
+  const relatedQueries = [
+    ['estimate', estimateResult.error],
+    ['contract', contractResult.error],
+    ['payments', paymentResult.error],
+    ['events', eventResult.error],
+    ['photos', photoResult.error],
+  ] as const
+  const failedQuery = relatedQueries.find(([, error]) => Boolean(error))
+  if (failedQuery) return portalQueryFailure(failedQuery[0], failedQuery[1], portalRequestId)
 
   const photos = await Promise.all((photoResult.data || []).map(async (photo) => {
     const storagePath = photo.thumbnail_path || photo.file_path
@@ -458,6 +491,7 @@ Deno.serve(async (request) => {
   const customerPhone = client.phone || (useDraftLeadContact ? relatedLead.phone : '') || ''
   const customerEmail = client.email || (useDraftLeadContact ? relatedLead.email : '') || ''
   const customerAddress = client.address || (useDraftLeadContact ? relatedLead.address : '') || ''
+  const customerPreferredLanguage = client.preferred_language || relatedLead.client_language || ''
   const publicProjectId = project.public_portal_token
   const projectStatus = projectStatusLabels[String(project.status || '')] || project.status || ''
   const publicPayments = (paymentResult.data || []).map((payment) => mapPublicPayment(payment, publicProjectId))
@@ -484,6 +518,7 @@ Deno.serve(async (request) => {
       updatedAt: project.updated_at || '',
       client: customerName,
       clientName: customerName,
+      preferredLanguage: customerPreferredLanguage,
       phone: customerPhone,
       email: customerEmail,
       clientAddress: customerAddress,
@@ -504,7 +539,7 @@ Deno.serve(async (request) => {
       city: client.city || '',
       state: client.state || '',
       postalCode: client.postal_code || '',
-      preferredLanguage: client.preferred_language || '',
+      preferredLanguage: customerPreferredLanguage,
     },
     estimate,
     contract,
@@ -526,7 +561,7 @@ Deno.serve(async (request) => {
       },
       defaults: { paymentTerms: settings.default_payment_terms || '' },
       portal: {
-        defaultLanguage: settings.customer_portal_language || client.preferred_language || 'en',
+        defaultLanguage: customerPreferredLanguage || 'en',
         showPayments,
         showPhotos,
         showDocuments,
