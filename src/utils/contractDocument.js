@@ -100,7 +100,11 @@ export function normalizeContractWorkBreakdown(items = [], fallbackMaterialsIncl
             ?? item?.title
             ?? ''
       )
-      const amount = toSafeNumber(item?.amount)
+      const hasAmount = item?.amount !== null
+        && item?.amount !== undefined
+        && item?.amount !== ''
+        && Number.isFinite(Number(item.amount))
+      const amount = hasAmount ? toSafeNumber(item.amount) : null
       const quantity = resolveEstimateLineItemQuantity(item)
       const materialsUnspecified = item?.materialsStatus === ESTIMATE_MATERIALS_UNSPECIFIED
       const materialsIncluded = materialsUnspecified
@@ -131,7 +135,7 @@ export function normalizeContractWorkBreakdown(items = [], fallbackMaterialsIncl
         materialsStatus,
       }
     })
-    .filter((item) => item.rawText || item.amount > 0)
+    .filter((item) => item.rawText || item.amount !== null)
 }
 
 export function buildContractWorkBreakdownFromEstimate(estimate = {}) {

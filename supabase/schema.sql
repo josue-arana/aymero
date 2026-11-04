@@ -250,6 +250,14 @@ create table estimates (
   discount_amount numeric(12,2) not null default 0,
   tax_amount numeric(12,2) not null default 0,
   total_amount numeric(12,2) default 0,
+  additional_scope_charge_amount numeric(12,2)
+    constraint estimates_additional_scope_charge_amount_nonnegative_check
+    check (additional_scope_charge_amount is null or additional_scope_charge_amount >= 0),
+  additional_scope_charge_description text,
+  manual_total_override_enabled boolean not null default false,
+  manual_total_override_amount numeric(12,2)
+    constraint estimates_manual_total_override_amount_nonnegative_check
+    check (manual_total_override_amount is null or manual_total_override_amount >= 0),
   deposit_percentage numeric(5,2),
   materials_included boolean not null default true,
   payment_terms text,

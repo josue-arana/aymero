@@ -112,6 +112,12 @@ function toNumber(value, fallback = 0) {
   return Number.isFinite(parsed) ? parsed : fallback
 }
 
+function toNullableNumber(value) {
+  if (value === null || value === undefined || value === '') return null
+  const parsed = Number(value)
+  return Number.isFinite(parsed) ? parsed : null
+}
+
 function mapStatusToDb(status) {
   if (!status) return 'draft'
   return uiToDbStatusMap[status] || String(status).toLowerCase().replace(/\s+/g, '_')
@@ -163,6 +169,9 @@ function serializeTerms(contract = {}) {
   const contractLanguage = readField(contract, ['contractLanguage'])
   const acceptanceLegalText = readField(contract, ['acceptanceLegalText'])
   const workBreakdown = normalizeContractWorkBreakdown(readField(contract, ['workBreakdown']) || [])
+  const isFixedTotalQuote = readField(contract, ['isFixedTotalQuote', 'is_fixed_total_quote'])
+  const additionalScopeChargeAmount = readField(contract, ['additionalScopeChargeAmount', 'additional_scope_charge_amount'])
+  const additionalScopeChargeDescription = readField(contract, ['additionalScopeChargeDescription', 'additional_scope_charge_description'])
   const sections = {
     materials: readField(contract, ['materials']),
     timeline: readField(contract, ['timeline']),
@@ -175,6 +184,9 @@ function serializeTerms(contract = {}) {
     || contractLanguage !== undefined
     || acceptanceLegalText !== undefined
     || workBreakdown.length > 0
+    || isFixedTotalQuote !== undefined
+    || additionalScopeChargeAmount !== undefined
+    || additionalScopeChargeDescription !== undefined
 
   if (!hasStructuredSections) {
     return termsText === undefined ? undefined : termsText || null
@@ -186,6 +198,11 @@ function serializeTerms(contract = {}) {
     contractLanguage: contractLanguage || '',
     acceptanceLegalText: acceptanceLegalText || '',
     workBreakdown,
+    pricingContext: {
+      isFixedTotalQuote: Boolean(isFixedTotalQuote),
+      additionalScopeChargeAmount: toNullableNumber(additionalScopeChargeAmount),
+      additionalScopeChargeDescription: String(additionalScopeChargeDescription || '').trim(),
+    },
     sections: {
       materials: sections.materials || '',
       timeline: sections.timeline || '',
@@ -207,6 +224,9 @@ function parseTerms(terms) {
     contractLanguage: '',
     acceptanceLegalText: '',
     workBreakdown: [],
+    isFixedTotalQuote: false,
+    additionalScopeChargeAmount: null,
+    additionalScopeChargeDescription: '',
   }
 
   if (!terms) return fallback
@@ -228,6 +248,9 @@ function parseTerms(terms) {
       contractLanguage: parsed.contractLanguage || '',
       acceptanceLegalText: parsed.acceptanceLegalText || '',
       workBreakdown: normalizeContractWorkBreakdown(parsed.workBreakdown || []),
+      isFixedTotalQuote: Boolean(parsed.pricingContext?.isFixedTotalQuote),
+      additionalScopeChargeAmount: toNullableNumber(parsed.pricingContext?.additionalScopeChargeAmount),
+      additionalScopeChargeDescription: String(parsed.pricingContext?.additionalScopeChargeDescription || ''),
     }
   } catch {
     return fallback
@@ -285,6 +308,9 @@ function toAppContract(row) {
     contractLanguage: parsedTerms.contractLanguage || '',
     acceptanceLegalText: parsedTerms.acceptanceLegalText || '',
     workBreakdown: normalizeContractWorkBreakdown(parsedTerms.workBreakdown || []),
+    isFixedTotalQuote: parsedTerms.isFixedTotalQuote,
+    additionalScopeChargeAmount: parsedTerms.additionalScopeChargeAmount,
+    additionalScopeChargeDescription: parsedTerms.additionalScopeChargeDescription,
     materials: parsedTerms.materials,
     timeline: parsedTerms.timeline,
     changeOrders: parsedTerms.changeOrders,
@@ -306,7 +332,6 @@ function toAppContract(row) {
     createdAt: row?.created_at || null,
     updatedAt: row?.updated_at || null,
     archivedAt: row?.archived_at || null,
-    client: '',
   }
 }
 

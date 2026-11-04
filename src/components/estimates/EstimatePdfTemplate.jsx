@@ -412,6 +412,10 @@ export function EstimatePdfTemplate({
   subtotal,
   discountAmount,
   taxAmount,
+  additionalScopeChargeAmount,
+  additionalScopeChargeDescription,
+  manualTotalOverrideEnabled,
+  manualTotalOverrideAmount,
   messageFromContractor,
   validUntil,
   lineItems = [],
@@ -427,6 +431,10 @@ export function EstimatePdfTemplate({
     subtotal,
     discountAmount,
     taxAmount,
+    additionalScopeChargeAmount,
+    additionalScopeChargeDescription,
+    manualTotalOverrideEnabled,
+    manualTotalOverrideAmount,
     materialsIncluded,
     messageFromContractor,
     validUntil,
@@ -438,6 +446,8 @@ export function EstimatePdfTemplate({
   const documentSubtotal = normalizedDocument.totals.subtotal
   const documentDiscount = normalizedDocument.totals.discountAmount
   const documentTax = normalizedDocument.totals.taxAmount
+  const pricing = normalizedDocument.pricing || {}
+  const isFixedTotalQuote = Boolean(pricing.isManualFixedTotal)
   const hasScope = normalizedDocument.sections.scope.visible
   const hasLineItems = normalizedDocument.sections.workBreakdown.visible
   const hasQuantity = workItems.some((item) => Number(item?.quantity) > 0)
@@ -546,7 +556,7 @@ export function EstimatePdfTemplate({
               textAlign: 'right',
             }}
           >
-            <SummaryBlock label={t('totalEstimate')} align="right">
+            <SummaryBlock label={isFixedTotalQuote ? t('fixedTotalQuote') : t('totalEstimate')} align="right">
               <div style={{ fontSize: '25px', lineHeight: 1, fontWeight: 700, letterSpacing: '-0.025em', color: colors.ink }}>
                 {documentTotal === null || documentTotal === undefined ? '' : currency.format(Number(documentTotal))}
               </div>
@@ -730,6 +740,7 @@ export function EstimatePdfTemplate({
         <div style={{ display: 'grid', minWidth: 0, gap: '10px' }}>
           <div
             data-estimate-totals="true"
+            data-estimate-fixed-total={isFixedTotalQuote ? 'true' : 'false'}
             data-estimate-keep-together="true"
             style={{
               border: `1px solid ${colors.slate200}`,
@@ -739,10 +750,18 @@ export function EstimatePdfTemplate({
             }}
           >
             <div style={{ display: 'grid', gap: '8px' }}>
-              <EstimateTotalRow label={t('subtotal')} value={documentSubtotal} accentTextColor={accentTextColor} />
-              {documentDiscount > 0 ? <EstimateTotalRow label={t('discount')} value={-documentDiscount} accentTextColor={accentTextColor} /> : null}
-              {documentTax > 0 ? <EstimateTotalRow label={t('salesTax')} value={documentTax} accentTextColor={accentTextColor} /> : null}
+              {!isFixedTotalQuote ? <EstimateTotalRow label={t('subtotal')} value={documentSubtotal} accentTextColor={accentTextColor} /> : null}
+              {pricing.additionalScopeChargeAmount !== null && pricing.additionalScopeChargeAmount !== undefined ? (
+                <EstimateTotalRow
+                  label={pricing.additionalScopeChargeDescription || t('additionalScopeCharge')}
+                  value={pricing.additionalScopeChargeAmount}
+                  accentTextColor={accentTextColor}
+                />
+              ) : null}
+              {!isFixedTotalQuote && documentDiscount > 0 ? <EstimateTotalRow label={t('discount')} value={-documentDiscount} accentTextColor={accentTextColor} /> : null}
+              {!isFixedTotalQuote && documentTax > 0 ? <EstimateTotalRow label={t('salesTax')} value={documentTax} accentTextColor={accentTextColor} /> : null}
             </div>
+            {isFixedTotalQuote ? <p style={{ margin: '8px 0 0', fontSize: '9px', lineHeight: 1.4, color: colors.slate500 }}>{t('fixedTotalIncludesAdditionalScope')}</p> : null}
             <div style={{ marginTop: '10px', borderTop: `1px solid ${colors.slate300}`, paddingTop: '10px' }}>
               <EstimateTotalRow label={t('totalEstimate')} value={documentTotal} emphasized accentTextColor={accentTextColor} />
             </div>

@@ -105,7 +105,7 @@ export function ContractWorkBreakdownEditor({ workBreakdown = [], onChange, t = 
                 ) : null}
                 <div className="rounded-xl bg-slate-50 px-3 py-3 text-right text-sm font-bold text-slate-900">
                   <p className="text-[11px] uppercase tracking-[0.14em] text-slate-400">{t('lineItemAmount')}</p>
-                  <p className="mt-1">{currency.format(Number(item.amount || 0))}</p>
+                  <p className="mt-1">{item.amount === null || item.amount === undefined ? '' : currency.format(Number(item.amount))}</p>
                 </div>
               </div>
             </div>

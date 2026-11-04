@@ -5,6 +5,7 @@ import {
   normalizeEstimateLineItemsForStorage,
   normalizeEstimateFormattedTextForStorage,
   resolveEstimatePricingMode,
+  resolveEstimatePricing,
 } from '../../utils/estimateDocument'
 import {
   normalizeScopeAssistantState,
@@ -237,6 +238,10 @@ export function toAppEstimate(row) {
     taxAmount: toNumber(row?.tax_amount),
     total: toNullableNumber(row?.total_amount),
     totalAmount: toNullableNumber(row?.total_amount),
+    additionalScopeChargeAmount: toNullableNumber(row?.additional_scope_charge_amount),
+    additionalScopeChargeDescription: row?.additional_scope_charge_description || '',
+    manualTotalOverrideEnabled: Boolean(row?.manual_total_override_enabled),
+    manualTotalOverrideAmount: toNullableNumber(row?.manual_total_override_amount),
     amount: toNullableNumber(row?.total_amount),
     depositPercentage: row?.deposit_percentage === null || row?.deposit_percentage === undefined ? null : toNumber(row?.deposit_percentage),
     materialsIncluded: Boolean(row?.materials_included),
@@ -275,6 +280,10 @@ export function toSupabasePayload(contractorId, estimate = {}, { isCreate = fals
   const estimateLanguageInput = readField(estimate, ['estimateLanguage'])
   const scopeAssistantStateInput = readField(estimate, ['scopeAssistantState', 'scope_assistant_state'])
   const optionNameInput = readField(estimate, ['optionName', 'option_name'])
+  const additionalScopeChargeAmountInput = readField(estimate, ['additionalScopeChargeAmount', 'additional_scope_charge_amount'])
+  const additionalScopeChargeDescriptionInput = readField(estimate, ['additionalScopeChargeDescription', 'additional_scope_charge_description'])
+  const manualTotalOverrideEnabledInput = readField(estimate, ['manualTotalOverrideEnabled', 'manual_total_override_enabled'])
+  const manualTotalOverrideAmountInput = readField(estimate, ['manualTotalOverrideAmount', 'manual_total_override_amount'])
 
   if (contractorId) {
     payload.contractor_id = contractorId
@@ -339,9 +348,33 @@ export function toSupabasePayload(contractorId, estimate = {}, { isCreate = fals
     const subtotal = payload.subtotal ?? 0
     const discountAmount = payload.discount_amount ?? 0
     const taxAmount = payload.tax_amount ?? 0
-    payload.total_amount = lineItems !== undefined && sumLineItems(lineItems) === null
-      ? null
+    const detailedPricing = resolveEstimatePricing({
+      pricingMode: readField(estimate, ['pricingMode', 'pricing_mode']),
+      total: null,
+      lineItems: lineItems || [],
+      discountAmount,
+      taxAmount,
+      additionalScopeChargeAmount: additionalScopeChargeAmountInput,
+      additionalScopeChargeDescription: additionalScopeChargeDescriptionInput,
+      manualTotalOverrideEnabled: manualTotalOverrideEnabledInput,
+      manualTotalOverrideAmount: manualTotalOverrideAmountInput,
+    })
+    payload.total_amount = detailedPricing.pricingMode === 'detailed'
+      ? detailedPricing.authoritativeTotal
       : subtotal - discountAmount + taxAmount
+  }
+
+  if (isCreate || additionalScopeChargeAmountInput !== undefined) {
+    payload.additional_scope_charge_amount = toNullableNumber(additionalScopeChargeAmountInput)
+  }
+  if (isCreate || additionalScopeChargeDescriptionInput !== undefined) {
+    payload.additional_scope_charge_description = String(additionalScopeChargeDescriptionInput || '').trim() || null
+  }
+  if (isCreate || manualTotalOverrideEnabledInput !== undefined) {
+    payload.manual_total_override_enabled = Boolean(manualTotalOverrideEnabledInput)
+  }
+  if (isCreate || manualTotalOverrideAmountInput !== undefined) {
+    payload.manual_total_override_amount = toNullableNumber(manualTotalOverrideAmountInput)
   }
 
   if (isCreate || readField(estimate, ['depositPercentage', 'deposit_percentage']) !== undefined) {
