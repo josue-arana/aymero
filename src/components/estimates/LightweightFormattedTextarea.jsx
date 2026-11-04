@@ -335,6 +335,8 @@ export const LightweightFormattedTextarea = forwardRef(function LightweightForma
   placeholder,
   rows = 4,
   ariaLabel,
+  ariaInvalid,
+  ariaDescribedBy,
   t,
   className = '',
   minHeight,
@@ -712,6 +714,8 @@ export const LightweightFormattedTextarea = forwardRef(function LightweightForma
           aria-multiline="true"
           aria-label={ariaLabel}
           aria-placeholder={placeholder}
+          aria-invalid={ariaInvalid}
+          aria-describedby={ariaDescribedBy}
           contentEditable
           suppressContentEditableWarning
           spellCheck
@@ -726,7 +730,7 @@ export const LightweightFormattedTextarea = forwardRef(function LightweightForma
           className={`relative z-[1] block w-full overflow-x-hidden border-0 bg-transparent outline-none focus:ring-0 ${className}`.trim()}
           style={{
             minHeight: `${Number(minHeight) || Math.max(104, rows * 24 + 32)}px`,
-            maxHeight: `${maxHeight}px`,
+            maxHeight: Number.isFinite(Number(maxHeight)) ? `${maxHeight}px` : 'none',
           }}
         />
       </div>

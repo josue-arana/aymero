@@ -1293,6 +1293,8 @@ export const es = {
   "useHalfDeposit": "Usar deposito del 50%",
   "enterPaymentAmount": "Ingresa un monto de pago",
   "paymentAmountMustBeGreaterThanZero": "El monto del pago debe ser mayor que cero",
+  "paymentInvoiceSyncPending": "Ya se registró un pago y debe sincronizarse antes de enviar otro.",
+  "paymentInvoiceSyncPendingHelp": "El pago se registró, pero no se pudo sincronizar el saldo de la factura. Vuelve a guardar el pago para completar la actualización de la factura. No cierres este diálogo ni envíes otro pago.",
   "projectRequiredBeforePayment": "Se requiere un proyecto antes de registrar un pago",
   "recordPaymentRequiresRealProject": "Registrar pago no está disponible hasta que este contrato esté vinculado a un proyecto real.",
   "paymentRecordedTimelineTitle": "Pago registrado",

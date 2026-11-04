@@ -3,6 +3,7 @@ import { useLocation, useNavigate, useParams } from 'react-router-dom'
 import { Archive, Building2, CalendarDays, CheckCircle2, ChevronRight, CreditCard, DollarSign, Download, Eye, FileText, Pencil, Printer, RotateCcw, Save, Send, Trash2, UserRound, Wallet } from 'lucide-react'
 import { StatusBadge } from '../components/ui/StatusBadge'
 import { InvoiceDocumentPreview } from '../components/invoices/InvoiceDocumentPreview'
+import { LightweightFormattedTextarea } from '../components/estimates/LightweightFormattedTextarea'
 import { contractorCompany } from '../data/mockInvoices'
 import { currency } from '../utils/formatters'
 import { archiveMenuItemClasses } from '../utils/buttonStyles'
@@ -29,7 +30,7 @@ import { appRoutes } from '../config/appRoutes'
 import { isRecordArchived } from '../utils/archiveLifecycle'
 import { resolveNavigationContext } from '../utils/navigationContext'
 import { calculateInvoiceBillingCapacity, validateInvoiceAgainstBillingCapacity } from '../utils/invoiceBilling'
-import { buildInvoicePaymentContext, validateInvoicePayment } from '../utils/paymentAllocation'
+import { buildInvoicePaymentContext, getInvoicePaymentRemaining, isEligiblePaymentInvoice, validateInvoicePayment } from '../utils/paymentAllocation'
 import { normalizeCurrencyInput, parsePaymentAmount } from '../utils/paymentAmount'
 import { getPaymentPersistenceErrorMessage, logPaymentPersistenceError } from '../utils/paymentErrors'
 
@@ -292,6 +293,7 @@ export function InvoiceDetailRoute({ companySettings, leads, clients = [], proje
   const [confirmAction, setConfirmAction] = useState(null)
   const [showPreview, setShowPreview] = useState(false)
   const [showPaymentModal, setShowPaymentModal] = useState(false)
+  const [hasPendingInvoicePaymentSync, setHasPendingInvoicePaymentSync] = useState(false)
   const [showSendModal, setShowSendModal] = useState(false)
   const [successMessage, setSuccessMessage] = useState('')
   const [isSavingInvoice, setIsSavingInvoice] = useState(false)
@@ -307,6 +309,7 @@ export function InvoiceDetailRoute({ companySettings, leads, clients = [], proje
   const [isRunningInvoiceAction, setIsRunningInvoiceAction] = useState(false)
   const [activeInvoiceAction, setActiveInvoiceAction] = useState('')
   const invoiceActionGuardRef = useRef(false)
+  const pendingInvoicePaymentRef = useRef(null)
   const [routeInvoice, setRouteInvoice] = useState(null)
   const [routeInvoiceState, setRouteInvoiceState] = useState({ loading: false, error: '' })
   const invoice = invoices.find((item) => item.id === invoiceId && !deletedIds.includes(item.id))
@@ -439,18 +442,28 @@ export function InvoiceDetailRoute({ companySettings, leads, clients = [], proje
     currentInvoiceId: currentInvoice.id,
     currentInvoiceAmount: invoiceTotal,
   })
-  const balance = currentInvoice.remainingBalance
+  const balance = getInvoicePaymentRemaining(currentInvoice, payments)
   const clientAddress = getAvailableContactValue(lead?.billingAddress, lead?.address, lead?.location, currentInvoice.clientAddress, clientRecord?.address)
   const clientEmail = getAvailableContactValue(lead?.email, currentInvoice.clientEmail, clientRecord?.email)
   const clientPhone = getAvailableContactValue(lead?.phone, currentInvoice.clientPhone, clientRecord?.phone)
-  const paymentHistory = currentInvoice.paymentHistory || []
+  const linkedInvoicePayments = payments
+    .filter((payment) => String(payment?.invoiceId || payment?.invoice_id || '') === String(currentInvoice.id))
+    .filter((payment) => !payment?.archivedAt && !payment?.archived_at)
+    .filter((payment) => !['failed', 'refunded', 'cancelled', 'canceled'].includes(String(payment?.status || '').trim().toLowerCase().replace(/[\s-]+/g, '_')))
+    .map((payment) => ({
+      ...payment,
+      date: payment.date || payment.paymentDate || payment.payment_date || '',
+      method: payment.method || payment.paymentMethod || payment.payment_method || '',
+      type: payment.type || payment.paymentType || payment.payment_type || '',
+    }))
+  const paymentHistory = dedupeInvoiceTimelinePayments([...(currentInvoice.paymentHistory || []), ...linkedInvoicePayments])
   const displayCompany = companySettings?.company || contractorCompany
   const isInvoiceActionPending = isSavingInvoice || isRunningInvoiceAction
   const presentationStatus = isArchived
     ? 'Archived'
     : normalizeInvoiceStatus(currentInvoice.status, {
         amount: invoiceTotal,
-        amountPaid: Number(currentInvoice.amountPaid || 0),
+        amountPaid: roundMoney(invoiceTotal - balance),
         hasLinkedPayments: paymentHistory.length > 0,
       })
   const invoiceNumber = currentInvoice.number || currentInvoice.invoiceNumber || t('invoiceDetail')
@@ -500,9 +513,7 @@ export function InvoiceDetailRoute({ companySettings, leads, clients = [], proje
     presentationStatus === 'Partially Paid'
     || Number(currentInvoice.amountPaid || 0) > 0
   )
-  const canRecordInvoicePayment = balance > 0
-    && !isArchived
-    && presentationStatus !== 'Canceled'
+  const canRecordInvoicePayment = isEligiblePaymentInvoice(currentInvoice, { payments })
 
   async function runSingleFlightInvoiceAction(actionKey, task) {
     if (invoiceActionGuardRef.current) {
@@ -621,42 +632,76 @@ export function InvoiceDetailRoute({ companySettings, leads, clients = [], proje
 
   async function savePayment(payment) {
     const paymentEntry = { id: `payment-${Date.now()}`, ...payment }
+    const paymentFingerprint = JSON.stringify({
+      amount: Number(payment?.amount),
+      date: payment?.date || '',
+      method: payment?.method || '',
+      type: payment?.type || '',
+      notes: payment?.notes || '',
+    })
 
     try {
-      const paymentValidation = validateInvoicePayment({
-        invoice: currentInvoice,
-        amount: payment?.amount,
-        projectId: currentInvoice.projectId,
-        payments,
-      })
-      if (paymentValidation) {
-        const messageKey = paymentValidation.code === 'amountExceedsRemaining'
-          ? 'paymentExceedsInvoiceBalance'
-          : paymentValidation.code === 'amountPrecision'
-            ? 'paymentAmountPrecision'
-            : 'paymentAmountMustBeGreaterThanZero'
-        showToast(t(messageKey, { amount: currency.format(paymentValidation.overage || 0) }), 'error')
-        return
-      }
-      const paymentContext = buildInvoicePaymentContext({ invoice: currentInvoice, project: billingProject, lead })
-      const paymentResponse = await dataProvider.payments.create({ ...paymentEntry, ...paymentContext }, { contractorId })
-      if (paymentResponse?.error) {
-        throw toPaymentPersistenceError(paymentResponse.error, t('paymentSaveFailed'))
+      let paymentResponse = null
+      const pendingPayment = pendingInvoicePaymentRef.current
+      if (pendingPayment) {
+        if (pendingPayment.invoiceId !== currentInvoice.id || pendingPayment.fingerprint !== paymentFingerprint) {
+          showToast(t('paymentInvoiceSyncPending'), 'error')
+          return
+        }
+        paymentResponse = { data: pendingPayment.payment }
+      } else {
+        const paymentValidation = validateInvoicePayment({
+          invoice: currentInvoice,
+          amount: payment?.amount,
+          projectId: currentInvoice.projectId,
+          payments,
+        })
+        if (paymentValidation) {
+          const messageKey = paymentValidation.code === 'amountExceedsRemaining'
+            ? 'paymentExceedsInvoiceBalance'
+            : paymentValidation.code === 'amountPrecision'
+              ? 'paymentAmountPrecision'
+              : paymentValidation.code === 'invoiceNotEligible'
+                ? 'invoiceNotEligible'
+                : 'paymentAmountMustBeGreaterThanZero'
+          showToast(t(messageKey, { amount: currency.format(paymentValidation.overage || 0) }), 'error')
+          return
+        }
+
+        const paymentContext = buildInvoicePaymentContext({ invoice: currentInvoice, project: billingProject, lead })
+        paymentResponse = await dataProvider.payments.create({ ...paymentEntry, ...paymentContext }, { contractorId })
+        if (paymentResponse?.error) {
+          throw toPaymentPersistenceError(paymentResponse.error, t('paymentSaveFailed'))
+        }
+        if (!paymentResponse?.data?.id) {
+          throw new Error(t('paymentSaveFailed'))
+        }
+
+        pendingInvoicePaymentRef.current = {
+          invoiceId: currentInvoice.id,
+          fingerprint: paymentFingerprint,
+          payment: paymentResponse.data,
+        }
+        setHasPendingInvoicePaymentSync(true)
       }
 
-      const nextPaymentHistory = [paymentEntry, ...(currentInvoice.paymentHistory || [])]
-      const nextAmountPaid = roundMoney(Math.min(Number(currentInvoice.amount || 0), Number(currentInvoice.amountPaid || 0) + Number(payment.amount || 0)))
+      const savedPayment = paymentResponse.data
+      const nextPaymentHistory = [savedPayment, ...(currentInvoice.paymentHistory || []).filter((entry) => String(entry?.id || '') !== String(savedPayment.id))]
+      const nextAmountPaid = roundMoney(Math.min(Number(currentInvoice.amount || 0), Number(currentInvoice.amount || 0) - balance + Number(savedPayment.amount || 0)))
       const invoiceResponse = await dataProvider.invoices.update(currentInvoice.id, { amountPaid: nextAmountPaid, paymentHistory: nextPaymentHistory }, { contractorId: invoicesContractorId })
 
       if (invoiceResponse?.error) {
         throw new Error(invoiceResponse.error.message || t('invoiceSaveFailed'))
       }
 
-      if (invoiceResponse?.data?.id) {
-        onUpdateInvoice?.(invoiceResponse.data.id, invoiceResponse.data)
+      if (!invoiceResponse?.data?.id) {
+        throw new Error(t('invoiceSaveFailed'))
       }
 
-      onRecordInvoicePayment?.(currentInvoice.id, paymentResponse?.data || paymentEntry)
+      onUpdateInvoice?.(invoiceResponse.data.id, invoiceResponse.data)
+      onRecordInvoicePayment?.(currentInvoice.id, savedPayment, { invoiceAlreadyUpdated: true })
+      pendingInvoicePaymentRef.current = null
+      setHasPendingInvoicePaymentSync(false)
     } catch (err) {
       logPaymentPersistenceError(err, { operation: 'create-invoice-payment' })
       showToast(getPaymentPersistenceErrorMessage(t, err), 'error')
@@ -864,7 +909,7 @@ export function InvoiceDetailRoute({ companySettings, leads, clients = [], proje
       id: 'record-invoice-payment',
       label: t('recordPayment'),
       icon: CreditCard,
-      disabled: isInvoiceActionPending,
+      disabled: isInvoiceActionPending || !canRecordInvoicePayment,
       onClick: () => setShowPaymentModal(true),
     },
     markPaid: {
@@ -1146,19 +1191,25 @@ export function InvoiceDetailRoute({ companySettings, leads, clients = [], proje
                   </div>
                   <div className="divide-y divide-slate-100">
                     {lineItems.map((item, index) => (
-                      <div key={item.id || `invoice-line-${index}`} className="grid gap-2 px-4 py-4 text-sm sm:grid-cols-[1fr_140px]">
-                        <input
-                          value={item.description}
-                          onChange={(event) => updateLineItem(index, 'description', event.target.value)}
-                          aria-label={`${t('description')} ${index + 1}`}
-                          className="min-w-0 rounded-xl border border-slate-200 bg-slate-50 px-3 py-2 font-medium text-slate-800 outline-none focus:border-blue-500 focus:ring-4 focus:ring-blue-100"
+                      <div key={item.id || `invoice-line-${index}`} className="grid items-start gap-2 px-4 py-4 text-sm sm:grid-cols-[1fr_140px]">
+                        <LightweightFormattedTextarea
+                          value={item.description || ''}
+                          onChange={(value) => updateLineItem(index, 'description', value)}
+                          ariaLabel={`${t('description')} ${index + 1}`}
+                          placeholder={t('description')}
+                          rows={3}
+                          minHeight={104}
+                          maxHeight={Number.POSITIVE_INFINITY}
+                          t={t}
+                          className="px-3 py-3 text-sm leading-6"
                         />
                         <input
-                          type="number"
+                          type="text"
+                          inputMode="decimal"
                           value={item.amount}
                           onChange={(event) => updateLineItem(index, 'amount', event.target.value)}
                           aria-label={`${t('amount')} ${index + 1}`}
-                          className="min-w-0 rounded-xl border border-slate-200 bg-slate-50 px-3 py-2 font-bold text-slate-950 outline-none focus:border-blue-500 focus:ring-4 focus:ring-blue-100 sm:text-right"
+                          className="h-12 min-w-0 self-start rounded-xl border border-slate-200 bg-slate-50 px-3 py-2 text-right font-bold tabular-nums text-slate-950 outline-none focus:border-blue-500 focus:ring-4 focus:ring-blue-100"
                         />
                       </div>
                     ))}
@@ -1241,7 +1292,7 @@ export function InvoiceDetailRoute({ companySettings, leads, clients = [], proje
 
         <aside className="min-w-0">
           <PaymentsTimelineCard
-            amountPaid={Number(currentInvoice.amountPaid || 0)}
+            amountPaid={roundMoney(invoiceTotal - balance)}
             balance={balance}
             canRecordPayment={canRecordInvoicePayment}
             completionDate={paidCompletionDate}
@@ -1259,7 +1310,7 @@ export function InvoiceDetailRoute({ companySettings, leads, clients = [], proje
 
       <ConfirmRecordModal isOpen={Boolean(confirmAction)} mode={confirmAction?.mode === 'delete' ? 'delete' : 'archive'} title={confirmAction?.mode === 'delete' ? t('confirmPermanentDelete') : confirmAction?.mode === 'markPaid' ? t('confirmMarkAsPaid') : t('confirmArchive')} message={confirmAction?.mode === 'delete' ? t('permanentDeleteHelp') : confirmAction?.mode === 'markPaid' ? t('markAsPaidHelp') : t('archiveHelp')} confirmLabel={confirmAction?.mode === 'delete' ? t('deletePermanently') : confirmAction?.mode === 'markPaid' ? t('markAsPaid') : t('archive')} onCancel={() => setConfirmAction(null)} onConfirm={runConfirmAction} t={t} />
       <InvoicePreviewModal isOpen={showPreview} invoice={currentInvoice} client={invoicePreviewClient} company={displayCompany} project={invoicePreviewProject} onClose={() => setShowPreview(false)} t={t} contentT={invoiceT} language={invoiceOutputLanguage} />
-      <RecordPaymentModal isOpen={showPaymentModal} remainingBalance={balance} onClose={() => setShowPaymentModal(false)} onSave={savePayment} t={t} />
+      <RecordPaymentModal isOpen={showPaymentModal} remainingBalance={balance} hasPersistedPaymentPendingSync={hasPendingInvoicePaymentSync && pendingInvoicePaymentRef.current?.invoiceId === currentInvoice.id} onClose={() => setShowPaymentModal(false)} onSave={savePayment} t={t} />
       <SendToCustomerModal
         isOpen={showSendModal}
         documentType="invoice"
@@ -1584,7 +1635,7 @@ function InvoicePreviewModal({ isOpen, invoice, client, company, project, onClos
   )
 }
 
-function RecordPaymentModal({ isOpen, remainingBalance, onClose, onSave, t }) {
+function RecordPaymentModal({ isOpen, remainingBalance, hasPersistedPaymentPendingSync = false, onClose, onSave, t }) {
   const [payment, setPayment] = useState({ amount: String(remainingBalance || 0), date: new Date().toISOString().slice(0, 10), method: 'Cash', type: 'Progress Payment', notes: '' })
   const [isSubmitting, setIsSubmitting] = useState(false)
   const submitGuardRef = useRef(false)
@@ -1602,16 +1653,17 @@ function RecordPaymentModal({ isOpen, remainingBalance, onClose, onSave, t }) {
   }
 
   return (
-    <ModalShell isOpen={isOpen} onBackdropClick={isSubmitting ? undefined : onClose} panelClassName="sm:max-w-lg">
+    <ModalShell isOpen={isOpen} onBackdropClick={isSubmitting || hasPersistedPaymentPendingSync ? undefined : onClose} panelClassName="sm:max-w-lg">
       <h2 className="text-xl font-bold text-slate-950">{t('recordPayment')}</h2>
+      {hasPersistedPaymentPendingSync ? <p role="alert" className="mt-3 rounded-xl border border-amber-200 bg-amber-50 p-3 text-sm leading-5 text-amber-900">{t('paymentInvoiceSyncPendingHelp')}</p> : null}
       <div className="mt-5 grid gap-4 sm:grid-cols-2">
-        <label className="text-sm font-bold text-slate-700">{t('amount')}<input type="text" inputMode="decimal" value={payment.amount} onChange={(event) => setPayment((current) => ({ ...current, amount: normalizeCurrencyInput(event.target.value) }))} className="mt-2 w-full rounded-2xl border border-slate-200 bg-slate-50 px-4 py-3 outline-none focus:border-blue-500" /></label>
-        <label className="text-sm font-bold text-slate-700">{t('paymentDate')}<input type="date" value={payment.date} onChange={(event) => setPayment((current) => ({ ...current, date: event.target.value }))} className="mt-2 w-full rounded-2xl border border-slate-200 bg-slate-50 px-4 py-3 outline-none focus:border-blue-500" /></label>
-        <label className="text-sm font-bold text-slate-700">{t('paymentMethod')}<select value={payment.method} onChange={(event) => setPayment((current) => ({ ...current, method: event.target.value }))} className="mt-2 w-full rounded-2xl border border-slate-200 bg-slate-50 px-4 py-3 outline-none focus:border-blue-500">{paymentMethods.map((method) => <option key={method} value={method}>{t(method)}</option>)}</select></label>
-        <label className="text-sm font-bold text-slate-700">{t('paymentType')}<select value={payment.type} onChange={(event) => setPayment((current) => ({ ...current, type: event.target.value }))} className="mt-2 w-full rounded-2xl border border-slate-200 bg-slate-50 px-4 py-3 outline-none focus:border-blue-500">{paymentTypes.map((type) => <option key={type} value={type}>{t(type)}</option>)}</select></label>
+        <label className="text-sm font-bold text-slate-700">{t('amount')}<input disabled={hasPersistedPaymentPendingSync} type="text" inputMode="decimal" value={payment.amount} onChange={(event) => setPayment((current) => ({ ...current, amount: normalizeCurrencyInput(event.target.value) }))} className="mt-2 w-full rounded-2xl border border-slate-200 bg-slate-50 px-4 py-3 outline-none focus:border-blue-500 disabled:cursor-not-allowed disabled:opacity-70" /></label>
+        <label className="text-sm font-bold text-slate-700">{t('paymentDate')}<input disabled={hasPersistedPaymentPendingSync} type="date" value={payment.date} onChange={(event) => setPayment((current) => ({ ...current, date: event.target.value }))} className="mt-2 w-full rounded-2xl border border-slate-200 bg-slate-50 px-4 py-3 outline-none focus:border-blue-500 disabled:cursor-not-allowed disabled:opacity-70" /></label>
+        <label className="text-sm font-bold text-slate-700">{t('paymentMethod')}<select disabled={hasPersistedPaymentPendingSync} value={payment.method} onChange={(event) => setPayment((current) => ({ ...current, method: event.target.value }))} className="mt-2 w-full rounded-2xl border border-slate-200 bg-slate-50 px-4 py-3 outline-none focus:border-blue-500 disabled:cursor-not-allowed disabled:opacity-70">{paymentMethods.map((method) => <option key={method} value={method}>{t(method)}</option>)}</select></label>
+        <label className="text-sm font-bold text-slate-700">{t('paymentType')}<select disabled={hasPersistedPaymentPendingSync} value={payment.type} onChange={(event) => setPayment((current) => ({ ...current, type: event.target.value }))} className="mt-2 w-full rounded-2xl border border-slate-200 bg-slate-50 px-4 py-3 outline-none focus:border-blue-500 disabled:cursor-not-allowed disabled:opacity-70">{paymentTypes.map((type) => <option key={type} value={type}>{t(type)}</option>)}</select></label>
       </div>
-      <label className="mt-4 block text-sm font-bold text-slate-700">{t('notes')}<textarea value={payment.notes} onChange={(event) => setPayment((current) => ({ ...current, notes: event.target.value }))} rows={3} className="mt-2 w-full rounded-2xl border border-slate-200 bg-slate-50 px-4 py-3 outline-none focus:border-blue-500" /></label>
-      <div className="mt-5 flex flex-col-reverse gap-3 sm:flex-row sm:justify-end"><button type="button" disabled={isSubmitting} onClick={onClose} className="rounded-2xl border border-slate-200 px-4 py-3 text-sm font-bold text-slate-700 hover:bg-slate-50 disabled:cursor-not-allowed disabled:opacity-60">{t('cancel')}</button><LoadingButton loading={isSubmitting} loadingLabel={t('saving')} onClick={async () => {
+      <label className="mt-4 block text-sm font-bold text-slate-700">{t('notes')}<textarea disabled={hasPersistedPaymentPendingSync} value={payment.notes} onChange={(event) => setPayment((current) => ({ ...current, notes: event.target.value }))} rows={3} className="mt-2 w-full rounded-2xl border border-slate-200 bg-slate-50 px-4 py-3 outline-none focus:border-blue-500 disabled:cursor-not-allowed disabled:opacity-70" /></label>
+      <div className="mt-5 flex flex-col-reverse gap-3 sm:flex-row sm:justify-end"><button type="button" disabled={isSubmitting || hasPersistedPaymentPendingSync} onClick={onClose} className="rounded-2xl border border-slate-200 px-4 py-3 text-sm font-bold text-slate-700 hover:bg-slate-50 disabled:cursor-not-allowed disabled:opacity-60">{t('cancel')}</button><LoadingButton loading={isSubmitting} loadingLabel={t('saving')} onClick={async () => {
         if (submitGuardRef.current) {
           return
         }

@@ -4825,29 +4825,35 @@ function buildWorkspaceJobRecord(job, clientRecord = null) {
     return completedProject
   }
 
-  function recordInvoicePayment(invoiceId, payment) {
+  function recordInvoicePayment(invoiceId, payment, { invoiceAlreadyUpdated = false } = {}) {
     let invoiceMatch = null
 
-    setInvoiceRecords((current) => current.map((invoice) => {
-      if (invoice.id !== invoiceId) return invoice
-      invoiceMatch = invoice
-      const amount = roundMoney(payment.amount)
-      const paymentEntry = {
-        id: payment.id || `payment-${Date.now()}`,
-        ...payment,
-        amount,
-      }
-      const amountPaid = roundMoney(Math.min(Number(invoice.amount || 0), Number(invoice.amountPaid || 0) + amount))
-      const next = {
-        ...invoice,
-        amountPaid,
-        paymentHistory: [
-          paymentEntry,
-          ...(invoice.paymentHistory || []),
-        ],
-      }
-      return { ...next, status: getInvoiceStatus(next) }
-    }))
+    if (!invoiceAlreadyUpdated) {
+      setInvoiceRecords((current) => current.map((invoice) => {
+        if (invoice.id !== invoiceId) return invoice
+        invoiceMatch = invoice
+        const amount = roundMoney(payment.amount)
+        const paymentEntry = {
+          id: payment.id || `payment-${Date.now()}`,
+          ...payment,
+          amount,
+        }
+        const paymentAlreadyIncluded = (invoice.paymentHistory || []).some((entry) => String(entry?.id || '') === String(paymentEntry.id))
+        if (paymentAlreadyIncluded) return invoice
+        const amountPaid = roundMoney(Math.min(Number(invoice.amount || 0), Number(invoice.amountPaid || 0) + amount))
+        const next = {
+          ...invoice,
+          amountPaid,
+          paymentHistory: [
+            paymentEntry,
+            ...(invoice.paymentHistory || []),
+          ],
+        }
+        return { ...next, status: getInvoiceStatus(next) }
+      }))
+    } else {
+      invoiceMatch = invoiceRecords.find((invoice) => invoice.id === invoiceId) || null
+    }
 
     if (payment) {
       const nextPayment = normalizePaymentRecord({

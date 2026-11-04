@@ -6,6 +6,7 @@ import { calculateInvoiceTotal, getInvoiceRemainingBalance } from '../../utils/i
 import { getPaymentTermLabel } from '../../utils/paymentTerms'
 import { getAcceptedPaymentMethodLabels } from '../../utils/acceptedPaymentMethods'
 import { resolveInvoiceCustomerNote } from '../../utils/invoiceCustomerNotes'
+import { EstimateFormattedText } from '../estimates/EstimateFormattedText'
 import './invoiceDocument.css'
 
 function formatInvoiceDocumentDate(value, language = 'en') {
@@ -255,6 +256,61 @@ function splitInvoiceItemContent(item = {}, fallbackTitle = '') {
   return { title, supportingLines }
 }
 
+function hasInvoiceRichText(value = '') {
+  return /\r?\n|\*\*|\+\+|\[\[aymero-size:(?:small|large)\]\]|^\s*[-*•]\s+/m.test(String(value || ''))
+}
+
+function InvoiceLineItemDescription({ item = {}, index, t }) {
+  const description = String(item?.description || '').trim()
+  const explicitTitle = getFirstAvailableValue(item?.title, item?.name)
+
+  if (hasInvoiceRichText(description)) {
+    let richDescription = description
+    if (explicitTitle) {
+      const firstLine = description.split(/\r?\n/, 1)[0]
+        .replace(/^\[\[aymero-size:(?:small|large)\]\]/, '')
+        .trim()
+      if (firstLine === explicitTitle) {
+        richDescription = description.replace(/^[^\r\n]*(?:\r?\n|$)/, '')
+      }
+    }
+
+    return (
+      <div className="min-w-0">
+        {explicitTitle ? <p className="break-words font-bold leading-5 text-slate-950 [overflow-wrap:anywhere]">{explicitTitle}</p> : null}
+        {richDescription ? (
+          <EstimateFormattedText
+            value={richDescription}
+            className={`invoice-line-item-rich-text ${explicitTitle ? 'invoice-line-item-rich-text--supporting' : ''}`}
+          />
+        ) : null}
+      </div>
+    )
+  }
+
+  if (!explicitTitle) {
+    return (
+      <p className="whitespace-pre-wrap break-words font-normal leading-[1.45] text-slate-700 [overflow-wrap:anywhere]">
+        {description || `${t('item')} ${index + 1}`}
+      </p>
+    )
+  }
+
+  const { title, supportingLines } = splitInvoiceItemContent(item, `${t('item')} ${index + 1}`)
+  return (
+    <>
+      <p className="break-words font-bold leading-5 text-slate-950 [overflow-wrap:anywhere]">{title}</p>
+      {supportingLines.length ? (
+        <div className="mt-1.5 space-y-1 pl-5 text-[11px] leading-[1.45] text-slate-600">
+          {supportingLines.map((line, lineIndex) => (
+            <p key={`${line}-${lineIndex}`} className="break-words [overflow-wrap:anywhere]">{line}</p>
+          ))}
+        </div>
+      ) : null}
+    </>
+  )
+}
+
 function getDisplayInvoiceItems(lineItems = [], invoiceTitle = '', subtotal = 0) {
   if (lineItems.length) return lineItems
   if (!String(invoiceTitle || '').trim()) return []
@@ -464,8 +520,6 @@ export const InvoicePdfTemplate = forwardRef(function InvoicePdfTemplate({
           </thead>
           <tbody>
             {displayLineItems.map((item, index) => {
-              const { title, supportingLines } = splitInvoiceItemContent(item, `${t('item')} ${index + 1}`)
-
               return (
                 <tr
                   key={item?.id || `invoice-preview-line-${index}`}
@@ -473,17 +527,10 @@ export const InvoicePdfTemplate = forwardRef(function InvoicePdfTemplate({
                   className={`text-[12px] ${index < displayLineItems.length - 1 ? 'border-b border-slate-200' : ''}`}
                 >
                   <td className="min-w-0 px-1 py-3.5 pr-5">
-                    <p className="break-words font-bold leading-5 text-slate-950 [overflow-wrap:anywhere]">
-                      <span className="mr-1.5" style={{ color: accentTextColor }}>{index + 1}.</span>
-                      {title}
-                    </p>
-                    {supportingLines.length ? (
-                      <div className="mt-1.5 space-y-1 pl-5 text-[11px] leading-[1.45] text-slate-600">
-                        {supportingLines.map((line, lineIndex) => (
-                          <p key={`${line}-${lineIndex}`} className="break-words [overflow-wrap:anywhere]">{line}</p>
-                        ))}
-                      </div>
-                    ) : null}
+                    <div className={`grid min-w-0 gap-1.5 ${displayLineItems.length > 1 ? 'grid-cols-[auto_minmax(0,1fr)]' : 'grid-cols-1'}`}>
+                      {displayLineItems.length > 1 ? <span className="font-bold leading-5" style={{ color: accentTextColor }}>{index + 1}.</span> : null}
+                      <InvoiceLineItemDescription item={item} index={index} t={t} />
+                    </div>
                   </td>
                   <td className="border-l border-slate-300 px-3 py-3.5 text-right font-bold leading-5 text-slate-950">
                     {currencyWithCents.format(Number(item?.amount || 0))}

@@ -2,6 +2,7 @@ import { getClientSlug } from './clients.js'
 import { getInvoiceDisplayNumber } from './invoiceNumber.js'
 import { findLeadByProjectLookup, dedupeById } from './projectIdentity.js'
 import { dedupePayments, normalizePaymentRecord } from './projectPayments.js'
+import { normalizeEstimateFormattedTextForStorage } from './estimateDocument.js'
 
 function readField(source = {}, keys = []) {
   for (const key of keys) {
@@ -39,6 +40,13 @@ export function normalizeInvoiceLineItems(lineItems = []) {
         ? item.name
         : '',
     amount: roundMoney(item?.amount),
+  }))
+}
+
+export function sanitizeInvoiceLineItemsForStorage(lineItems = []) {
+  return normalizeInvoiceLineItems(lineItems).map((item) => ({
+    ...item,
+    description: normalizeEstimateFormattedTextForStorage(item.description),
   }))
 }
 

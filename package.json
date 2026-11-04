@@ -44,6 +44,7 @@
     "verify:contract-creation-regression": "node scripts/verify-contract-creation-regression.mjs",
     "verify:contract-contact-resolution": "node scripts/verify-contract-contact-resolution.mjs",
     "verify:invoice-creation": "node scripts/verify-invoice-creation.mjs",
+    "verify:invoice-rich-text": "node scripts/verify-invoice-rich-text.mjs",
     "verify:project-completion": "node scripts/verify-project-completion.mjs",
     "verify:project-data-integrity": "node scripts/verify-project-data-integrity.mjs",
     "verify:contract-status-integrity": "node scripts/verify-contract-status-integrity.mjs",

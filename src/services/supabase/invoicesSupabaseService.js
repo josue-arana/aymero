@@ -1,7 +1,7 @@
 import { USE_SUPABASE, USE_SUPABASE_INVOICES } from '../../config/backendConfig'
 import { supabaseClient } from '../../lib/supabaseClient'
 import { generateInvoiceNumber, getInvoiceDisplayNumber } from '../../utils/invoiceNumber'
-import { roundMoney, sumMoney } from '../../utils/invoiceRecords'
+import { roundMoney, sanitizeInvoiceLineItemsForStorage, sumMoney } from '../../utils/invoiceRecords'
 
 const TABLE_NAME = 'invoices'
 const INVOICE_TABLE_COLUMNS = new Set([
@@ -449,7 +449,7 @@ async function ensureUniqueInvoiceNumber(contractorId, invoice = {}, { excludeId
 function toSupabasePayload(contractorId, invoice = {}, { isCreate = false } = {}) {
   const payload = {}
   const lineItemsInput = readField(invoice, ['lineItems', 'line_items'])
-  const lineItems = lineItemsInput !== undefined ? normalizeLineItems(lineItemsInput) : undefined
+  const lineItems = lineItemsInput !== undefined ? sanitizeInvoiceLineItemsForStorage(lineItemsInput) : undefined
   const subtotalInput = readField(invoice, ['subtotal'])
   const taxAmountInput = readField(invoice, ['taxAmount', 'tax_amount'])
   const totalInput = readField(invoice, ['amount', 'total', 'totalAmount', 'total_amount'])

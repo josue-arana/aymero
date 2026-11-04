@@ -1293,6 +1293,8 @@ export const en = {
   "useHalfDeposit": "Use 50% deposit",
   "enterPaymentAmount": "Enter a payment amount",
   "paymentAmountMustBeGreaterThanZero": "Payment amount must be greater than zero",
+  "paymentInvoiceSyncPending": "A payment is already recorded and must be synchronized before another payment can be submitted.",
+  "paymentInvoiceSyncPendingHelp": "The payment was recorded, but the invoice balance did not finish syncing. Retry Save Payment to complete the invoice update. Do not close this dialog or submit a new payment.",
   "projectRequiredBeforePayment": "A project is required before recording a payment",
   "recordPaymentRequiresRealProject": "Record Payment is unavailable until this contract is linked to a real project.",
   "paymentRecordedTimelineTitle": "Payment Recorded",

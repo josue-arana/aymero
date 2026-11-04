@@ -58,6 +58,11 @@
   vertical-align: top;
 }
 
+.invoice-line-item-rich-text > p {
+  white-space: pre-wrap;
+  overflow-wrap: anywhere;
+}
+
 .invoice-document-footer {
   margin-top: auto;
 }
