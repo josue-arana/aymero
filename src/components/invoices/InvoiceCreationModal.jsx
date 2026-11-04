@@ -2,6 +2,7 @@ import { useEffect, useMemo, useRef, useState } from 'react'
 import { Plus, Trash2, X } from 'lucide-react'
 import { ModalShell } from '../common/ModalShell'
 import { SelectField } from '../ui/SelectField'
+import { LightweightFormattedTextarea } from '../estimates/LightweightFormattedTextarea'
 import { currency } from '../../utils/formatters'
 import { createTranslator } from '../../translations'
 import { resolvePreferredClientLanguage } from '../../utils/language'
@@ -265,9 +266,26 @@ export function InvoiceCreationModal({
           ) : null}
           <div className="mt-4 space-y-3">
             {lineItems.map((item, index) => (
-              <div key={index} className="grid min-w-0 gap-3 rounded-2xl bg-slate-50 p-3 sm:grid-cols-[minmax(0,1fr)_10rem_auto] sm:items-end">
-                <TextField id={`invoice-line-${index}-description`} label={t('description')} value={item.description} onChange={(value) => updateLineItem(index, 'description', value)} required error={validationErrors[`lineItems.${index}.description`] ? t('invoiceLineItemDescriptionRequired') : ''} inputRef={(element) => { fieldRefs.current[`lineItems.${index}.description`] = element }} />
-                <TextField id={`invoice-line-${index}-amount`} label={t('amount')} type="number" inputMode="decimal" min="0.01" step="0.01" value={item.amount} onChange={(value) => updateLineItem(index, 'amount', value)} required error={validationErrors[`lineItems.${index}.amount`] ? t({ required: 'invoiceLineItemAmountRequired', invalid: 'invoiceLineItemAmountInvalid', positive: 'invoiceLineItemAmountPositive', precision: 'invoiceLineItemAmountPrecision' }[validationErrors[`lineItems.${index}.amount`]] || 'invoiceLineItemAmountInvalid') : ''} inputRef={(element) => { fieldRefs.current[`lineItems.${index}.amount`] = element }} />
+              <div key={index} className="grid min-w-0 items-start gap-3 rounded-2xl bg-slate-50 p-3 sm:grid-cols-[minmax(0,1fr)_10rem_auto]">
+                <div className="min-w-0">
+                  <label className="mb-2 block text-sm font-bold text-slate-700">{t('description')}</label>
+                  <LightweightFormattedTextarea
+                    value={item.description}
+                    onChange={(value) => updateLineItem(index, 'description', value)}
+                    placeholder={t('description')}
+                    ariaLabel={`${t('description')} ${index + 1}`}
+                    ariaInvalid={validationErrors[`lineItems.${index}.description`] ? 'true' : undefined}
+                    ariaDescribedBy={validationErrors[`lineItems.${index}.description`] ? `invoice-line-${index}-description-error` : undefined}
+                    ref={(element) => { fieldRefs.current[`lineItems.${index}.description`] = element }}
+                    rows={3}
+                    minHeight={104}
+                    maxHeight={Number.POSITIVE_INFINITY}
+                    t={t}
+                    className="px-3 py-3 text-sm leading-6"
+                  />
+                  {validationErrors[`lineItems.${index}.description`] ? <p id={`invoice-line-${index}-description-error`} role="alert" className="mt-2 text-xs font-semibold text-red-700">{t('invoiceLineItemDescriptionRequired')}</p> : null}
+                </div>
+                <TextField id={`invoice-line-${index}-amount`} label={t('amount')} type="text" inputMode="decimal" value={item.amount} onChange={(value) => updateLineItem(index, 'amount', value)} required error={validationErrors[`lineItems.${index}.amount`] ? t({ required: 'invoiceLineItemAmountRequired', invalid: 'invoiceLineItemAmountInvalid', positive: 'invoiceLineItemAmountPositive', precision: 'invoiceLineItemAmountPrecision' }[validationErrors[`lineItems.${index}.amount`]] || 'invoiceLineItemAmountInvalid') : ''} inputRef={(element) => { fieldRefs.current[`lineItems.${index}.amount`] = element }} />
                 <button type="button" disabled={lineItems.length === 1} onClick={() => setLineItems((current) => current.filter((_, itemIndex) => itemIndex !== index))} aria-label={t('removeItem')} className="inline-flex h-12 w-full items-center justify-center rounded-2xl border border-red-200 bg-white text-red-600 transition hover:bg-red-50 disabled:cursor-not-allowed disabled:opacity-40 sm:w-12">
                   <Trash2 className="h-4 w-4" aria-hidden="true" />
                 </button>

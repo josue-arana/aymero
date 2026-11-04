@@ -1,5 +1,5 @@
 import { mockInvoices } from '../../data/mockInvoices'
-import { dedupeInvoiceRecords, hydrateInvoiceRecord } from '../../utils/invoiceRecords'
+import { dedupeInvoiceRecords, hydrateInvoiceRecord, sanitizeInvoiceLineItemsForStorage } from '../../utils/invoiceRecords'
 import { generateInvoiceNumber } from '../../utils/invoiceNumber'
 import { createLocalRecordId } from '../../utils/projectIdentity'
 
@@ -149,6 +149,7 @@ export async function create(invoiceData, opts = {}) {
     || generateUniqueInvoiceNumber({ ...invoiceData, id }, invoices)
   const invoice = hydrateInvoiceRecord({
     ...invoiceData,
+    ...(Array.isArray(invoiceData?.lineItems) ? { lineItems: sanitizeInvoiceLineItemsForStorage(invoiceData.lineItems) } : {}),
     id,
     number,
     invoiceNumber: number,
@@ -180,6 +181,7 @@ export async function update(id, updates, opts = {}) {
     updatedInvoice = hydrateInvoiceRecord({
       ...invoice,
       ...(updates || {}),
+      ...(Array.isArray(updates?.lineItems) ? { lineItems: sanitizeInvoiceLineItemsForStorage(updates.lineItems) } : {}),
       id,
       number,
       invoiceNumber: number,

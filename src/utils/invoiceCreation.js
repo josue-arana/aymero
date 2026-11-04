@@ -1,4 +1,5 @@
-import { calculateInvoiceTotal, normalizeInvoiceLineItems, roundMoney } from './invoiceRecords.js'
+import { calculateInvoiceTotal, roundMoney, sanitizeInvoiceLineItemsForStorage } from './invoiceRecords.js'
+import { hasMeaningfulEstimateFormattedText, normalizeEstimateFormattedTextForStorage } from './estimateDocument.js'
 import { calculateInvoiceBillingCapacity } from './invoiceBilling.js'
 
 function normalizeId(value) {
@@ -136,8 +137,7 @@ export function buildInvoiceCreationPayload(input = {}) {
     customerNotes = '',
     invoiceLanguage = '',
   } = source
-  const normalizedLineItems = normalizeInvoiceLineItems(lineItems)
-    .map((item) => ({ ...item, description: String(item.description || '').trim() }))
+  const normalizedLineItems = sanitizeInvoiceLineItemsForStorage(lineItems)
     .filter((item) => item.description || item.amount > 0)
   const total = calculateInvoiceTotal(normalizedLineItems)
 
@@ -193,7 +193,7 @@ export function validateInvoiceCreationDraft({
   lineItems.forEach((item, index) => {
     const descriptionKey = `lineItems.${index}.description`
     const amountKey = `lineItems.${index}.amount`
-    if (!String(item?.description || '').trim()) {
+    if (!hasMeaningfulEstimateFormattedText(normalizeEstimateFormattedTextForStorage(item?.description))) {
       errors[descriptionKey] = 'required'
     }
 
