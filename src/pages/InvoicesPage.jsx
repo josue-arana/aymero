@@ -19,27 +19,19 @@ import { calculateOutstandingInvoiceBalance, findRelatedLeadForInvoice, getInvoi
 import invoicesHeroBackground from '../assets/page-heroes/invoices-bg.png'
 import { buildHeroBackgroundStyle } from '../utils/heroBackground'
 import { findRelatedClient } from '../utils/clients'
-import { getLanguageLocale, resolveClientFacingLanguage } from '../utils/language'
+import { resolveClientFacingLanguage } from '../utils/language'
 import { isRecordArchived } from '../utils/archiveLifecycle'
 import { calculateInvoiceBillingCapacity, validateInvoiceAgainstBillingCapacity } from '../utils/invoiceBilling'
 import { AymeroLoader } from '../components/common/AymeroLoader'
 import { isCollectionInitialLoading } from '../utils/collectionLoading'
+import { ensureInvoicePublicShare } from '../services/invoiceShareService'
+import { resolveInvoicePublicShareUrl } from '../utils/invoiceShare'
+import { formatInvoiceCalendarDate } from '../utils/invoiceDate'
 
 const invoiceFilters = ['All', 'Archived', 'Draft', 'Sent', 'Paid', 'Overdue', 'Canceled']
 
 function formatLocalizedInvoiceDate(value, language = 'en') {
-  if (!value) return ''
-
-  const parsedDate = new Date(value)
-  if (Number.isNaN(parsedDate.getTime())) {
-    return String(value)
-  }
-
-  return parsedDate.toLocaleDateString(getLanguageLocale(language), {
-    month: 'long',
-    day: 'numeric',
-    year: 'numeric',
-  })
+  return formatInvoiceCalendarDate(value, language) || (value ? String(value) : '')
 }
 
 export function InvoicesPage({ leads, clients = [], projects = [], estimates = [], contracts = [], payments = [], invoices: invoiceRecords = [], archivedIds = [], deletedIds = [], onCreateInvoice, onViewInvoice, onRecordPayment, onArchiveInvoice, onRestoreInvoice, onDeleteInvoice, onInvoiceSent, t, appLanguage = 'en', collectionStatus = 'loaded' }) {
@@ -152,6 +144,51 @@ export function InvoicesPage({ leads, clients = [], projects = [], estimates = [
     }
   }
 
+  async function prepareInvoiceDelivery(invoice) {
+    return runSingleFlightInvoiceAction(invoice.id, async () => {
+      const share = await ensureInvoicePublicShare(invoice, { contractorId })
+      if (share.error) {
+        showToast(share.error.message || t('clientLinkUnavailableHelp'), 'error')
+        setSendInvoice({ ...invoice, customerDocumentLink: '' })
+        return false
+      }
+      if (!share.url) showToast(t('clientLinkUnavailableHelp'), 'error')
+      setSendInvoice({ ...share.invoice, customerDocumentLink: share.url || resolveInvoicePublicShareUrl(share.invoice) })
+      return true
+    })
+  }
+
+  async function markSelectedInvoiceSent() {
+    if (!sendInvoice) return false
+    return runSingleFlightInvoiceAction(sendInvoice.id, async () => {
+      try {
+        const billingProject = projects.find((project) => String(project?.id || project?.projectId || project?.project_id || '') === String(sendInvoice?.projectId || sendInvoice?.project_id || '')) || {
+          id: sendInvoice?.projectId || sendInvoice?.project_id || '',
+          clientId: sendInvoice?.clientId || sendInvoice?.client_id || null,
+          contractId: sendInvoice?.contractId || sendInvoice?.contract_id || null,
+        }
+        const billingCapacity = calculateInvoiceBillingCapacity({
+          project: billingProject, estimates, contracts, invoices: invoiceRecords, payments,
+          currentInvoiceId: sendInvoice.id, currentInvoiceAmount: sendInvoice.amount,
+        })
+        const billingError = validateInvoiceAgainstBillingCapacity({ capacity: billingCapacity, invoiceAmount: sendInvoice.amount })
+        if (billingError) {
+          showToast(t('invoiceExceedsAvailableToBill', { amount: currency.format(billingError.overage) }), 'error')
+          return false
+        }
+        const response = await dataProvider.invoices.update(sendInvoice.id, { status: 'Sent' }, { contractorId })
+        if (response?.error || !response?.data?.id) throw new Error(response?.error?.message || t('invoiceSaveFailed'))
+        setSendInvoice((current) => current?.id === sendInvoice.id ? { ...current, ...response.data, customerDocumentLink: current.customerDocumentLink } : current)
+        onInvoiceSent?.(sendInvoice.id)
+        showToast(t('invoiceSent'))
+        return true
+      } catch (error) {
+        showToast(error?.message || t('invoiceSaveFailed'), 'error')
+        return false
+      }
+    })
+  }
+
   function renderInvoiceActions(invoice, compact = false) {
     const isArchived = invoice.isArchived
     const isInvoiceActionPending = activeInvoiceActionId === invoice.id
@@ -223,7 +260,7 @@ export function InvoicesPage({ leads, clients = [], projects = [], estimates = [
       <div className={actionLayoutClasses}>
         <button disabled={isInvoiceActionPending} onClick={(event) => { event.stopPropagation(); onViewInvoice(invoice.id) }} className="inline-flex min-h-[44px] w-full items-center justify-center whitespace-nowrap rounded-xl bg-slate-950 px-3 py-2 text-xs font-bold text-white hover:bg-slate-800 disabled:cursor-not-allowed disabled:bg-slate-600">{t('viewInvoice')}</button>
         <button disabled={isInvoiceActionPending} onClick={(event) => { event.stopPropagation(); onRecordPayment(invoice.id) }} className="inline-flex min-h-[44px] w-full items-center justify-center whitespace-nowrap rounded-xl border border-slate-200 px-3 py-2 text-xs font-bold text-slate-700 hover:bg-slate-50 disabled:cursor-not-allowed disabled:opacity-60">{t('recordPayment')}</button>
-        <button disabled={isInvoiceActionPending} onClick={(event) => { event.stopPropagation(); setSendInvoice(invoice) }} className="inline-flex min-h-[44px] w-full items-center justify-center whitespace-nowrap rounded-xl border border-blue-200 bg-blue-50 px-3 py-2 text-xs font-bold text-blue-700 hover:bg-blue-100 disabled:cursor-not-allowed disabled:opacity-60">{t('sendToCustomer')}</button>
+        <button disabled={isInvoiceActionPending} onClick={(event) => { event.stopPropagation(); prepareInvoiceDelivery(invoice) }} className="inline-flex min-h-[44px] w-full items-center justify-center whitespace-nowrap rounded-xl border border-blue-200 bg-blue-50 px-3 py-2 text-xs font-bold text-blue-700 hover:bg-blue-100 disabled:cursor-not-allowed disabled:opacity-60">{t('sendToCustomer')}</button>
         <ActionMenu
           label={compact ? <MoreVertical className="h-4 w-4" /> : t('more')}
           ariaLabel={t('more')}
@@ -302,7 +339,7 @@ export function InvoicesPage({ leads, clients = [], projects = [], estimates = [
                   <td className="px-4 py-4 text-right font-bold text-slate-900">{currency.format(invoice.amount)}</td>
                   <td className="px-4 py-4 text-right font-medium text-slate-700">{currency.format(invoice.amountPaid)}</td>
                   <td className="px-4 py-4 text-right font-bold text-slate-900">{currency.format(invoice.remainingBalance)}</td>
-                  <td className="px-4 py-4 font-medium text-slate-700">{invoice.dueDate}</td>
+                  <td className="px-4 py-4 font-medium text-slate-700">{formatLocalizedInvoiceDate(invoice.dueDate, appLanguage)}</td>
                   <td className="px-4 py-4"><div className="flex flex-wrap gap-2"><StatusBadge status={invoice.status} t={t} />{invoice.isArchived ? <StatusBadge status="Archived" t={t} /> : null}</div></td>
                   <td className="px-4 py-4 text-right">{renderInvoiceActions(invoice)}</td>
                 </tr>
@@ -327,7 +364,7 @@ export function InvoicesPage({ leads, clients = [], projects = [], estimates = [
                 <div><p className="text-xs font-semibold uppercase tracking-wide text-slate-400">{t('paid')}</p><p className="font-bold text-slate-950">{currency.format(invoice.amountPaid)}</p></div>
                 <div><p className="text-xs font-semibold uppercase tracking-wide text-slate-400">{t('remaining')}</p><p className="font-bold text-slate-950">{currency.format(invoice.remainingBalance)}</p></div>
               </div>
-              <p className="mt-3 text-sm text-slate-500">{t('dueDate')}: <span className="font-semibold text-slate-700">{invoice.dueDate}</span></p>
+              <p className="mt-3 text-sm text-slate-500">{t('dueDate')}: <span className="font-semibold text-slate-700">{formatLocalizedInvoiceDate(invoice.dueDate, appLanguage)}</span></p>
               <div className="mt-3">{renderInvoiceActions(invoice, true)}</div>
             </article>
           ))}
@@ -339,50 +376,19 @@ export function InvoicesPage({ leads, clients = [], projects = [], estimates = [
         isOpen={Boolean(sendInvoice)}
         documentType="invoice"
         customer={{
-          name: sendInvoice?.client,
-          phone: sendInvoiceLead?.phone,
-          email: sendInvoiceLead?.email,
+          name: sendInvoiceClient?.displayName || sendInvoiceClient?.name || sendInvoice?.client,
+          phone: sendInvoiceClient?.phone || sendInvoiceLead?.phone,
+          email: sendInvoiceClient?.email || sendInvoiceLead?.email,
         }}
         projectTitle={sendInvoice?.projectTitle || ''}
+        invoiceNumber={sendInvoice?.number || sendInvoice?.invoiceNumber || ''}
         amountLabel={t('amountDue')}
         amountValue={currency.format(sendInvoice?.remainingBalance ?? 0)}
         dueDate={sendInvoiceDueDate}
+        documentLink={sendInvoice?.customerDocumentLink || resolveInvoicePublicShareUrl(sendInvoice || {})}
+        isDraftInvoice={sendInvoice?.status === 'Draft'}
         onClose={() => setSendInvoice(null)}
-        onSent={async () => {
-          return runSingleFlightInvoiceAction(sendInvoice.id, async () => {
-            try {
-              const billingProject = projects.find((project) => String(project?.id || project?.projectId || project?.project_id || '') === String(sendInvoice?.projectId || sendInvoice?.project_id || '')) || {
-                id: sendInvoice?.projectId || sendInvoice?.project_id || '',
-                clientId: sendInvoice?.clientId || sendInvoice?.client_id || null,
-                contractId: sendInvoice?.contractId || sendInvoice?.contract_id || null,
-              }
-              const billingCapacity = calculateInvoiceBillingCapacity({
-                project: billingProject,
-                estimates,
-                contracts,
-                invoices: invoiceRecords,
-                payments,
-                currentInvoiceId: sendInvoice.id,
-                currentInvoiceAmount: sendInvoice.amount,
-              })
-              const billingError = validateInvoiceAgainstBillingCapacity({ capacity: billingCapacity, invoiceAmount: sendInvoice.amount })
-              if (billingError) {
-                showToast(t('invoiceExceedsAvailableToBill', { amount: currency.format(billingError.overage) }), 'error')
-                return false
-              }
-              const response = await dataProvider.invoices.update(sendInvoice.id, { status: 'Sent' }, { contractorId })
-              if (response?.error) {
-                throw new Error(response.error.message || t('invoiceSaveFailed'))
-              }
-              onInvoiceSent?.(sendInvoice?.id)
-            } catch (err) {
-              console.warn('Mark invoice sent failed', err)
-              showToast(err?.message || t('invoiceSaveFailed'), 'error')
-              return false
-            }
-            return true
-          })
-        }}
+        onMarkSent={markSelectedInvoiceSent}
         t={t}
         contentT={sendInvoiceT}
       />

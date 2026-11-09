@@ -2,6 +2,7 @@ import { isRecordArchived, resolveEstimateArchiveState } from './archiveLifecycl
 import { deriveProjectStatus, PROJECT_LIFECYCLE_STATUS } from './projectLifecycle.js'
 import { getLeadPipelineStage, leadPipelineStages } from './leadPipeline.js'
 import { dedupePayments } from './projectPayments.js'
+import { isFinanciallyEffectivePayment } from './paymentStatus.js'
 import { calculateProjectFinancialSummary } from './projectFinancials.js'
 import { getLeadEstimateRecords, getLeadEstimateValue } from './leadLifecycle.js'
 import { getInvoiceRemainingBalance, isCollectibleInvoice } from './invoiceRecords.js'
@@ -221,9 +222,9 @@ export function selectDashboardPaymentActivityRecords({ payments = [], invoices 
     }))
   ))
 
-  return dedupePayments([...legacyHistory, ...payments])
-    .filter((payment) => !payment?.archivedAt)
-    .filter((payment) => !['failed', 'refunded', 'cancelled', 'canceled'].includes(normalizeStatus(payment?.status)))
+  return dedupePayments([...legacyHistory, ...payments]
+    .filter((payment) => !payment?.archivedAt && !payment?.archived_at)
+    .filter(isFinanciallyEffectivePayment))
 }
 
 export function selectDashboardContractAttentionRecords({

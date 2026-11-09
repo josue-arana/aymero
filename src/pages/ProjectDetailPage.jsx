@@ -402,7 +402,7 @@ class ProjectDetailErrorBoundary extends Component {
   }
 }
 
-function ProjectDetailPageContent({ lead, openRecordPaymentOnLoad = false, companySettings, clients = [], estimates = [], invoices = [], scheduleEvents = [], archivedScheduleEventIds = [], isArchived = false, onBack, onOpenPortal, onOpenContract, onConvertEstimate, onCreateInvoice, onMarkProjectComplete, onUpdateLead, onRecordPayment, onUpdatePayment, onDeletePayment, onUploadPhotos, onScheduleEvent, onEditScheduleEvent, onExportEvent, onArchiveScheduleEvent, onRestoreScheduleEvent, onDeleteScheduleEvent, onArchiveProject, onRestoreProject, onDeleteProject, onCreateEstimateOption, onDuplicateEstimateOption, onSelectEstimate, onClearEstimateSelection, language = 'en', t }) {
+function ProjectDetailPageContent({ lead, openRecordPaymentOnLoad = false, companySettings, clients = [], estimates = [], invoices = [], allInvoices = invoices, allPayments = [], scheduleEvents = [], archivedScheduleEventIds = [], isArchived = false, onBack, onOpenPortal, onOpenContract, onConvertEstimate, onCreateInvoice, onMarkProjectComplete, onUpdateLead, onRecordPayment, onUpdatePayment, onDeletePayment, onUploadPhotos, onScheduleEvent, onEditScheduleEvent, onExportEvent, onArchiveScheduleEvent, onRestoreScheduleEvent, onDeleteScheduleEvent, onArchiveProject, onRestoreProject, onDeleteProject, onCreateEstimateOption, onDuplicateEstimateOption, onSelectEstimate, onClearEstimateSelection, language = 'en', t }) {
   const { id, leadId } = useParams()
   const location = useLocation()
   const navigate = useNavigate()
@@ -498,6 +498,15 @@ function ProjectDetailPageContent({ lead, openRecordPaymentOnLoad = false, compa
     || lead?.portal?.contract
     || readLinkedContractDraft(baseProject || projectId, [projectId, relatedLeadId, lead?.id, resolvedEstimate?.id])
   ), [baseProject, contractRecord, lead, projectId, relatedLeadId, resolvedEstimate?.id])
+  const financialRelatedInvoices = useMemo(() => selectProjectWorkspaceInvoices(allInvoices, {
+    projectIds: [linkedProjectId, projectId, baseProject?.id, baseProject?.projectId, baseProject?.project_id],
+    leadIds: [relatedLeadId, baseProject?.leadId, baseProject?.lead_id, lead?.id],
+    invoiceIds: collectProjectInvoiceIds({
+      ...(baseProject || {}),
+      portal: { ...(baseProject?.portal || {}), ...(lead?.portal || {}) },
+      invoices: [...(Array.isArray(baseProject?.invoices) ? baseProject.invoices : []), ...(Array.isArray(lead?.invoices) ? lead.invoices : [])],
+    }),
+  }), [allInvoices, baseProject, lead, linkedProjectId, projectId, relatedLeadId])
   const relatedInvoiceIds = useMemo(() => collectProjectInvoiceIds({
     ...(baseProject || {}),
     portal: {
@@ -507,8 +516,9 @@ function ProjectDetailPageContent({ lead, openRecordPaymentOnLoad = false, compa
     invoices: [
       ...(Array.isArray(baseProject?.invoices) ? baseProject.invoices : []),
       ...(Array.isArray(lead?.invoices) ? lead.invoices : []),
+      ...financialRelatedInvoices,
     ],
-  }), [baseProject, lead])
+  }), [baseProject, financialRelatedInvoices, lead])
   const localPaymentRecords = useMemo(() => dedupePayments([
     ...(Array.isArray(baseProject?.payments) ? baseProject.payments : []),
     ...(Array.isArray(baseProject?.portal?.payments) ? baseProject.portal.payments : []),
@@ -517,6 +527,11 @@ function ProjectDetailPageContent({ lead, openRecordPaymentOnLoad = false, compa
     ...(Array.isArray(lead?.portal?.payments) ? lead.portal.payments : []),
     ...(Array.isArray(lead?.portal?.paymentHistory) ? lead.portal.paymentHistory : []),
   ]), [baseProject, lead])
+  const allRelatedPaymentRecords = useMemo(() => dedupePayments([
+    ...(Array.isArray(allPayments) ? allPayments : []),
+    ...paymentRecords,
+    ...localPaymentRecords,
+  ]), [allPayments, localPaymentRecords, paymentRecords])
   const legacyPaymentSummary = useMemo(() => calculateProjectPaymentSummary({
     ...(baseProject || {}),
     id: linkedProjectId || projectId,
@@ -528,7 +543,7 @@ function ProjectDetailPageContent({ lead, openRecordPaymentOnLoad = false, compa
       ...(lead?.portal || {}),
       contract: resolvedContract || baseProject?.portal?.contract || lead?.portal?.contract || {},
     },
-  }, [...paymentRecords, ...localPaymentRecords], { relatedInvoiceIds }), [baseProject, lead, linkedProjectId, localPaymentRecords, paymentRecords, projectId, relatedInvoiceIds, relatedLeadId, resolvedContract])
+  }, allRelatedPaymentRecords, { relatedInvoiceIds }), [allRelatedPaymentRecords, baseProject, lead, linkedProjectId, projectId, relatedInvoiceIds, relatedLeadId, resolvedContract])
   const relatedProjectInvoices = useMemo(() => selectProjectWorkspaceInvoices(invoices, {
     projectIds: [
       linkedProjectId,
@@ -553,9 +568,9 @@ function ProjectDetailPageContent({ lead, openRecordPaymentOnLoad = false, compa
     },
     estimates: projectEstimateRecords,
     contracts: resolvedContract ? [resolvedContract] : [],
-    invoices: relatedProjectInvoices,
-    payments: [...paymentRecords, ...localPaymentRecords],
-  }), [baseProject, lead?.portal, linkedProjectId, localPaymentRecords, paymentRecords, projectEstimateRecords, projectId, relatedProjectInvoices, resolvedContract])
+    invoices: financialRelatedInvoices,
+    payments: allRelatedPaymentRecords,
+  }), [allRelatedPaymentRecords, baseProject, financialRelatedInvoices, lead?.portal, linkedProjectId, projectEstimateRecords, projectId, resolvedContract])
   const paymentSummary = useMemo(() => ({
     ...legacyPaymentSummary,
     projectValue: projectFinancialSummary.agreedValue,
@@ -1422,7 +1437,7 @@ function ProjectDetailPageContent({ lead, openRecordPaymentOnLoad = false, compa
           amount: parsedAmount,
           payments: paymentSummary.payments,
           projectId: persistedProjectId,
-          invoiceIds: relatedProjectInvoices.map((invoice) => invoice.id || invoice.invoiceId || invoice.invoice_id),
+          invoiceIds: relatedInvoiceIds,
           currentPaymentId: editingPayment?.id,
         })
         if (projectPaymentValidation) {

@@ -48,6 +48,10 @@ export function isPublicEstimatePath(pathname = '') {
   return /^\/estimate\/[^/]+\/?$/.test(String(pathname || ''))
 }
 
+export function isPublicInvoicePath(pathname = '') {
+  return /^\/invoice\/[^/]+\/?$/.test(String(pathname || ''))
+}
+
 export function isAuthenticationPath(pathname = '') {
   return AUTH_PATHS.has(normalizePathname(pathname))
 }
@@ -115,6 +119,8 @@ export function resolveHostnameRoute({
   if (host.mode === 'unrestricted') {
     return isPublicEstimatePath(pathname)
       ? { action: 'public-estimate', surface: host.surface, reason: 'public-estimate-route' }
+      : isPublicInvoicePath(pathname)
+        ? { action: 'public-invoice', surface: host.surface, reason: 'public-invoice-route' }
       : { action: 'allow', surface: host.surface, reason: host.reason }
   }
 
@@ -123,7 +129,7 @@ export function resolveHostnameRoute({
   }
 
   if (host.surface === 'app') {
-    return isPublicPortalPath(pathname) || isPublicEstimatePath(pathname)
+    return isPublicPortalPath(pathname) || isPublicEstimatePath(pathname) || isPublicInvoicePath(pathname)
       ? redirectDecision('portal', origins, location, 'portal-route-on-app-host')
       : { action: 'allow', surface: 'app', reason: 'app-route' }
   }
@@ -131,6 +137,10 @@ export function resolveHostnameRoute({
   if (host.surface === 'portal') {
     if (isPublicEstimatePath(pathname)) {
       return { action: 'public-estimate', surface: 'portal', reason: 'public-estimate-route' }
+    }
+
+    if (isPublicInvoicePath(pathname)) {
+      return { action: 'public-invoice', surface: 'portal', reason: 'public-invoice-route' }
     }
 
     return isPublicPortalPath(pathname)
@@ -147,14 +157,14 @@ export function resolveHostnameRoute({
       }
     }
 
-    if (isPublicPortalPath(pathname) || isPublicEstimatePath(pathname)) {
+    if (isPublicPortalPath(pathname) || isPublicEstimatePath(pathname) || isPublicInvoicePath(pathname)) {
       return redirectDecision('portal', origins, location, 'portal-route-on-auth-host')
     }
 
     return redirectDecision('app', origins, location, 'contractor-route-on-auth-host')
   }
 
-  if (isPublicPortalPath(pathname) || isPublicEstimatePath(pathname)) {
+  if (isPublicPortalPath(pathname) || isPublicEstimatePath(pathname) || isPublicInvoicePath(pathname)) {
     return redirectDecision('portal', origins, location, 'portal-route-on-site-host')
   }
 

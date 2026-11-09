@@ -223,14 +223,14 @@ Deno.serve(async (request) => {
   try {
     const body = await request.json()
     token = String(body?.token || '').trim()
-    resource = body?.resource === 'estimate' ? 'estimate' : 'portal'
+    resource = ['estimate', 'invoice'].includes(body?.resource) ? body.resource : 'portal'
     action = String(body?.action || '').trim().toLowerCase()
   } catch {
     return jsonResponse({ error: 'Invalid request.' }, 400)
   }
 
   if (!isValidOpaquePublicToken(token)) {
-    return jsonResponse({ error: resource === 'estimate' ? 'Estimate Not Found.' : 'Client Portal Not Found.' }, 404)
+    return jsonResponse({ error: resource === 'estimate' ? 'Estimate Not Found.' : resource === 'invoice' ? 'Invoice Not Found.' : 'Client Portal Not Found.' }, 404)
   }
 
   if (action && (resource !== 'estimate' || !isPublicEstimateDecision(action))) {
@@ -388,6 +388,177 @@ Deno.serve(async (request) => {
     })
   }
 
+  if (resource === 'invoice') {
+    const invoiceRequestId = crypto.randomUUID()
+    const { data: invoiceRow, error: invoiceError } = await admin
+      .from('invoices')
+      .select('contractor_id, client_id, project_id, invoice_number, title, description, customer_notes, line_items, subtotal, tax_amount, total_amount, amount_paid, status, issue_date, due_date, paid_at, public_share_token')
+      .eq('public_share_token', token)
+      .in('status', ['sent', 'partial', 'paid', 'overdue'])
+      .is('archived_at', null)
+      .maybeSingle()
+
+    if (invoiceError) {
+      console.error('[super-endpoint] Public invoice lookup failed', {
+        operation: 'invoice',
+        step: 'invoice_lookup',
+        requestId: invoiceRequestId,
+        code: /^[A-Z0-9]{4,10}$/.test(String(invoiceError.code || '')) ? invoiceError.code : 'unknown',
+      })
+      return jsonResponse({ error: 'Invoice service unavailable.' }, 500)
+    }
+    if (!invoiceRow) return jsonResponse({ error: 'Invoice Not Found.' }, 404)
+
+    let storedInvoiceMetadata: Record<string, unknown> = {}
+    if (typeof invoiceRow.description === 'string') {
+      try {
+        const parsedDescription = JSON.parse(invoiceRow.description)
+        if (parsedDescription && typeof parsedDescription === 'object') storedInvoiceMetadata = parsedDescription
+      } catch {
+        // Legacy plain-text descriptions contain no structured identity metadata.
+      }
+    }
+
+    const contractorId = invoiceRow.contractor_id
+    const [settingsResult, projectResult, leadResult] = await Promise.all([
+      admin.from('company_settings')
+        .select('company_name, owner_name, phone, email, business_address, website, license_number, logo_file_path, primary_brand_color, accepted_payment_methods')
+        .eq('contractor_id', contractorId).is('archived_at', null).maybeSingle(),
+      invoiceRow.project_id
+        ? admin.from('projects').select('client_id, title, address')
+          .eq('contractor_id', contractorId).eq('id', invoiceRow.project_id).is('archived_at', null).maybeSingle()
+        : Promise.resolve({ data: null, error: null }),
+      typeof storedInvoiceMetadata.leadId === 'string'
+        ? admin.from('leads').select('client_id, name, phone, email, address, client_language')
+          .eq('contractor_id', contractorId).eq('id', storedInvoiceMetadata.leadId).is('archived_at', null).maybeSingle()
+        : Promise.resolve({ data: null, error: null }),
+    ])
+    const invoiceRelatedQueries = [
+      ['company_settings', settingsResult.error],
+      ['linked_project', projectResult.error],
+      ['linked_lead', leadResult.error],
+    ] as const
+    const failedInvoiceQuery = invoiceRelatedQueries.find(([, error]) => Boolean(error))
+    if (failedInvoiceQuery) {
+      const error = failedInvoiceQuery[1]
+      console.error('[super-endpoint] Public invoice query failed', {
+        operation: 'invoice',
+        step: failedInvoiceQuery[0],
+        requestId: invoiceRequestId,
+        code: /^[A-Z0-9]{4,10}$/.test(String(error?.code || '')) ? error?.code : 'unknown',
+      })
+      return jsonResponse({ error: 'Invoice service unavailable.' }, 500)
+    }
+
+    const lead = leadResult.data || {}
+    const project = projectResult.data || {}
+    const linkedClientIds = [invoiceRow.client_id, project.client_id, lead.client_id]
+      .filter((id) => typeof id === 'string' && id)
+    if (new Set(linkedClientIds).size > 1) return jsonResponse({ error: 'Invoice Not Found.' }, 404)
+    const canonicalClientId = linkedClientIds[0] || ''
+    const [clientResult, paymentsResult] = await Promise.all([
+      canonicalClientId
+        ? admin.from('clients').select('display_name, phone, email, address, city, state, postal_code, preferred_language')
+          .eq('contractor_id', contractorId).eq('id', canonicalClientId).is('archived_at', null).maybeSingle()
+        : Promise.resolve({ data: null, error: null }),
+      admin.from('payments').select('amount, payment_type, payment_date, payment_method, method, status, created_at')
+        .eq('contractor_id', contractorId).eq('invoice_id', invoiceRow.id).eq('status', 'recorded')
+        .is('archived_at', null).order('payment_date', { ascending: false }),
+    ])
+    const failedInvoiceDataQuery = [
+      ['linked_client', clientResult.error],
+      ['invoice_payments', paymentsResult.error],
+    ].find(([, error]) => Boolean(error))
+    if (failedInvoiceDataQuery) {
+      const error = failedInvoiceDataQuery[1]
+      console.error('[super-endpoint] Public invoice query failed', {
+        operation: 'invoice',
+        step: failedInvoiceDataQuery[0],
+        requestId: invoiceRequestId,
+        code: /^[A-Z0-9]{4,10}$/.test(String(error?.code || '')) ? error?.code : 'unknown',
+      })
+      return jsonResponse({ error: 'Invoice service unavailable.' }, 500)
+    }
+
+    const client = clientResult.data || {}
+    const settings = settingsResult.data || {}
+    const customerName = storedInvoiceMetadata.clientName || client.display_name || lead.name || ''
+    const totalAmount = Number(invoiceRow.total_amount || 0)
+    const amountPaid = Number(invoiceRow.amount_paid || 0)
+    const linkedPaymentHistory = (paymentsResult.data || []).map((payment) => ({
+      amount: Number(payment.amount || 0),
+      date: payment.payment_date || payment.created_at || '',
+      method: payment.payment_method || payment.method || '',
+      type: payment.payment_type || '',
+    }))
+    const legacyPaymentHistory = Array.isArray(storedInvoiceMetadata.paymentHistory)
+      ? storedInvoiceMetadata.paymentHistory.map((payment: Record<string, unknown>) => ({
+        amount: Number(payment?.amount || 0),
+        date: String(payment?.date || payment?.paymentDate || ''),
+        method: String(payment?.method || payment?.paymentMethod || ''),
+        type: String(payment?.type || payment?.paymentType || ''),
+      }))
+      : []
+    const paymentHistory = linkedPaymentHistory.length ? linkedPaymentHistory : legacyPaymentHistory
+    const publicInvoice = {
+      number: invoiceRow.invoice_number || '',
+      invoiceNumber: invoiceRow.invoice_number || '',
+      title: invoiceRow.title || '',
+      projectTitle: invoiceRow.title || '',
+      customerName,
+      description: typeof storedInvoiceMetadata.summary === 'string' ? storedInvoiceMetadata.summary : '',
+      customerNotes: invoiceRow.customer_notes || '',
+      lineItems: Array.isArray(invoiceRow.line_items) ? invoiceRow.line_items.map((item: Record<string, unknown>) => ({
+        description: String(item?.description || item?.name || ''),
+        amount: item?.amount === null || item?.amount === undefined ? null : Number(item.amount),
+        quantity: item?.quantity === null || item?.quantity === undefined ? null : Number(item.quantity),
+      })) : [],
+      subtotal: Number(invoiceRow.subtotal || 0),
+      taxAmount: Number(invoiceRow.tax_amount || 0),
+      totalAmount,
+      amount: totalAmount,
+      amountPaid,
+      remainingBalance: Math.max(totalAmount - amountPaid, 0),
+      status: ({ sent: 'Sent', partial: 'Partially Paid', paid: 'Paid', overdue: 'Overdue' } as Record<string, string>)[String(invoiceRow.status)] || 'Sent',
+      issueDate: invoiceRow.issue_date || '',
+      dueDate: invoiceRow.due_date || '',
+      paidAt: invoiceRow.paid_at || '',
+      invoiceLanguage: storedInvoiceMetadata.invoiceLanguage || client.preferred_language || lead.client_language || 'en',
+      paymentHistory,
+    }
+
+    return jsonResponse({
+      resource: 'invoice',
+      invoice: publicInvoice,
+      client: {
+        name: customerName,
+        displayName: customerName,
+        address: client.address || lead.address || '',
+        city: client.city || '',
+        state: client.state || '',
+        postalCode: client.postal_code || '',
+        preferredLanguage: client.preferred_language || lead.client_language || '',
+      },
+      project: {
+        title: project.title || invoiceRow.title || '',
+        projectTitle: project.title || invoiceRow.title || '',
+        address: project.address || client.address || lead.address || '',
+      },
+      company: {
+        name: settings.company_name || '',
+        ownerName: settings.owner_name || '',
+        phone: settings.phone || '',
+        email: settings.email || '',
+        address: settings.business_address || '',
+        website: settings.website || '',
+        licenseNumber: settings.license_number || '',
+        logo: settings.logo_file_path || '',
+        primaryColor: settings.primary_brand_color || '',
+        acceptedPaymentMethods: settings.accepted_payment_methods || { methods: [], otherLabel: '' },
+      },
+    })
+  }
+
   const portalRequestId = crypto.randomUUID()
   const { data: project, error: projectError } = await admin
     .from('projects')
@@ -448,7 +619,7 @@ Deno.serve(async (request) => {
       ? admin.from('contracts').select('contract_number, title, scope_of_work, terms, total_amount, deposit_amount, payment_terms, status, sent_at, signed_at, signed_by, created_at, updated_at').eq('contractor_id', contractorId).eq('project_id', projectId).is('archived_at', null).order('created_at', { ascending: false }).limit(1).maybeSingle()
       : Promise.resolve({ data: null, error: null }),
     showPayments
-      ? admin.from('payments').select('amount, payment_type, payment_date, payment_method, method, status, created_at').eq('contractor_id', contractorId).eq('project_id', projectId).is('archived_at', null).order('payment_date', { ascending: false })
+      ? admin.from('payments').select('amount, payment_type, payment_date, payment_method, method, status, created_at').eq('contractor_id', contractorId).eq('project_id', projectId).eq('status', 'recorded').is('archived_at', null).order('payment_date', { ascending: false })
       : Promise.resolve({ data: [], error: null }),
     admin.from('events').select('id, title, event_type, event_date, start_time, end_time, type, status, starts_at, location').eq('contractor_id', contractorId).or(eventAssociationFilter).is('archived_at', null).eq('status', 'scheduled').order('event_date', { ascending: true }).order('start_time', { ascending: true }).order('starts_at', { ascending: true }),
     showPhotos

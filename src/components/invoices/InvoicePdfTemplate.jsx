@@ -1,30 +1,16 @@
 import { forwardRef, useEffect, useState } from 'react'
 import { resolveDocumentBrandTokens } from '../../data/brandColors'
 import { currencyWithCents } from '../../utils/formatters'
-import { getLanguageLocale } from '../../utils/language'
-import { calculateInvoiceTotal, getInvoiceRemainingBalance } from '../../utils/invoiceRecords'
+import { getInvoiceRemainingBalance, resolveInvoiceFinancials } from '../../utils/invoiceRecords'
 import { getPaymentTermLabel } from '../../utils/paymentTerms'
 import { getAcceptedPaymentMethodLabels } from '../../utils/acceptedPaymentMethods'
 import { resolveInvoiceCustomerNote } from '../../utils/invoiceCustomerNotes'
+import { formatInvoiceCalendarDate } from '../../utils/invoiceDate'
 import { EstimateFormattedText } from '../estimates/EstimateFormattedText'
 import './invoiceDocument.css'
 
 function formatInvoiceDocumentDate(value, language = 'en') {
-  if (!value) return ''
-
-  const normalizedValue = typeof value === 'string' && /^\d{4}-\d{2}-\d{2}$/.test(value.trim())
-    ? `${value.trim()}T12:00:00`
-    : value
-  const parsedDate = new Date(normalizedValue)
-  if (Number.isNaN(parsedDate.getTime())) {
-    return String(value)
-  }
-
-  return parsedDate.toLocaleDateString(getLanguageLocale(language), {
-    month: 'long',
-    day: 'numeric',
-    year: 'numeric',
-  })
+  return formatInvoiceCalendarDate(value, language) || (value ? String(value) : '')
 }
 
 function getFirstAvailableValue(...values) {
@@ -429,16 +415,8 @@ export const InvoicePdfTemplate = forwardRef(function InvoicePdfTemplate({
   language = 'en',
 }, ref) {
   const lineItems = Array.isArray(invoice?.lineItems) ? invoice.lineItems : []
-  const calculatedLineItemSubtotal = calculateInvoiceTotal(lineItems, Number(invoice?.amount || 0))
-  const storedSubtotal = readNumericField(invoice, ['subtotal'], calculatedLineItemSubtotal)
-  const subtotal = storedSubtotal === 0 && calculatedLineItemSubtotal > 0
-    ? calculatedLineItemSubtotal
-    : storedSubtotal
-  const taxFieldNames = ['taxAmount', 'tax_amount', 'salesTax', 'sales_tax']
-  const hasTaxSupport = hasAnyField(invoice, taxFieldNames)
-  const taxAmount = readNumericField(invoice, taxFieldNames, 0)
-  const storedInvoiceTotal = readNumericField(invoice, ['totalAmount', 'total_amount', 'total', 'amount'], subtotal)
-  const invoiceTotal = storedInvoiceTotal === 0 && subtotal > 0 ? subtotal : storedInvoiceTotal
+  const { subtotal, taxAmount, total: invoiceTotal } = resolveInvoiceFinancials(invoice)
+  const hasTaxSupport = hasAnyField(invoice, ['taxAmount', 'tax_amount', 'salesTax', 'sales_tax'])
   const amountPaid = readNumericField(invoice, ['amountPaid', 'amount_paid'], 0)
   const balance = getInvoiceRemainingBalance({ amount: invoiceTotal, amountPaid })
   const issueDate = formatInvoiceDocumentDate(invoice?.issueDate, language)

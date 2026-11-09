@@ -58,9 +58,10 @@ for (const translations of [en, es]) {
   }
 }
 
-const [modal, detailPage, template, invoiceService, localService, schema, pdfUtility, stylesheet] = await Promise.all([
+const [modal, detailPage, lineItemRow, template, invoiceService, localService, schema, pdfUtility, stylesheet] = await Promise.all([
   readSource('../src/components/invoices/InvoiceCreationModal.jsx'),
   readSource('../src/pages/InvoiceDetailPage.jsx'),
+  readSource('../src/components/invoices/InvoiceLineItemRow.jsx'),
   readSource('../src/components/invoices/InvoicePdfTemplate.jsx'),
   readSource('../src/services/supabase/invoicesSupabaseService.js'),
   readSource('../src/services/local/invoicesLocalService.js'),
@@ -71,15 +72,16 @@ const [modal, detailPage, template, invoiceService, localService, schema, pdfUti
 
 assert.match(modal, /LightweightFormattedTextarea/)
 assert.match(modal, /lineItems\.\$\{index\}\.description/)
-assert.match(detailPage, /LightweightFormattedTextarea/)
-assert.match(detailPage, /type="text"[\s\S]*?inputMode="decimal"[\s\S]*?updateLineItem\(index, 'amount'/)
+assert.match(detailPage, /<InvoiceLineItemsEditor/)
+assert.match(lineItemRow, /LightweightFormattedTextarea/)
+assert.match(lineItemRow, /type="text"[\s\S]*?inputMode="decimal"[\s\S]*?onChange\(index, 'amount'/)
 assert.match(template, /EstimateFormattedText/)
 assert.doesNotMatch(template, /dangerouslySetInnerHTML/)
 assert.match(template, /displayLineItems\.length > 1 \? <span/)
 assert.match(template, /font-normal leading-\[1\.45\]/)
 assert.doesNotMatch(stylesheet, /font-weight:\s*700/)
 assert.match(modal, /type="text" inputMode="decimal"/)
-assert.match(detailPage, /type="text"[\s\S]*?inputMode="decimal"[\s\S]*?self-start/)
+assert.match(lineItemRow, /type="text"[\s\S]*?inputMode="decimal"[\s\S]*?self-start/)
 assert.match(modal, /items-start[\s\S]*?sm:grid-cols-\[minmax\(0,1fr\)_10rem_auto\]/)
 assert.match(invoiceService, /sanitizeInvoiceLineItemsForStorage\(lineItemsInput\)/)
 assert.match(localService, /sanitizeInvoiceLineItemsForStorage\(updates\.lineItems\)/)

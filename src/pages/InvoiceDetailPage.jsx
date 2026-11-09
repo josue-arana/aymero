@@ -1,9 +1,8 @@
 import { useEffect, useMemo, useRef, useState } from 'react'
 import { useLocation, useNavigate, useParams } from 'react-router-dom'
 import { Archive, Building2, CalendarDays, CheckCircle2, ChevronRight, CreditCard, DollarSign, Download, Eye, FileText, Pencil, Printer, RotateCcw, Save, Send, Trash2, UserRound, Wallet } from 'lucide-react'
-import { StatusBadge } from '../components/ui/StatusBadge'
+import { getDocumentStatusTone, StatusBadge } from '../components/ui/StatusBadge'
 import { InvoiceDocumentPreview } from '../components/invoices/InvoiceDocumentPreview'
-import { LightweightFormattedTextarea } from '../components/estimates/LightweightFormattedTextarea'
 import { contractorCompany } from '../data/mockInvoices'
 import { currency } from '../utils/formatters'
 import { archiveMenuItemClasses } from '../utils/buttonStyles'
@@ -19,10 +18,10 @@ import dataProvider from '../services/dataProvider'
 import { useAuth } from '../contexts/AuthContext'
 import { getInvoicesContractorId } from '../services/system/invoicesRuntimeService'
 import { getPaymentsContractorId } from '../services/system/paymentsRuntimeService'
-import { findRelatedLeadForInvoice, getInvoiceRemainingBalance, normalizeInvoiceStatus, roundMoney } from '../utils/invoiceRecords'
+import { canEditDraftInvoiceLineItems, findRelatedLeadForInvoice, getInvoiceRemainingBalance, normalizeInvoiceStatus, removeInvoiceLineItem, resolveInvoiceFinancials, roundMoney } from '../utils/invoiceRecords'
 import { createTranslator } from '../translations'
 import { findRelatedClient } from '../utils/clients'
-import { getLanguageLocale, resolveClientFacingLanguage } from '../utils/language'
+import { resolveClientFacingLanguage } from '../utils/language'
 import { getPaymentTermOptions, isKnownPaymentTermValue } from '../utils/paymentTerms'
 import { resolveInvoiceCustomerNote } from '../utils/invoiceCustomerNotes'
 import { printDocumentElement } from '../utils/printDocument'
@@ -32,7 +31,14 @@ import { resolveNavigationContext } from '../utils/navigationContext'
 import { calculateInvoiceBillingCapacity, validateInvoiceAgainstBillingCapacity } from '../utils/invoiceBilling'
 import { buildInvoicePaymentContext, getInvoicePaymentRemaining, isEligiblePaymentInvoice, validateInvoicePayment } from '../utils/paymentAllocation'
 import { normalizeCurrencyInput, parsePaymentAmount } from '../utils/paymentAmount'
+import { isFinanciallyEffectivePayment } from '../utils/paymentStatus'
 import { getPaymentPersistenceErrorMessage, logPaymentPersistenceError } from '../utils/paymentErrors'
+import { ensureInvoicePublicShare } from '../services/invoiceShareService'
+import { resolveInvoicePublicShareUrl } from '../utils/invoiceShare'
+import { InvoiceDateInput } from '../components/invoices/InvoiceDateInput'
+import { InvoiceLineItemsEditor } from '../components/invoices/InvoiceLineItemRow'
+import { formatInvoiceCalendarDate } from '../utils/invoiceDate'
+import { hasMeaningfulEstimateFormattedText, normalizeEstimateFormattedTextForStorage } from '../utils/estimateDocument'
 
 const paymentMethods = ['Cash', 'Check', 'Zelle', 'Credit Card', 'Bank Transfer', 'Other']
 const paymentTypes = ['Deposit', 'Progress Payment', 'Final Payment', 'Other']
@@ -57,23 +63,8 @@ function toPaymentPersistenceError(error, fallbackMessage) {
   return paymentError
 }
 
-function calculateInvoiceTotal(lineItems = []) {
-  return lineItems.reduce((sum, item) => sum + Number(item.amount || 0), 0)
-}
-
 function formatLocalizedInvoiceDate(value, language = 'en') {
-  if (!value) return ''
-
-  const parsedDate = new Date(value)
-  if (Number.isNaN(parsedDate.getTime())) {
-    return String(value)
-  }
-
-  return parsedDate.toLocaleDateString(getLanguageLocale(language), {
-    month: 'long',
-    day: 'numeric',
-    year: 'numeric',
-  })
+  return formatInvoiceCalendarDate(value, language) || (value ? String(value) : '')
 }
 
 function getInvoiceTimelineTimestamp(value) {
@@ -220,24 +211,14 @@ function translateInvoiceStatus(status, t) {
 }
 
 function getInvoiceStatusClasses(status) {
-  const normalizedStatus = String(status || '').trim().toLowerCase().replaceAll('_', ' ')
-
-  if (normalizedStatus === 'paid' || normalizedStatus === 'paid in full') {
-    return 'border-emerald-300/30 bg-emerald-400/15 text-emerald-100'
+  const tones = {
+    neutral: 'border-slate-300/25 bg-white/10 text-slate-100',
+    info: 'border-blue-300/30 bg-blue-400/15 text-blue-100',
+    warning: 'border-amber-300/30 bg-amber-400/15 text-amber-100',
+    success: 'border-emerald-300/30 bg-emerald-400/15 text-emerald-100',
+    danger: 'border-rose-300/30 bg-rose-400/15 text-rose-100',
   }
-  if (normalizedStatus === 'partially paid') {
-    return 'border-cyan-300/30 bg-cyan-400/15 text-cyan-100'
-  }
-  if (normalizedStatus === 'overdue') {
-    return 'border-rose-300/30 bg-rose-400/15 text-rose-100'
-  }
-  if (normalizedStatus === 'sent') {
-    return 'border-blue-300/30 bg-blue-400/15 text-blue-100'
-  }
-  if (normalizedStatus === 'archived') {
-    return 'border-amber-300/30 bg-amber-400/15 text-amber-100'
-  }
-  return 'border-slate-300/25 bg-white/10 text-slate-100'
+  return tones[getDocumentStatusTone(status)]
 }
 
 function getInvoiceActionHierarchy(status, isArchived) {
@@ -424,9 +405,12 @@ export function InvoiceDetailRoute({ companySettings, leads, clients = [], proje
   }
 
   const isArchived = isRecordArchived(syncedInvoice, archivedIds)
-  const lineItems = syncedInvoice.lineItems || []
-  const invoiceTotal = calculateInvoiceTotal(lineItems) || Number(syncedInvoice.amount || 0)
-  const currentInvoice = { ...syncedInvoice, amount: invoiceTotal, remainingBalance: getInvoiceRemainingBalance({ ...syncedInvoice, amount: invoiceTotal }) }
+  const lineItems = isEditingInvoice
+    ? (draftInvoice?.lineItems || [])
+    : (syncedInvoice.lineItems || [])
+  const invoiceFinancials = resolveInvoiceFinancials({ ...syncedInvoice, lineItems }, { recalculateDraft: isEditingInvoice })
+  const invoiceTotal = invoiceFinancials.total
+  const currentInvoice = { ...syncedInvoice, ...invoiceFinancials, amount: invoiceTotal, total: invoiceTotal, totalAmount: invoiceTotal, remainingBalance: getInvoiceRemainingBalance({ ...syncedInvoice, amount: invoiceTotal }) }
   const billingProject = projects.find((project) => String(project?.id || project?.projectId || project?.project_id || '') === String(currentInvoice.projectId || currentInvoice.project_id || '')) || {
     id: currentInvoice.projectId || currentInvoice.project_id || '',
     clientId: currentInvoice.clientId || currentInvoice.client_id || null,
@@ -449,7 +433,7 @@ export function InvoiceDetailRoute({ companySettings, leads, clients = [], proje
   const linkedInvoicePayments = payments
     .filter((payment) => String(payment?.invoiceId || payment?.invoice_id || '') === String(currentInvoice.id))
     .filter((payment) => !payment?.archivedAt && !payment?.archived_at)
-    .filter((payment) => !['failed', 'refunded', 'cancelled', 'canceled'].includes(String(payment?.status || '').trim().toLowerCase().replace(/[\s-]+/g, '_')))
+    .filter(isFinanciallyEffectivePayment)
     .map((payment) => ({
       ...payment,
       date: payment.date || payment.paymentDate || payment.payment_date || '',
@@ -466,6 +450,7 @@ export function InvoiceDetailRoute({ companySettings, leads, clients = [], proje
         amountPaid: roundMoney(invoiceTotal - balance),
         hasLinkedPayments: paymentHistory.length > 0,
       })
+  const canEditDraftLineItems = canEditDraftInvoiceLineItems(resolvedInvoice, { displayStatus: presentationStatus, archived: isArchived })
   const invoiceNumber = currentInvoice.number || currentInvoice.invoiceNumber || t('invoiceDetail')
   const invoiceTitle = currentInvoice.title || currentInvoice.projectTitle || ''
   const invoiceClient = getAvailableContactValue(currentInvoice.client, currentInvoice.clientName, lead?.client, clientRecord?.name, clientRecord?.displayName)
@@ -534,6 +519,44 @@ export function InvoiceDetailRoute({ companySettings, leads, clients = [], proje
     }
   }
 
+  async function prepareInvoiceDelivery() {
+    return runSingleFlightInvoiceAction('share', async () => {
+      const share = await ensureInvoicePublicShare(currentInvoice, { contractorId: invoicesContractorId })
+      if (share.error) {
+        showToast(share.error.message || t('clientLinkUnavailableHelp'), 'error')
+        setDraftInvoice({ ...currentInvoice, customerDocumentLink: '' })
+        setShowSendModal(true)
+        return false
+      }
+      if (!share.url) showToast(t('clientLinkUnavailableHelp'), 'error')
+      setDraftInvoice({ ...share.invoice, customerDocumentLink: share.url || resolveInvoicePublicShareUrl(share.invoice) })
+      setShowSendModal(true)
+      return true
+    })
+  }
+
+  async function markCurrentInvoiceSent() {
+    return runSingleFlightInvoiceAction('markSent', async () => {
+      try {
+        const billingError = validateInvoiceAgainstBillingCapacity({ capacity: invoiceBillingCapacity, invoiceAmount: invoiceTotal })
+        if (billingError) {
+          showToast(t('invoiceExceedsAvailableToBill', { amount: currency.format(billingError.overage) }), 'error')
+          return false
+        }
+        const response = await dataProvider.invoices.update(currentInvoice.id, { status: 'Sent' }, { contractorId: invoicesContractorId })
+        if (response?.error || !response?.data?.id) throw new Error(response?.error?.message || t('invoiceSaveFailed'))
+        setDraftInvoice((current) => ({ ...current, ...response.data, customerDocumentLink: current?.customerDocumentLink }))
+        onUpdateInvoice?.(currentInvoice.id, response.data)
+        onInvoiceSent?.(currentInvoice.id)
+        showToast(t('invoiceSent'))
+        return true
+      } catch (error) {
+        showToast(error?.message || t('invoiceSaveFailed'), 'error')
+        return false
+      }
+    })
+  }
+
   function updateDraft(field, value) {
     setDraftInvoice((current) => ({ ...current, [field]: value }))
   }
@@ -541,12 +564,22 @@ export function InvoiceDetailRoute({ companySettings, leads, clients = [], proje
   function updateLineItem(index, field, value) {
     setDraftInvoice((current) => ({
       ...current,
-      lineItems: (current.lineItems || []).map((item, itemIndex) => itemIndex === index ? { ...item, [field]: field === 'amount' ? Number(value || 0) : value } : item),
+      lineItems: (current.lineItems || []).map((item, itemIndex) => itemIndex === index ? { ...item, [field]: field === 'amount' ? (value === '' ? '' : Number(value)) : value } : item),
     }))
   }
 
   function addLineItem() {
+    if (!canEditDraftLineItems) return
     setDraftInvoice((current) => ({ ...current, lineItems: [...(current.lineItems || []), { description: '', amount: 0 }] }))
+  }
+
+  function removeLineItem(index) {
+    if (!canEditDraftLineItems) return
+    if ((draftInvoice?.lineItems || []).length <= 1) return
+    setDraftInvoice((current) => ({
+      ...current,
+      lineItems: removeInvoiceLineItem(current.lineItems || [], index),
+    }))
   }
 
   function beginInvoiceEdit() {
@@ -566,6 +599,23 @@ export function InvoiceDetailRoute({ companySettings, leads, clients = [], proje
     }
 
     const shouldRestoreEditFocus = isEditingInvoice
+    if (String(currentInvoice.status || '').trim().toLowerCase() === 'draft') {
+      const rawItems = draftInvoice?.lineItems || []
+      const candidateItems = rawItems.filter((item) => (
+        hasMeaningfulEstimateFormattedText(normalizeEstimateFormattedTextForStorage(item?.description))
+        || Number(item?.amount) > 0
+      ))
+      const invalidDescription = candidateItems.some((item) => !hasMeaningfulEstimateFormattedText(normalizeEstimateFormattedTextForStorage(item?.description)))
+      const invalidAmount = candidateItems.some((item) => String(item?.amount ?? '').trim() === '' || !Number.isFinite(Number(item.amount)) || Number(item.amount) < 0)
+      if (!candidateItems.length || invalidDescription || invalidAmount) {
+        showToast(t(invalidDescription ? 'invoiceLineItemDescriptionRequired' : 'invoiceLineItemAmountRequired'), 'error')
+        return false
+      }
+      if (!rawItems.length) {
+        showToast(t('invoiceLineItemDescriptionRequired'), 'error')
+        return false
+      }
+    }
     invoiceSaveGuardRef.current = true
     setIsSavingInvoice(true)
 
@@ -577,6 +627,13 @@ export function InvoiceDetailRoute({ companySettings, leads, clients = [], proje
       }
       const payload = {
         ...currentInvoice,
+        ...invoiceFinancials,
+        lineItems: String(currentInvoice.status || '').trim().toLowerCase() === 'draft'
+          ? (draftInvoice?.lineItems || []).filter((item) => hasMeaningfulEstimateFormattedText(normalizeEstimateFormattedTextForStorage(item?.description)))
+          : currentInvoice.lineItems,
+        amount: invoiceTotal,
+        total: invoiceTotal,
+        totalAmount: invoiceTotal,
         customerNotes: resolveInvoiceCustomerNote(currentInvoice),
       }
 
@@ -896,7 +953,7 @@ export function InvoiceDetailRoute({ companySettings, leads, clients = [], proje
       label: activeInvoiceAction === 'send' ? t('saving') : t('sendToCustomer'),
       icon: Send,
       disabled: isInvoiceActionPending,
-      onClick: () => setShowSendModal(true),
+      onClick: prepareInvoiceDelivery,
     },
     preview: {
       id: 'preview-invoice',
@@ -1128,16 +1185,9 @@ export function InvoiceDetailRoute({ companySettings, leads, clients = [], proje
               <InvoiceMetadataItem label={t('invoiceNumber')} value={invoiceNumber} />
               <InvoiceMetadataItem label={t('issueDate')} value={localizedIssueDate || t('notAvailable')} />
               {isEditingInvoice ? (
-                <label htmlFor="invoice-edit-due-date" className="rounded-2xl border border-blue-100 bg-blue-50/60 p-4 text-sm font-bold text-slate-700">
-                  {t('dueDate')}
-                  <input
-                    ref={firstInvoiceEditFieldRef}
-                    id="invoice-edit-due-date"
-                    value={currentInvoice.dueDate || ''}
-                    onChange={(event) => updateDraft('dueDate', event.target.value)}
-                    className="mt-2 w-full rounded-xl border border-slate-200 bg-white px-3 py-2.5 text-sm font-semibold text-slate-900 outline-none transition focus:border-blue-500 focus:ring-4 focus:ring-blue-100"
-                  />
-                </label>
+                <div className="rounded-2xl border border-blue-100 bg-blue-50/60 p-4">
+                  <InvoiceDateInput id="invoice-edit-due-date" label={t('dueDate')} pickerLabel={`${t('openDatePicker')}: ${t('dueDate')}`} value={currentInvoice.dueDate || ''} onChange={(value) => updateDraft('dueDate', value)} inputRef={firstInvoiceEditFieldRef} />
+                </div>
               ) : (
                 <InvoiceMetadataItem label={t('dueDate')} value={localizedSummaryDueDate} />
               )}
@@ -1184,38 +1234,21 @@ export function InvoiceDetailRoute({ companySettings, leads, clients = [], proje
 
             {isEditingInvoice ? (
               <div className="mt-6 border-t border-slate-200 pt-6">
-                <div className="overflow-hidden rounded-2xl border border-slate-200">
-                  <div className="hidden grid-cols-[1fr_140px] bg-slate-50 px-4 py-3 text-xs font-bold uppercase tracking-wide text-slate-500 sm:grid">
-                    <span>{t('description')}</span>
-                    <span className="text-right">{t('amount')}</span>
+                <InvoiceLineItemsEditor isEditing={isEditingInvoice} canEditDraftLineItems={canEditDraftLineItems} lineItems={lineItems} onChange={updateLineItem} onRemove={removeLineItem} onAdd={addLineItem} t={t} />
+
+                {String(currentInvoice.status || '').trim().toLowerCase() === 'draft' ? <div className="mt-5 grid gap-3 rounded-2xl bg-slate-50 p-4 sm:grid-cols-2 sm:items-end">
+                  <label htmlFor="invoice-edit-tax-rate" className="block text-sm font-bold text-slate-700">
+                    {t('invoiceTaxRate')}
+                    <span className="mt-2 flex items-center rounded-xl border border-slate-200 bg-white focus-within:border-blue-500 focus-within:ring-4 focus-within:ring-blue-100">
+                      <input id="invoice-edit-tax-rate" type="number" min="0" max="100" step="0.001" inputMode="decimal" value={currentInvoice.taxRate ?? ''} onChange={(event) => updateDraft('taxRate', event.target.value === '' ? null : Number(event.target.value))} className="w-full min-w-0 rounded-xl bg-transparent px-3 py-3 text-sm font-semibold text-slate-900 outline-none" />
+                      <span className="px-3 text-sm text-slate-500">%</span>
+                    </span>
+                  </label>
+                  <div className="text-sm text-slate-600 sm:text-right">
+                    <p>{t('subtotal')}: <span className="font-semibold text-slate-900">{currency.format(invoiceFinancials.subtotal)}</span></p>
+                    <p className="mt-1">{t('salesTax')}: <span className="font-semibold text-slate-900">{currency.format(invoiceFinancials.taxAmount)}</span></p>
                   </div>
-                  <div className="divide-y divide-slate-100">
-                    {lineItems.map((item, index) => (
-                      <div key={item.id || `invoice-line-${index}`} className="grid items-start gap-2 px-4 py-4 text-sm sm:grid-cols-[1fr_140px]">
-                        <LightweightFormattedTextarea
-                          value={item.description || ''}
-                          onChange={(value) => updateLineItem(index, 'description', value)}
-                          ariaLabel={`${t('description')} ${index + 1}`}
-                          placeholder={t('description')}
-                          rows={3}
-                          minHeight={104}
-                          maxHeight={Number.POSITIVE_INFINITY}
-                          t={t}
-                          className="px-3 py-3 text-sm leading-6"
-                        />
-                        <input
-                          type="text"
-                          inputMode="decimal"
-                          value={item.amount}
-                          onChange={(event) => updateLineItem(index, 'amount', event.target.value)}
-                          aria-label={`${t('amount')} ${index + 1}`}
-                          className="h-12 min-w-0 self-start rounded-xl border border-slate-200 bg-slate-50 px-3 py-2 text-right font-bold tabular-nums text-slate-950 outline-none focus:border-blue-500 focus:ring-4 focus:ring-blue-100"
-                        />
-                      </div>
-                    ))}
-                  </div>
-                </div>
-                <button type="button" onClick={addLineItem} className="mt-3 rounded-2xl border border-slate-200 px-4 py-3 text-sm font-bold text-slate-700 hover:bg-slate-50 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-blue-500 focus-visible:ring-offset-2">{t('addItem')}</button>
+                </div> : null}
 
                 <div className="mt-6 grid gap-4 sm:grid-cols-2">
                   {isKnownPaymentTermValue(currentInvoice.paymentTerms) ? (
@@ -1314,36 +1347,20 @@ export function InvoiceDetailRoute({ companySettings, leads, clients = [], proje
       <SendToCustomerModal
         isOpen={showSendModal}
         documentType="invoice"
-        customer={{ name: currentInvoice.client, phone: lead?.phone, email: lead?.email }}
+        customer={{
+          name: clientRecord?.displayName || clientRecord?.name || currentInvoice.client,
+          phone: getAvailableContactValue(clientRecord?.phone, lead?.phone),
+          email: getAvailableContactValue(clientRecord?.email, lead?.email),
+        }}
         projectTitle={currentInvoice.projectTitle}
+        invoiceNumber={currentInvoice.number || currentInvoice.invoiceNumber || ''}
         amountLabel={t('amountDue')}
         amountValue={currency.format(balance)}
         dueDate={localizedDueDate}
+        documentLink={currentInvoice.customerDocumentLink || resolveInvoicePublicShareUrl(currentInvoice)}
+        isDraftInvoice={currentInvoice.status === 'Draft'}
         onClose={() => setShowSendModal(false)}
-        onSent={async () => {
-          return runSingleFlightInvoiceAction('send', async () => {
-            try {
-              const billingError = validateInvoiceAgainstBillingCapacity({ capacity: invoiceBillingCapacity, invoiceAmount: invoiceTotal })
-              if (billingError) {
-                showToast(t('invoiceExceedsAvailableToBill', { amount: currency.format(billingError.overage) }), 'error')
-                return false
-              }
-              const response = await dataProvider.invoices.update(currentInvoice.id, { status: 'Sent' }, { contractorId: invoicesContractorId })
-              if (response?.error) {
-                throw new Error(response.error.message || t('invoiceSaveFailed'))
-              }
-              if (response?.data?.id) {
-                onUpdateInvoice?.(response.data.id, response.data)
-              }
-              onInvoiceSent?.(currentInvoice.id)
-            } catch (err) {
-              console.warn('Mark invoice sent failed', err)
-              showToast(err?.message || t('invoiceSaveFailed'), 'error')
-              return false
-            }
-            return true
-          })
-        }}
+        onMarkSent={markCurrentInvoiceSent}
         t={t}
         contentT={invoiceT}
       />

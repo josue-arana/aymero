@@ -47,7 +47,7 @@ assert.equal(validateInvoicePayment({ invoice: invoices[0], amount: 1, projectId
 assert.equal(validateInvoicePayment({ invoice: invoices[3], amount: 1, projectId: project.id })?.code, 'invoiceNotEligible')
 assert.equal(validateInvoicePayment({ invoice: invoices[2], amount: 1, projectId: project.id })?.code, 'invoiceNotEligible')
 assert.equal(validateProjectPaymentAmount({ projectValue: 10000, amount: 2000, projectId: project.id, payments: [] }), null)
-assert.equal(validateProjectPaymentAmount({ projectValue: 10000, amount: 1500, projectId: project.id, payments: [{ id: 'p', projectId: project.id, amount: 9000 }] })?.code, 'amountExceedsProjectBalance')
+assert.equal(validateProjectPaymentAmount({ projectValue: 10000, amount: 1500, projectId: project.id, payments: [{ id: 'p', projectId: project.id, amount: 9000, status: 'Recorded' }] })?.code, 'amountExceedsProjectBalance')
 assert.equal(validateProjectPaymentAmount({
   projectValue: 10000,
   amount: 1000,
