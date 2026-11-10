@@ -23,7 +23,7 @@ import { createTranslator } from '../translations'
 import { findRelatedClient } from '../utils/clients'
 import { resolveClientFacingLanguage } from '../utils/language'
 import { getPaymentTermOptions, isKnownPaymentTermValue } from '../utils/paymentTerms'
-import { resolveInvoiceCustomerNote } from '../utils/invoiceCustomerNotes'
+import { getInvoiceCustomerNoteForEditing, resolveInvoiceCustomerNote } from '../utils/invoiceCustomerNotes'
 import { printDocumentElement } from '../utils/printDocument'
 import { appRoutes } from '../config/appRoutes'
 import { isRecordArchived } from '../utils/archiveLifecycle'
@@ -1263,7 +1263,7 @@ export function InvoiceDetailRoute({ companySettings, leads, clients = [], proje
                     id="invoice-edit-customer-note"
                     title={t('customerNote')}
                     helperText={t('customerNoteHelp')}
-                    value={resolveInvoiceCustomerNote(currentInvoice)}
+                    value={getInvoiceCustomerNoteForEditing(currentInvoice)}
                     onChange={(value) => updateDraft('customerNotes', value)}
                   />
                 </div>
