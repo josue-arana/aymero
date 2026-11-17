@@ -2,6 +2,7 @@ import { USE_SUPABASE, USE_SUPABASE_INVOICES } from '../../config/backendConfig'
 import { supabaseClient } from '../../lib/supabaseClient'
 import { generateInvoiceNumber, getInvoiceDisplayNumber } from '../../utils/invoiceNumber'
 import { roundMoney, sanitizeInvoiceLineItemsForStorage, sumMoney } from '../../utils/invoiceRecords'
+import { normalizeInvoiceDate } from '../../utils/invoiceDate'
 
 const TABLE_NAME = 'invoices'
 const INVOICE_TABLE_COLUMNS = new Set([
@@ -27,6 +28,7 @@ const INVOICE_TABLE_COLUMNS = new Set([
   'created_at',
   'updated_at',
   'archived_at',
+  'public_share_token',
 ])
 
 const uiToDbStatusMap = {
@@ -174,32 +176,11 @@ function normalizePaymentHistory(paymentHistory) {
 function parseDateToIso(value) {
   if (!value) return null
   if (typeof value !== 'string') return null
-
-  if (/^\d{4}-\d{2}-\d{2}$/.test(value)) {
-    return value
-  }
-
+  const normalized = normalizeInvoiceDate(value)
+  if (normalized) return normalized
   const parsedDate = new Date(value)
-  if (Number.isNaN(parsedDate.getTime())) {
-    return null
-  }
-
-  return parsedDate.toISOString().slice(0, 10)
-}
-
-function formatDisplayDate(value) {
-  if (!value) return ''
-
-  const parsedDate = new Date(value)
-  if (Number.isNaN(parsedDate.getTime())) {
-    return String(value)
-  }
-
-  return parsedDate.toLocaleDateString(undefined, {
-    month: 'long',
-    day: 'numeric',
-    year: 'numeric',
-  })
+  if (Number.isNaN(parsedDate.getTime())) return null
+  return `${parsedDate.getFullYear()}-${String(parsedDate.getMonth() + 1).padStart(2, '0')}-${String(parsedDate.getDate()).padStart(2, '0')}`
 }
 
 function serializeDescription(invoice = {}) {
@@ -218,6 +199,7 @@ function serializeDescription(invoice = {}) {
   const estimateId = readField(invoice, ['estimateId', 'estimate_id'])
   const clientName = readField(invoice, ['client', 'clientName', 'customerName'])
   const invoiceLanguage = readField(invoice, ['invoiceLanguage'])
+  const taxRate = readField(invoice, ['taxRate', 'tax_rate'])
 
   const hasStructuredFields = [
     notes,
@@ -229,6 +211,7 @@ function serializeDescription(invoice = {}) {
     estimateId,
     clientName,
     invoiceLanguage,
+    taxRate,
   ].some((value) => value !== undefined)
 
   if (!hasStructuredFields) {
@@ -247,6 +230,7 @@ function serializeDescription(invoice = {}) {
     estimateId: estimateId || null,
     clientName: clientName || '',
     invoiceLanguage: invoiceLanguage || '',
+    taxRate: taxRate === undefined || taxRate === null || taxRate === '' ? null : toNumber(taxRate),
   })
 }
 
@@ -262,6 +246,7 @@ function parseDescription(description) {
     estimateId: null,
     clientName: '',
     invoiceLanguage: '',
+    taxRate: null,
   }
 
   if (!description) return fallback
@@ -284,6 +269,7 @@ function parseDescription(description) {
       estimateId: parsed.estimateId || null,
       clientName: parsed.clientName || '',
       invoiceLanguage: parsed.invoiceLanguage || '',
+      taxRate: parsed.taxRate === undefined || parsed.taxRate === null || parsed.taxRate === '' ? null : toNumber(parsed.taxRate),
     }
   } catch {
     return fallback
@@ -389,8 +375,9 @@ function toAppInvoice(row) {
     remainingBalance,
     amountDue: remainingBalance,
     status: mapStatusToUi(row?.status),
-    issueDate: parsedDescription.displayIssueDate || (row?.issue_date ? formatDisplayDate(row.issue_date) : ''),
-    dueDate: parsedDescription.displayDueDate || (row?.due_date ? formatDisplayDate(row.due_date) : ''),
+    issueDate: normalizeInvoiceDate(row?.issue_date) || normalizeInvoiceDate(parsedDescription.displayIssueDate) || parsedDescription.displayIssueDate || '',
+    dueDate: normalizeInvoiceDate(row?.due_date) || normalizeInvoiceDate(parsedDescription.displayDueDate) || parsedDescription.displayDueDate || '',
+    taxRate: parsedDescription.taxRate,
     sentAt: row?.sent_at || null,
     paidAt: row?.paid_at || null,
     paymentHistory: parsedDescription.paymentHistory,
@@ -401,6 +388,7 @@ function toAppInvoice(row) {
     client: parsedDescription.clientName || '',
     clientName: parsedDescription.clientName || '',
     customerName: parsedDescription.clientName || '',
+    publicShareToken: row?.public_share_token || '',
   }
 }
 
@@ -545,6 +533,11 @@ function toSupabasePayload(contractorId, invoice = {}, { isCreate = false } = {}
 
   if (isCreate || readField(invoice, ['sampleDataKey', 'sample_data_key']) !== undefined) {
     payload.sample_data_key = readField(invoice, ['sampleDataKey', 'sample_data_key']) || null
+  }
+
+  const publicShareToken = readField(invoice, ['publicShareToken', 'public_share_token'])
+  if (publicShareToken !== undefined) {
+    payload.public_share_token = publicShareToken || null
   }
 
   return applyStatusDates(payload, invoice)

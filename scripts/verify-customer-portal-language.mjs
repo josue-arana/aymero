@@ -80,7 +80,7 @@ assert.match(summarySource, /estimateLanguage|contractLanguage/)
 // queried by the token-resolved tenant/project relationship.
 assert.match(endpointSource, /\.from\('leads'\)[\s\S]*?\.eq\('contractor_id', contractorId\)[\s\S]*?\.eq\('id', project\.lead_id\)/)
 assert.match(leadLanguageMigration, /alter table public\.leads\s+add column if not exists client_language text/)
-assert.match(endpointSource, /\.select\('name, phone, email, address, client_language'\)/)
+assert.match(endpointSource, /\.select\('name, phone, email, address, client_id, client_language'\)/)
 assert.doesNotMatch(endpointSource, /\.from\('leads'\)\s*\.select\('[^']*preferred_language/)
 assert.match(endpointSource, /const customerPreferredLanguage = client\.preferred_language \|\| relatedLead\.client_language \|\| ''/)
 assert.match(endpointSource, /defaultLanguage: customerPreferredLanguage \|\| 'en'/)

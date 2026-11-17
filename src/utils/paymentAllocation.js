@@ -1,7 +1,7 @@
 import { getInvoiceRemainingBalance, roundMoney, sumMoney } from './invoiceRecords.js'
+import { isFinanciallyEffectivePayment } from './paymentStatus.js'
 
 const ELIGIBLE_STATUSES = new Set(['sent', 'partial', 'partially_paid', 'overdue'])
-const EXCLUDED_PAYMENT_STATUSES = new Set(['failed', 'refunded', 'cancelled', 'canceled'])
 
 function readField(source = {}, keys = []) {
   for (const key of keys) {
@@ -28,13 +28,13 @@ function getProjectId(record = {}) {
 
 export function getInvoicePaymentRemaining(invoice = {}, payments = []) {
   const invoiceId = String(getInvoiceId(invoice))
-  const linkedPayments = (Array.isArray(payments) ? payments : []).filter((payment) => (
+  const linkedPaymentRecords = (Array.isArray(payments) ? payments : []).filter((payment) => (
     String(readField(payment, ['invoiceId', 'invoice_id']) || '') === invoiceId
       && !isArchived(payment)
-      && !EXCLUDED_PAYMENT_STATUSES.has(normalizeStatus(payment.status))
   ))
+  const linkedPayments = linkedPaymentRecords.filter(isFinanciallyEffectivePayment)
   const storedAmountPaid = readField(invoice, ['amountPaid', 'amount_paid'])
-  const amountPaid = linkedPayments.length > 0
+  const amountPaid = linkedPaymentRecords.length > 0
     ? sumMoney(linkedPayments.map((payment) => payment.amount))
     : storedAmountPaid
 
@@ -92,7 +92,7 @@ export function validateProjectPaymentAmount({ projectValue, projectBalance, amo
   const normalizedProjectId = String(projectId || '')
   const relatedInvoiceIds = new Set((Array.isArray(invoiceIds) ? invoiceIds : []).filter(Boolean).map(String))
   const existingPayments = (Array.isArray(payments) ? payments : [])
-    .filter((payment) => !isArchived(payment) && !EXCLUDED_PAYMENT_STATUSES.has(normalizeStatus(payment.status)))
+    .filter((payment) => !isArchived(payment) && isFinanciallyEffectivePayment(payment))
     .filter((payment) => {
       const paymentProjectId = String(getProjectId(payment))
       const paymentInvoiceId = String(readField(payment, ['invoiceId', 'invoice_id']) || '')

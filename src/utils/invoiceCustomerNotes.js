@@ -12,7 +12,23 @@ export function sanitizeCustomerFacingInvoiceNote(value) {
     .split(/\r?\n/)
     .filter((line) => !knownLegacyMetadataLinePatterns.some((pattern) => pattern.test(line)))
     .join('\n')
-    .trim()
+}
+
+export function getInvoiceCustomerNoteForEditing(invoice = {}) {
+  const hasCanonicalCustomerNote = hasOwn(invoice, 'customerNotes')
+    || hasOwn(invoice, 'customer_notes')
+  const canonicalCustomerNote = hasOwn(invoice, 'customerNotes')
+    ? invoice.customerNotes
+    : invoice.customer_notes
+
+  if (hasCanonicalCustomerNote && canonicalCustomerNote !== null && canonicalCustomerNote !== undefined) {
+    return String(canonicalCustomerNote)
+  }
+
+  // Legacy notes can contain internal metadata lines. Clean those only while
+  // initializing the editor; canonical notes then flow through unchanged as
+  // the contractor types, including trailing spaces and newlines.
+  return sanitizeCustomerFacingInvoiceNote(invoice?.notes)
 }
 
 export function resolveInvoiceCustomerNote(invoice = {}) {

@@ -1,4 +1,4 @@
-import { calculateInvoiceTotal, normalizeInvoiceLineItems, roundMoney } from './invoiceRecords.js'
+import { resolveInvoiceFinancials, roundMoney } from './invoiceRecords.js'
 import { calculateProjectFinancialSummary } from './projectFinancials.js'
 
 const DRAFT_STATUS = 'draft'
@@ -24,8 +24,7 @@ function isArchived(record = {}) {
 }
 
 export function getInvoiceAmount(invoice = {}) {
-  const lineItems = normalizeInvoiceLineItems(readField(invoice, ['lineItems', 'line_items']) || [])
-  return roundMoney(calculateInvoiceTotal(lineItems, readField(invoice, ['amount', 'total', 'totalAmount', 'total_amount'])))
+  return roundMoney(resolveInvoiceFinancials(invoice).total)
 }
 
 export function isActiveDraftInvoice(invoice = {}) {

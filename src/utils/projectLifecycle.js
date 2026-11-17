@@ -1,3 +1,5 @@
+import { isFinanciallyEffectivePayment } from './paymentStatus.js'
+
 export const PROJECT_LIFECYCLE_STATUS = Object.freeze({
   SCHEDULED: 'Scheduled',
   CONTRACT_DRAFT: 'Contract Draft',
@@ -54,10 +56,9 @@ export function hasProjectWorkPayment(payments = []) {
   return toList(payments).some((payment) => {
     if (!payment || isArchivedRecord(payment)) return false
 
-    const status = normalizeValue(payment.status)
     const amount = Number(payment.amount)
 
-    return !['failed', 'refunded', 'cancelled', 'canceled'].includes(status)
+    return isFinanciallyEffectivePayment(payment)
       && Number.isFinite(amount)
       && amount > 0
   })

@@ -50,7 +50,7 @@ assert.equal(draftContract.nextAction.id, 'review-contract')
 
 const signed = { id: 'contract-2', status: 'Signed', signed: true }
 assert.equal(deriveProjectStatus({ project: { status: 'Scheduled' }, contract: signed }), PROJECT_LIFECYCLE_STATUS.SIGNED)
-assert.equal(deriveProjectStatus({ project: { status: 'Scheduled' }, contract: signed, payments: [{ amount: 1 }] }), PROJECT_LIFECYCLE_STATUS.IN_PROGRESS)
+assert.equal(deriveProjectStatus({ project: { status: 'Scheduled' }, contract: signed, payments: [{ amount: 1, status: 'Recorded' }] }), PROJECT_LIFECYCLE_STATUS.IN_PROGRESS)
 assert.equal(deriveProjectStatus({ project: { status: 'Completed', completedAt: '2026-01-01T00:00:00Z' }, contract: signed }), PROJECT_LIFECYCLE_STATUS.COMPLETED)
 assert.equal(deriveProjectStatus({ project: { status: 'Scheduled' }, contract: signed, isArchived: true }), PROJECT_LIFECYCLE_STATUS.ARCHIVED)
 

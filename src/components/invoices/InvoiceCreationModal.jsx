@@ -3,6 +3,7 @@ import { Plus, Trash2, X } from 'lucide-react'
 import { ModalShell } from '../common/ModalShell'
 import { SelectField } from '../ui/SelectField'
 import { LightweightFormattedTextarea } from '../estimates/LightweightFormattedTextarea'
+import { InvoiceDateInput } from './InvoiceDateInput'
 import { currency } from '../../utils/formatters'
 import { createTranslator } from '../../translations'
 import { resolvePreferredClientLanguage } from '../../utils/language'
@@ -10,7 +11,8 @@ import { buildInvoiceCreationPayload, buildInvoiceProjectOptions, validateInvoic
 
 function isoDate(value = new Date()) {
   const parsedDate = value instanceof Date ? value : new Date(value)
-  return Number.isNaN(parsedDate.getTime()) ? new Date().toISOString().slice(0, 10) : parsedDate.toISOString().slice(0, 10)
+  if (Number.isNaN(parsedDate.getTime())) return isoDate(new Date())
+  return `${parsedDate.getFullYear()}-${String(parsedDate.getMonth() + 1).padStart(2, '0')}-${String(parsedDate.getDate()).padStart(2, '0')}`
 }
 
 function addDays(dateValue, days) {
@@ -55,6 +57,7 @@ export function InvoiceCreationModal({
   initialProjectId = '',
   lockProject = false,
   invoiceDueDays = 7,
+  defaultTaxRate = 0,
   language = 'en',
   onClose,
   onSave,
@@ -65,6 +68,7 @@ export function InvoiceCreationModal({
   const [title, setTitle] = useState('')
   const [issueDate, setIssueDate] = useState('')
   const [dueDate, setDueDate] = useState('')
+  const [taxRate, setTaxRate] = useState(0)
   const [lineItems, setLineItems] = useState([{ description: '', amount: '' }])
   const [paymentTerms, setPaymentTerms] = useState('')
   const [customerNotes, setCustomerNotes] = useState('')
@@ -80,7 +84,9 @@ export function InvoiceCreationModal({
   const visibleProjectOptions = selectedClientId
     ? projectOptions.filter((project) => project.clientId === selectedClientId || project.id === selectedProjectId)
     : projectOptions
-  const total = lineItems.reduce((sum, item) => sum + (Number(item.amount) || 0), 0)
+  const subtotal = lineItems.reduce((sum, item) => sum + (Number(item.amount) || 0), 0)
+  const taxAmount = Math.round((subtotal * (Number(taxRate) || 0) / 100 + Number.EPSILON) * 100) / 100
+  const total = subtotal + taxAmount
   const resolvedInvoiceLanguage = resolvePreferredClientLanguage({ client: selectedClient, userLanguage: language })
   const invoiceContentT = useMemo(() => createTranslator(resolvedInvoiceLanguage), [resolvedInvoiceLanguage])
   const invoiceDefaultPaymentTerms = invoiceContentT('invoiceDefaultPaymentTerms')
@@ -95,6 +101,7 @@ export function InvoiceCreationModal({
     setTitle(initialProject?.title || '')
     setIssueDate(today)
     setDueDate(addDays(today, invoiceDueDays))
+    setTaxRate(Math.min(100, Math.max(0, Number(defaultTaxRate) || 0)))
     setLineItems([{ description: initialProject?.title || '', amount: '' }])
     setPaymentTerms('')
     setCustomerNotes('')
@@ -102,7 +109,7 @@ export function InvoiceCreationModal({
     setIsSubmitting(false)
     submitGuardRef.current = false
     paymentTermsEditedRef.current = false
-  }, [initialProjectId, invoiceDueDays, isOpen, projectOptions])
+  }, [defaultTaxRate, initialProjectId, invoiceDueDays, isOpen, projectOptions])
 
   useEffect(() => {
     if (!isOpen || paymentTermsEditedRef.current) return
@@ -165,6 +172,7 @@ export function InvoiceCreationModal({
       issueDate,
       dueDate,
       lineItems,
+      taxRate,
       billingCapacity: selectedProject?.billingCapacity,
     })
     setValidationErrors(nextValidationErrors)
@@ -188,6 +196,7 @@ export function InvoiceCreationModal({
         paymentTerms,
         customerNotes,
         invoiceLanguage: resolvedInvoiceLanguage,
+        taxRate,
       }))
     } finally {
       submitGuardRef.current = false
@@ -236,8 +245,15 @@ export function InvoiceCreationModal({
 
         <section className="grid min-w-0 gap-4 sm:grid-cols-2">
           <div className="sm:col-span-2"><TextField id="invoice-title" label={t('invoiceTitle')} value={title} onChange={(value) => { setValidationErrors((current) => ({ ...current, title: undefined })); setTitle(value) }} required error={validationErrors.title ? t('invoiceRequiredFieldError') : ''} inputRef={(element) => { fieldRefs.current.title = element }} /></div>
-          <TextField id="invoice-issue-date" label={t('issueDate')} type="date" value={issueDate} onChange={(value) => { setValidationErrors((current) => ({ ...current, issueDate: undefined })); setIssueDate(value); if (dueDate && dueDate < value) setDueDate(value) }} required error={validationErrors.issueDate ? t('invoiceRequiredFieldError') : ''} inputRef={(element) => { fieldRefs.current.issueDate = element }} />
-          <TextField id="invoice-due-date" label={t('dueDate')} type="date" value={dueDate} onChange={(value) => { setValidationErrors((current) => ({ ...current, dueDate: undefined })); setDueDate(value) }} min={issueDate} required error={validationErrors.dueDate ? t(validationErrors.dueDate === 'beforeIssueDate' ? 'invoiceDueDateBeforeIssueDate' : 'invoiceRequiredFieldError') : ''} inputRef={(element) => { fieldRefs.current.dueDate = element }} />
+          <InvoiceDateInput id="invoice-issue-date" label={t('issueDate')} pickerLabel={`${t('openDatePicker')}: ${t('issueDate')}`} value={issueDate} onChange={(value) => { setValidationErrors((current) => ({ ...current, issueDate: undefined })); setIssueDate(value); if (dueDate && value && dueDate < value) setDueDate(value) }} required error={validationErrors.issueDate ? t('invoiceRequiredFieldError') : ''} inputRef={(element) => { fieldRefs.current.issueDate = element }} />
+          <InvoiceDateInput id="invoice-due-date" label={t('dueDate')} pickerLabel={`${t('openDatePicker')}: ${t('dueDate')}`} value={dueDate} onChange={(value) => { setValidationErrors((current) => ({ ...current, dueDate: undefined })); setDueDate(value) }} min={issueDate} required error={validationErrors.dueDate ? t(validationErrors.dueDate === 'beforeIssueDate' ? 'invoiceDueDateBeforeIssueDate' : 'invoiceRequiredFieldError') : ''} inputRef={(element) => { fieldRefs.current.dueDate = element }} />
+          <label htmlFor="invoice-tax-rate" className="block min-w-0 text-sm font-bold text-slate-700">
+            <span className="mb-2 block">{t('invoiceTaxRate')}</span>
+            <span className="flex items-center rounded-xl border border-slate-200 bg-white focus-within:border-blue-500 focus-within:ring-4 focus-within:ring-blue-100">
+              <input id="invoice-tax-rate" type="number" min="0" max="100" step="0.001" inputMode="decimal" value={taxRate} onChange={(event) => setTaxRate(Math.min(100, Math.max(0, Number(event.target.value) || 0)))} className="w-full min-w-0 rounded-xl bg-transparent px-3 py-3 text-sm font-semibold text-slate-900 outline-none" />
+              <span className="px-3 text-sm text-slate-500">%</span>
+            </span>
+          </label>
         </section>
 
         <section className="rounded-3xl border border-slate-200 p-4 sm:p-5">
@@ -298,6 +314,7 @@ export function InvoiceCreationModal({
             </button>
             <div className="text-right">
               {validationErrors.billingCapacity ? <p role="alert" className="mb-1 text-xs font-semibold text-red-700">{t('invoiceExceedsAvailableToBill', { amount: currency.format(validationErrors.billingCapacity.overage) })}</p> : null}
+              {taxAmount > 0 ? <p className="text-sm text-slate-500">{t('salesTax')}: {currency.format(taxAmount)}</p> : null}
               <p className="text-lg font-bold text-slate-950">{t('total')}: {currency.format(total)}</p>
             </div>
           </div>

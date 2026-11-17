@@ -5,6 +5,7 @@ import { PipelineBoard } from '../components/pipeline/PipelineBoard'
 import { useAnalyticsMode } from '../contexts/SimpleModeContext'
 import { tStatus } from '../translations'
 import { currency, formatDisplayDate } from '../utils/formatters'
+import { formatInvoiceCalendarDate } from '../utils/invoiceDate'
 import { getLeadNextStepKey, getLeadPipelineStage, leadPipelineStageOrder, leadPipelineStages } from '../utils/leadPipeline'
 import { calculateOutstandingInvoiceBalance, getInvoiceRemainingBalance, isCollectibleInvoice } from '../utils/invoiceRecords'
 import { isRecordArchived } from '../utils/archiveLifecycle'
@@ -547,7 +548,7 @@ export function DashboardPage({
         eyebrow: t('invoice'),
         title: invoice.number || invoice.projectTitle || t('invoice'),
         description: [invoice.client || '', invoice.projectTitle || ''].filter(Boolean).join(' · '),
-        meta: `${t('dueDate')}: ${invoice.dueDate || t('notAdded')} · ${currency.format(remaining)}`,
+        meta: `${t('dueDate')}: ${formatInvoiceCalendarDate(invoice.dueDate) || t('notAdded')} · ${currency.format(remaining)}`,
         priority: isOverdue ? 10 : 35,
         timestamp: toTimestamp(invoice.dueDate),
         onClick: onOpenInvoice ? () => onOpenInvoice(invoice.id) : null,

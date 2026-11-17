@@ -1,7 +1,7 @@
 import { dedupePayments } from './projectPayments.js'
+import { isFinanciallyEffectivePayment } from './paymentStatus.js'
 
 const INVOICE_STATUSES = new Set(['sent', 'partial', 'partially_paid', 'paid', 'overdue'])
-const EXCLUDED_PAYMENT_STATUSES = new Set(['failed', 'refunded', 'cancelled', 'canceled'])
 const EXCLUDED_ESTIMATE_STATUSES = new Set(['rejected', 'cancelled', 'canceled', 'archived'])
 const EXCLUDED_CONTRACT_STATUSES = new Set(['cancelled', 'canceled', 'archived'])
 
@@ -71,26 +71,51 @@ function getContractTotal(contract = {}) {
 
 function activeEstimates(project = {}, estimates = []) {
   const projectId = String(getProjectId(project))
+  const selectedEstimateId = String(readField(project, ['selectedEstimateId', 'selected_estimate_id']) || '')
+  const seenIds = new Set()
   return (Array.isArray(estimates) ? estimates : [])
     .filter((estimate) => estimate && !isArchived(estimate))
     .filter((estimate) => !EXCLUDED_ESTIMATE_STATUSES.has(normalizeStatus(estimate.status)))
     .filter((estimate) => {
       const estimateProjectId = String(getEstimateProjectId(estimate))
-      return !projectId || !estimateProjectId || estimateProjectId === projectId
+      const isSelectedEstimate = Boolean(selectedEstimateId && String(getRecordId(estimate)) === selectedEstimateId)
+      return (Boolean(projectId && estimateProjectId === projectId)
+        || Boolean(isSelectedEstimate && (!projectId || !estimateProjectId || estimateProjectId === projectId)))
     })
     .filter(hasMeaningfulAmount)
+    .filter((estimate) => {
+      const id = String(getRecordId(estimate) || '')
+      if (!id) return true
+      if (seenIds.has(id)) return false
+      seenIds.add(id)
+      return true
+    })
 }
 
 function activeContracts(project = {}, contracts = []) {
   const projectId = String(getProjectId(project))
+  const explicitContractId = String(readField(project, ['contractId', 'contract_id'])
+    || project?.portal?.contract?.id
+    || project?.portal?.contract?.contractId
+    || '')
+  const seenIds = new Set()
   return (Array.isArray(contracts) ? contracts : [])
     .filter((contract) => contract && !isArchived(contract))
     .filter((contract) => !EXCLUDED_CONTRACT_STATUSES.has(normalizeStatus(contract.status)))
     .filter((contract) => {
       const contractProjectId = String(getContractProjectId(contract))
-      return !projectId || !contractProjectId || contractProjectId === projectId
+      const isExplicitContract = Boolean(explicitContractId && String(getRecordId(contract)) === explicitContractId)
+      return (Boolean(projectId && contractProjectId === projectId)
+        || Boolean(isExplicitContract && (!projectId || !contractProjectId || contractProjectId === projectId)))
     })
     .filter(hasMeaningfulAmount)
+    .filter((contract) => {
+      const id = String(getRecordId(contract) || '')
+      if (!id) return true
+      if (seenIds.has(id)) return false
+      seenIds.add(id)
+      return true
+    })
 }
 
 function selectContract(project, contracts) {
@@ -103,16 +128,20 @@ function selectContract(project, contracts) {
   if (explicitContractId) {
     const explicit = candidates.find((contract) => String(getRecordId(contract)) === String(explicitContractId))
     if (explicit) return explicit
+    return { ambiguous: true }
   }
 
   const signed = candidates.filter((contract) => ['signed', 'active'].includes(normalizeStatus(contract.status)) || contract.signed === true)
   if (signed.length === 1) return signed[0]
   if (candidates.length === 1) return candidates[0]
-  return null
+  return candidates.length > 1 ? { ambiguous: true } : null
 }
 
 export function resolveProjectAgreedValue({ project = {}, estimates = [], contracts = [] } = {}) {
   const contract = selectContract(project, contracts)
+  if (contract?.ambiguous) {
+    return { agreedValue: 0, agreedValueSource: 'ambiguous_contracts', agreedValueSourceId: null }
+  }
   if (contract) {
     return {
       agreedValue: getContractTotal(contract),
@@ -177,13 +206,13 @@ export function getProjectPayments(projectId, payments = [], { invoiceIds = [] }
   const linkedInvoiceIds = new Set((Array.isArray(invoiceIds) ? invoiceIds : []).filter(Boolean).map(String))
   if ((!id && linkedInvoiceIds.size === 0) || !Array.isArray(payments)) return []
 
-  return payments.filter((payment) => {
-    if (!payment || isArchived(payment)) return false
+  return dedupePayments(payments.filter((payment) => {
+    if (!payment || isArchived(payment) || !isFinanciallyEffectivePayment(payment)) return false
     const paymentProjectId = String(readField(payment, ['projectId', 'project_id']) || '')
     const paymentInvoiceId = String(readField(payment, ['invoiceId', 'invoice_id']) || '')
     if (paymentProjectId !== id && !linkedInvoiceIds.has(paymentInvoiceId)) return false
-    return !EXCLUDED_PAYMENT_STATUSES.has(normalizeStatus(payment.status))
-  })
+    return true
+  }))
 }
 
 export function calculateProjectFinancialSummary({
@@ -196,9 +225,12 @@ export function calculateProjectFinancialSummary({
   const projectId = getProjectId(project)
   const agreed = resolveProjectAgreedValue({ project, estimates, contracts })
   const projectInvoices = getProjectInvoices(projectId, invoices)
-  const projectInvoiceIdSet = new Set(projectInvoices.map((invoice) => String(readField(invoice, ['id', 'invoiceId', 'invoice_id']) || '')))
-  const projectPayments = getProjectPayments(projectId, dedupePayments(payments), {
-    invoiceIds: projectInvoices.map((invoice) => readField(invoice, ['id', 'invoiceId', 'invoice_id'])),
+  const projectInvoiceIdSet = new Set((Array.isArray(invoices) ? invoices : [])
+    .filter((invoice) => String(readField(invoice, ['projectId', 'project_id']) || '') === String(projectId))
+    .map((invoice) => String(readField(invoice, ['id', 'invoiceId', 'invoice_id']) || ''))
+    .filter(Boolean))
+  const projectPayments = getProjectPayments(projectId, payments, {
+    invoiceIds: [...projectInvoiceIdSet],
   }).filter((payment) => {
     const invoiceId = String(readField(payment, ['invoiceId', 'invoice_id']) || '')
     return !invoiceId || projectInvoiceIdSet.has(invoiceId)
@@ -217,8 +249,12 @@ export function calculateProjectFinancialSummary({
     const linkedPayments = invoiceLinkedPayments.filter((payment) => (
       String(readField(payment, ['invoiceId', 'invoice_id']) || '') === String(invoiceId || '')
     ))
+    const hasLinkedPaymentRecords = (Array.isArray(payments) ? payments : []).some((payment) => (
+      !isArchived(payment)
+        && String(readField(payment, ['invoiceId', 'invoice_id']) || '') === String(invoiceId || '')
+    ))
     const storedPaid = readField(invoice, ['amountPaid', 'amount_paid'])
-    const amountPaid = linkedPayments.length > 0
+    const amountPaid = hasLinkedPaymentRecords
       ? sumMoney(linkedPayments.map((payment) => payment.amount))
       : storedPaid
 

@@ -1,4 +1,9 @@
 import { createClient } from 'npm:@supabase/supabase-js@2'
+import {
+  buildPublicInvoice,
+  isPublicPortalInvoiceEligible,
+  PUBLIC_PORTAL_INVOICE_STATUSES,
+} from '../_shared/publicInvoiceFinancials.js'
 
 const corsHeaders = {
   'Access-Control-Allow-Origin': '*',
@@ -223,14 +228,14 @@ Deno.serve(async (request) => {
   try {
     const body = await request.json()
     token = String(body?.token || '').trim()
-    resource = body?.resource === 'estimate' ? 'estimate' : 'portal'
+    resource = ['estimate', 'invoice'].includes(body?.resource) ? body.resource : 'portal'
     action = String(body?.action || '').trim().toLowerCase()
   } catch {
     return jsonResponse({ error: 'Invalid request.' }, 400)
   }
 
   if (!isValidOpaquePublicToken(token)) {
-    return jsonResponse({ error: resource === 'estimate' ? 'Estimate Not Found.' : 'Client Portal Not Found.' }, 404)
+    return jsonResponse({ error: resource === 'estimate' ? 'Estimate Not Found.' : resource === 'invoice' ? 'Invoice Not Found.' : 'Client Portal Not Found.' }, 404)
   }
 
   if (action && (resource !== 'estimate' || !isPublicEstimateDecision(action))) {
@@ -388,6 +393,147 @@ Deno.serve(async (request) => {
     })
   }
 
+  if (resource === 'invoice') {
+    const invoiceRequestId = crypto.randomUUID()
+    const { data: invoiceRow, error: invoiceError } = await admin
+      .from('invoices')
+      .select('id, contractor_id, client_id, project_id, invoice_number, title, description, customer_notes, line_items, subtotal, tax_amount, total_amount, amount_paid, status, issue_date, due_date, paid_at, public_share_token')
+      .eq('public_share_token', token)
+      .in('status', ['sent', 'partial', 'paid', 'overdue'])
+      .is('archived_at', null)
+      .maybeSingle()
+
+    if (invoiceError) {
+      console.error('[super-endpoint] Public invoice lookup failed', {
+        operation: 'invoice',
+        step: 'invoice_lookup',
+        requestId: invoiceRequestId,
+        code: /^[A-Z0-9]{4,10}$/.test(String(invoiceError.code || '')) ? invoiceError.code : 'unknown',
+      })
+      return jsonResponse({ error: 'Invoice service unavailable.' }, 500)
+    }
+    if (!invoiceRow) return jsonResponse({ error: 'Invoice Not Found.' }, 404)
+
+    let storedInvoiceMetadata: Record<string, unknown> = {}
+    if (typeof invoiceRow.description === 'string') {
+      try {
+        const parsedDescription = JSON.parse(invoiceRow.description)
+        if (parsedDescription && typeof parsedDescription === 'object') storedInvoiceMetadata = parsedDescription
+      } catch {
+        // Legacy plain-text descriptions contain no structured identity metadata.
+      }
+    }
+
+    const contractorId = invoiceRow.contractor_id
+    const [settingsResult, projectResult, leadResult] = await Promise.all([
+      admin.from('company_settings')
+        .select('company_name, owner_name, phone, email, business_address, website, license_number, logo_file_path, primary_brand_color, accepted_payment_methods')
+        .eq('contractor_id', contractorId).is('archived_at', null).maybeSingle(),
+      invoiceRow.project_id
+        ? admin.from('projects').select('client_id, title, address')
+          .eq('contractor_id', contractorId).eq('id', invoiceRow.project_id).is('archived_at', null).maybeSingle()
+        : Promise.resolve({ data: null, error: null }),
+      typeof storedInvoiceMetadata.leadId === 'string'
+        ? admin.from('leads').select('client_id, name, phone, email, address, client_language')
+          .eq('contractor_id', contractorId).eq('id', storedInvoiceMetadata.leadId).is('archived_at', null).maybeSingle()
+        : Promise.resolve({ data: null, error: null }),
+    ])
+    const invoiceRelatedQueries = [
+      ['company_settings', settingsResult.error],
+      ['linked_project', projectResult.error],
+      ['linked_lead', leadResult.error],
+    ] as const
+    const failedInvoiceQuery = invoiceRelatedQueries.find(([, error]) => Boolean(error))
+    if (failedInvoiceQuery) {
+      const error = failedInvoiceQuery[1]
+      console.error('[super-endpoint] Public invoice query failed', {
+        operation: 'invoice',
+        step: failedInvoiceQuery[0],
+        requestId: invoiceRequestId,
+        code: /^[A-Z0-9]{4,10}$/.test(String(error?.code || '')) ? error?.code : 'unknown',
+      })
+      return jsonResponse({ error: 'Invoice service unavailable.' }, 500)
+    }
+
+    if ((invoiceRow.project_id && !projectResult.data)
+      || (typeof storedInvoiceMetadata.leadId === 'string' && !leadResult.data)) {
+      return jsonResponse({ error: 'Invoice Not Found.' }, 404)
+    }
+
+    const lead = leadResult.data || {}
+    const project = projectResult.data || {}
+    const linkedClientIds = [invoiceRow.client_id, project.client_id, lead.client_id]
+      .filter((id) => typeof id === 'string' && id)
+    if (new Set(linkedClientIds).size > 1) return jsonResponse({ error: 'Invoice Not Found.' }, 404)
+    const canonicalClientId = linkedClientIds[0] || ''
+    const [clientResult, paymentsResult] = await Promise.all([
+      canonicalClientId
+        ? admin.from('clients').select('display_name, phone, email, address, city, state, postal_code, preferred_language')
+          .eq('contractor_id', contractorId).eq('id', canonicalClientId).is('archived_at', null).maybeSingle()
+        : Promise.resolve({ data: null, error: null }),
+      admin.from('payments').select('amount, payment_type, payment_date, payment_method, method, status, created_at, archived_at')
+        .eq('contractor_id', contractorId).eq('invoice_id', invoiceRow.id)
+        .is('archived_at', null).order('payment_date', { ascending: false }),
+    ])
+    const failedInvoiceDataQuery = [
+      ['linked_client', clientResult.error],
+      ['invoice_payments', paymentsResult.error],
+    ].find(([, error]) => Boolean(error))
+    if (failedInvoiceDataQuery) {
+      const error = failedInvoiceDataQuery[1]
+      console.error('[super-endpoint] Public invoice query failed', {
+        operation: 'invoice',
+        step: failedInvoiceDataQuery[0],
+        requestId: invoiceRequestId,
+        code: /^[A-Z0-9]{4,10}$/.test(String(error?.code || '')) ? error?.code : 'unknown',
+      })
+      return jsonResponse({ error: 'Invoice service unavailable.' }, 500)
+    }
+
+    if (canonicalClientId && !clientResult.data) return jsonResponse({ error: 'Invoice Not Found.' }, 404)
+
+    const client = clientResult.data || {}
+    const settings = settingsResult.data || {}
+    const customerName = storedInvoiceMetadata.clientName || client.display_name || lead.name || ''
+    const customerLanguage = client.preferred_language || lead.client_language || 'en'
+    const publicInvoice = buildPublicInvoice(invoiceRow, paymentsResult.data || [], {
+      ...client,
+      display_name: customerName,
+      preferred_language: storedInvoiceMetadata.invoiceLanguage || customerLanguage,
+    })
+
+    return jsonResponse({
+      resource: 'invoice',
+      invoice: publicInvoice,
+      client: {
+        name: customerName,
+        displayName: customerName,
+        address: client.address || lead.address || '',
+        city: client.city || '',
+        state: client.state || '',
+        postalCode: client.postal_code || '',
+        preferredLanguage: customerLanguage,
+      },
+      project: {
+        title: project.title || invoiceRow.title || '',
+        projectTitle: project.title || invoiceRow.title || '',
+        address: project.address || client.address || lead.address || '',
+      },
+      company: {
+        name: settings.company_name || '',
+        ownerName: settings.owner_name || '',
+        phone: settings.phone || '',
+        email: settings.email || '',
+        address: settings.business_address || '',
+        website: settings.website || '',
+        licenseNumber: settings.license_number || '',
+        logo: settings.logo_file_path || '',
+        primaryColor: settings.primary_brand_color || '',
+        acceptedPaymentMethods: settings.accepted_payment_methods || { methods: [], otherLabel: '' },
+      },
+    })
+  }
+
   const portalRequestId = crypto.randomUUID()
   const { data: project, error: projectError } = await admin
     .from('projects')
@@ -420,7 +566,7 @@ Deno.serve(async (request) => {
     project.lead_id
       ? admin
           .from('leads')
-          .select('name, phone, email, address, client_language')
+          .select('name, phone, email, address, client_id, client_language')
           .eq('contractor_id', contractorId)
           .eq('id', project.lead_id)
           .is('archived_at', null)
@@ -440,15 +586,20 @@ Deno.serve(async (request) => {
     ? `project_id.eq.${projectId},and(project_id.is.null,lead_id.eq.${project.lead_id})`
     : `project_id.eq.${projectId}`
 
-  const [estimateResult, contractResult, paymentResult, eventResult, photoResult] = await Promise.all([
+  const [estimateResult, contractResult, invoiceResult, paymentResult, eventResult, photoResult] = await Promise.all([
     showDocuments
       ? admin.from('estimates').select('estimate_number, title, scope_of_work, line_items, subtotal, discount_amount, tax_amount, total_amount, additional_scope_charge_amount, additional_scope_charge_description, manual_total_override_enabled, manual_total_override_amount, deposit_percentage, materials_included, payment_terms, estimate_language, status, created_at, updated_at').eq('contractor_id', contractorId).eq('project_id', projectId).is('archived_at', null).order('created_at', { ascending: false }).limit(1).maybeSingle()
       : Promise.resolve({ data: null, error: null }),
     showDocuments
       ? admin.from('contracts').select('contract_number, title, scope_of_work, terms, total_amount, deposit_amount, payment_terms, status, sent_at, signed_at, signed_by, created_at, updated_at').eq('contractor_id', contractorId).eq('project_id', projectId).is('archived_at', null).order('created_at', { ascending: false }).limit(1).maybeSingle()
       : Promise.resolve({ data: null, error: null }),
+    showDocuments
+      ? admin.from('invoices').select('id, contractor_id, client_id, project_id, invoice_number, title, description, customer_notes, line_items, subtotal, tax_amount, total_amount, amount_paid, status, issue_date, due_date, paid_at, created_at')
+        .eq('contractor_id', contractorId).eq('project_id', projectId).in('status', PUBLIC_PORTAL_INVOICE_STATUSES)
+        .is('archived_at', null).order('issue_date', { ascending: false }).order('created_at', { ascending: false })
+      : Promise.resolve({ data: [], error: null }),
     showPayments
-      ? admin.from('payments').select('amount, payment_type, payment_date, payment_method, method, status, created_at').eq('contractor_id', contractorId).eq('project_id', projectId).is('archived_at', null).order('payment_date', { ascending: false })
+      ? admin.from('payments').select('amount, payment_type, payment_date, payment_method, method, status, created_at').eq('contractor_id', contractorId).eq('project_id', projectId).eq('status', 'recorded').is('archived_at', null).order('payment_date', { ascending: false })
       : Promise.resolve({ data: [], error: null }),
     admin.from('events').select('id, title, event_type, event_date, start_time, end_time, type, status, starts_at, location').eq('contractor_id', contractorId).or(eventAssociationFilter).is('archived_at', null).eq('status', 'scheduled').order('event_date', { ascending: true }).order('start_time', { ascending: true }).order('starts_at', { ascending: true }),
     showPhotos
@@ -459,12 +610,35 @@ Deno.serve(async (request) => {
   const relatedQueries = [
     ['estimate', estimateResult.error],
     ['contract', contractResult.error],
+    ['invoices', invoiceResult.error],
     ['payments', paymentResult.error],
     ['events', eventResult.error],
     ['photos', photoResult.error],
   ] as const
   const failedQuery = relatedQueries.find(([, error]) => Boolean(error))
   if (failedQuery) return portalQueryFailure(failedQuery[0], failedQuery[1], portalRequestId)
+
+  const canonicalPortalClientId = project.client_id || leadResult.data?.client_id || ''
+  const rawPortalInvoices = (invoiceResult.data || []).filter((invoice) => isPublicPortalInvoiceEligible(invoice, {
+    contractorId,
+    projectId,
+    clientId: canonicalPortalClientId,
+  }))
+  const portalInvoiceIds = rawPortalInvoices.map((invoice) => invoice.id).filter(Boolean)
+  const invoiceClientIds = [...new Set([...rawPortalInvoices.map((invoice) => invoice.client_id), canonicalPortalClientId].filter(Boolean))]
+  const [invoicePaymentResult, invoiceClientResult] = await Promise.all([
+    portalInvoiceIds.length
+      ? admin.from('payments').select('invoice_id, amount, payment_type, payment_date, payment_method, method, status, created_at, archived_at')
+        .eq('contractor_id', contractorId).in('invoice_id', portalInvoiceIds).is('archived_at', null)
+        .order('payment_date', { ascending: false })
+      : Promise.resolve({ data: [], error: null }),
+    invoiceClientIds.length
+      ? admin.from('clients').select('id, display_name, phone, email, address, city, state, postal_code, preferred_language')
+        .eq('contractor_id', contractorId).in('id', invoiceClientIds).is('archived_at', null)
+      : Promise.resolve({ data: [], error: null }),
+  ])
+  if (invoicePaymentResult.error) return portalQueryFailure('invoice_payments', invoicePaymentResult.error, portalRequestId)
+  if (invoiceClientResult.error) return portalQueryFailure('invoice_clients', invoiceClientResult.error, portalRequestId)
 
   const photos = await Promise.all((photoResult.data || []).map(async (photo) => {
     const storagePath = photo.thumbnail_path || photo.file_path
@@ -484,6 +658,38 @@ Deno.serve(async (request) => {
 
   const client = clientResult.data || {}
   const relatedLead = leadResult.data || {}
+  const projectClientId = canonicalPortalClientId
+  const publicInvoices = rawPortalInvoices.filter((invoice) => (
+    !invoice.client_id || (invoiceClientResult.data || []).some((invoiceClient) => invoiceClient.id === invoice.client_id)
+  )).map((invoice) => {
+    const invoiceClient = (invoiceClientResult.data || []).find((candidate) => candidate.id === invoice.client_id)
+      || (invoice.client_id ? null : (invoiceClientResult.data || []).find((candidate) => candidate.id === projectClientId))
+      || client
+    const invoicePayments = (invoicePaymentResult.data || []).filter((payment) => payment.invoice_id === invoice.id)
+    const mapped = buildPublicInvoice(invoice, invoicePayments, {
+      display_name: invoiceClient.display_name || client.display_name || (projectClientId ? '' : relatedLead.name) || '',
+      preferred_language: invoiceClient.preferred_language || client.preferred_language || relatedLead.client_language || 'en',
+    })
+    return {
+      ...mapped,
+      client: {
+        name: mapped.customerName,
+        displayName: mapped.customerName,
+        phone: invoiceClient.phone || '',
+        email: invoiceClient.email || '',
+        address: invoiceClient.address || client.address || relatedLead.address || project.address || '',
+        city: invoiceClient.city || client.city || '',
+        state: invoiceClient.state || client.state || '',
+        postalCode: invoiceClient.postal_code || client.postal_code || '',
+        preferredLanguage: invoiceClient.preferred_language || client.preferred_language || relatedLead.client_language || '',
+      },
+      project: {
+        title: project.title || invoice.title || '',
+        projectTitle: project.title || invoice.title || '',
+        address: project.address || invoiceClient.address || client.address || relatedLead.address || '',
+      },
+    }
+  })
   const estimate = mapEstimate(estimateResult.data)
   const contract = mapContract(contractResult.data)
   const useDraftLeadContact = !contract || String(contract.status || '').toLowerCase() === 'draft'
@@ -525,6 +731,7 @@ Deno.serve(async (request) => {
       portal: {
         estimate: estimate || {},
         contract: contract || {},
+        invoices: publicInvoices,
         payments: publicPayments,
         events: publicEvents,
         photos: photos.filter(Boolean),
@@ -543,6 +750,7 @@ Deno.serve(async (request) => {
     },
     estimate,
     contract,
+    invoices: publicInvoices,
     payments: publicPayments,
     events: publicEvents,
     photos: photos.filter(Boolean),

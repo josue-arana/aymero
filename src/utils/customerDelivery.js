@@ -1,5 +1,5 @@
 export function requiresClientDocumentLink(documentType = '') {
-  return documentType === 'estimate' || documentType === 'contract'
+  return documentType === 'estimate' || documentType === 'contract' || documentType === 'invoice'
 }
 
 export function getCustomerDeliveryAvailability({
@@ -23,6 +23,7 @@ export function buildCustomerDeliveryContent({
   documentType = 'invoice',
   customerName = '',
   projectTitle = '',
+  invoiceNumber = '',
   amountValue = '',
   dueDate = '',
   portalUrl = '',
@@ -45,7 +46,7 @@ export function buildCustomerDeliveryContent({
       ? contentT('sendContractSubject', { project: projectTitle })
       : documentType === 'portalLink'
         ? contentT('sendPortalSubject', { project: projectTitle })
-        : contentT('sendInvoiceSubject', { project: projectTitle })
+        : contentT('sendInvoiceSubject', { project: projectTitle, number: invoiceNumber })
 
   if (requiresClientLink && !documentLink) {
     return { subject, smsBody: '', emailBody: '', resolvedDocumentStatus }
@@ -57,7 +58,7 @@ export function buildCustomerDeliveryContent({
       ? contentT('contractSmsMessage', { name: firstName, project: projectTitle, link: documentLink })
       : documentType === 'portalLink'
         ? contentT('portalSmsMessage', { name: firstName, project: projectTitle, link: portalUrl })
-        : contentT('invoiceSmsMessage', { name: firstName, project: projectTitle, amount: amountValue, dueDate, documentStatus: resolvedDocumentStatus })
+        : contentT('invoiceSmsMessage', { name: firstName, project: projectTitle, number: invoiceNumber, amount: amountValue, dueDate, documentStatus: resolvedDocumentStatus })
 
   const estimateEmailKey = companyName ? 'estimateEmailBodyWithCompany' : 'estimateEmailBody'
   const emailBody = documentType === 'estimate'
@@ -66,7 +67,7 @@ export function buildCustomerDeliveryContent({
       ? contentT('contractEmailBody', { name: firstName, project: projectTitle, total: amountValue, link: documentLink })
       : documentType === 'portalLink'
         ? contentT('portalEmailBody', { name: firstName, project: projectTitle, link: portalUrl })
-        : contentT('invoiceEmailBody', { name: firstName, project: projectTitle, amount: amountValue, dueDate, documentStatus: resolvedDocumentStatus })
+        : contentT('invoiceEmailBody', { name: firstName, project: projectTitle, number: invoiceNumber, amount: amountValue, dueDate, documentStatus: resolvedDocumentStatus })
 
   return { subject, smsBody, emailBody, resolvedDocumentStatus }
 }

@@ -96,6 +96,52 @@ export async function getPublicEstimateByToken(estimateToken, { signal } = {}) {
   }
 }
 
+export async function getPublicInvoiceByToken(invoiceToken, { signal } = {}) {
+  const token = String(invoiceToken || '').trim()
+  if (!token) {
+    return { data: null, error: createPortalError('Invoice Not Found.', 'INVOICE_NOT_FOUND', 404) }
+  }
+
+  const { supabaseUrl, supabaseAnonKey } = getSupabaseEnvironmentConfig()
+  if (!supabaseUrl || !supabaseAnonKey) {
+    return { data: null, error: createPortalError('Public invoice service is not configured.', 'INVOICE_SERVICE_NOT_CONFIGURED') }
+  }
+
+  try {
+    const response = await fetch(`${supabaseUrl.replace(/\/$/, '')}/functions/v1/super-endpoint`, {
+      method: 'POST',
+      signal,
+      headers: {
+        apikey: supabaseAnonKey,
+        Authorization: `Bearer ${supabaseAnonKey}`,
+        'Content-Type': 'application/json',
+      },
+      body: JSON.stringify({ token, resource: 'invoice' }),
+    })
+    const payload = await response.json().catch(() => null)
+
+    if (!response.ok) {
+      return {
+        data: null,
+        error: createPortalError(
+          payload?.error || 'Unable to load the Invoice.',
+          response.status === 404 ? 'INVOICE_NOT_FOUND' : 'INVOICE_LOAD_FAILED',
+          response.status,
+        ),
+      }
+    }
+
+    return { data: payload, error: null }
+  } catch (error) {
+    if (error?.name === 'AbortError') throw error
+
+    return {
+      data: null,
+      error: createPortalError(error?.message || 'Unable to load the Invoice.', 'INVOICE_LOAD_FAILED'),
+    }
+  }
+}
+
 export async function respondToPublicEstimate(estimateToken, decision, { signal } = {}) {
   const token = String(estimateToken || '').trim()
   const action = String(decision || '').trim().toLowerCase()
@@ -152,5 +198,6 @@ export async function respondToPublicEstimate(estimateToken, decision, { signal 
 export default {
   getByToken: getPublicPortalByToken,
   getEstimateByToken: getPublicEstimateByToken,
+  getInvoiceByToken: getPublicInvoiceByToken,
   respondToEstimate: respondToPublicEstimate,
 }

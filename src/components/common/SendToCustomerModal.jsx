@@ -4,19 +4,21 @@ import { LoadingButton } from './LoadingButton'
 import { normalizePortalShareUrl } from '../../utils/portal'
 import { buildCustomerDeliveryContent, getCustomerDeliveryAvailability } from '../../utils/customerDelivery'
 
-export function SendToCustomerModal({ isOpen, documentType = 'invoice', customer = {}, projectTitle = '', amountLabel = '', amountValue = '', dueDate = '', portalUrl = '', documentLink = '', companyName = '', onClose, onSent, t, contentT = t }) {
+export function SendToCustomerModal({ isOpen, documentType = 'invoice', customer = {}, projectTitle = '', invoiceNumber = '', amountLabel = '', amountValue = '', dueDate = '', portalUrl = '', documentLink = '', companyName = '', isDraftInvoice = false, onClose, onSent, onMarkSent, t, contentT = t }) {
   const phone = customer.phone || ''
   const email = customer.email || ''
   const hasPhone = Boolean(phone)
   const hasEmail = Boolean(email)
   const [channel, setChannel] = useState('text')
   const [isSubmitting, setIsSubmitting] = useState(false)
+  const [isMarkingSent, setIsMarkingSent] = useState(false)
   const submitGuardRef = useRef(false)
 
   useEffect(() => {
     if (isOpen) {
       setChannel(hasPhone ? 'text' : hasEmail ? 'email' : 'text')
       setIsSubmitting(false)
+      setIsMarkingSent(false)
       submitGuardRef.current = false
     }
   }, [hasEmail, hasPhone, isOpen])
@@ -31,6 +33,7 @@ export function SendToCustomerModal({ isOpen, documentType = 'invoice', customer
     email,
   })
   const { requiresClientLink, hasRequiredClientLink } = deliveryAvailability
+  const canPrepareInvoiceMessage = documentType !== 'invoice' || !isDraftInvoice
   const availableChannels = useMemo(() => (
     [
       hasPhone ? { id: 'text', label: t('textMessage') } : null,
@@ -42,6 +45,7 @@ export function SendToCustomerModal({ isOpen, documentType = 'invoice', customer
       documentType,
       customerName: customer.name,
       projectTitle,
+      invoiceNumber,
       amountValue,
       dueDate,
       portalUrl: resolvedPortalUrl,
@@ -49,7 +53,7 @@ export function SendToCustomerModal({ isOpen, documentType = 'invoice', customer
       companyName,
       contentT,
     })
-  }, [amountValue, companyName, contentT, customer.name, documentType, dueDate, projectTitle, resolvedDocumentLink, resolvedPortalUrl])
+  }, [amountValue, companyName, contentT, customer.name, documentType, dueDate, invoiceNumber, projectTitle, resolvedDocumentLink, resolvedPortalUrl])
 
   const clientLinkStatus = resolvedDocumentLink
     ? t('clientLinkReady')
@@ -58,7 +62,9 @@ export function SendToCustomerModal({ isOpen, documentType = 'invoice', customer
       : messageContent.resolvedDocumentStatus
   const clientLinkUnavailableHelpKey = documentType === 'estimate'
     ? 'estimateShareLinkUnavailableHelp'
-    : 'clientLinkUnavailableHelp'
+    : documentType === 'invoice'
+      ? 'invoiceShareLinkUnavailableHelp'
+      : 'clientLinkUnavailableHelp'
 
   if (!isOpen) return null
 
@@ -72,12 +78,10 @@ export function SendToCustomerModal({ isOpen, documentType = 'invoice', customer
     setIsSubmitting(true)
 
     try {
-      const result = await onSent?.('text')
-
-      if (result === false) {
-        return
+      if (documentType !== 'invoice') {
+        const result = await onSent?.('text')
+        if (result === false) return
       }
-
       onClose?.()
       window.location.href = `sms:${encodeURIComponent(phone)}${separator}body=${encodeURIComponent(messageContent.smsBody)}`
     } finally {
@@ -95,12 +99,10 @@ export function SendToCustomerModal({ isOpen, documentType = 'invoice', customer
     setIsSubmitting(true)
 
     try {
-      const result = await onSent?.('email')
-
-      if (result === false) {
-        return
+      if (documentType !== 'invoice') {
+        const result = await onSent?.('email')
+        if (result === false) return
       }
-
       onClose?.()
       window.location.href = `mailto:${encodeURIComponent(email)}?subject=${encodeURIComponent(messageContent.subject)}&body=${encodeURIComponent(messageContent.emailBody)}`
     } finally {
@@ -109,12 +111,24 @@ export function SendToCustomerModal({ isOpen, documentType = 'invoice', customer
     }
   }
 
+  async function markInvoiceSent() {
+    if (isSubmitting || isMarkingSent || !onMarkSent) return
+    setIsMarkingSent(true)
+    try {
+      await onMarkSent()
+    } finally {
+      setIsMarkingSent(false)
+    }
+  }
+
   return (
     <ModalShell isOpen={isOpen} onBackdropClick={isSubmitting ? undefined : onClose} panelClassName="min-w-0 overflow-x-hidden pb-[max(1.25rem,env(safe-area-inset-bottom))] sm:max-w-lg">
       <div className="mb-5 min-w-0 rounded-2xl bg-blue-50 p-4 text-blue-900">
         <p className="text-xs font-bold uppercase tracking-wide text-blue-500">{t('sendToCustomer')}</p>
         <h2 className="mt-1 text-xl font-bold">{t('sendDocumentToCustomer', { document: typeLabel })}</h2>
-        <p className="mt-2 text-sm leading-6 text-blue-800">{t(requiresClientLink ? 'sendClientLinkHelp' : 'sendToCustomerHelp')}</p>
+        <p className="mt-2 text-sm leading-6 text-blue-800">{t(requiresClientLink ? (documentType === 'invoice' ? 'invoiceClientLinkHelp' : 'sendClientLinkHelp') : 'sendToCustomerHelp')}</p>
+        {documentType === 'invoice' ? <p className="mt-1 text-xs leading-5 text-blue-700">{t('invoiceMessagePreparationNote')}</p> : null}
+        {isDraftInvoice ? <p className="mt-1 text-xs font-semibold leading-5 text-amber-800">{t('invoiceMarkSentBeforePrepare')}</p> : null}
       </div>
 
       <div className="min-w-0 rounded-2xl border border-slate-200 p-4 text-sm [overflow-wrap:anywhere]">
@@ -163,11 +177,11 @@ export function SendToCustomerModal({ isOpen, documentType = 'invoice', customer
           type="button"
           loading={isSubmitting}
           loadingLabel={t('sending')}
-          disabled={isSubmitting || !deliveryAvailability[channel]}
+          disabled={isSubmitting || !deliveryAvailability[channel] || !canPrepareInvoiceMessage}
           onClick={channel === 'email' ? sendEmail : sendText}
           className="rounded-2xl bg-blue-600 px-4 py-4 text-sm font-bold text-white hover:bg-blue-700 disabled:cursor-not-allowed disabled:bg-slate-300"
         >
-          {channel === 'email' ? (hasEmail ? t('sendEmailNow') : t('noEmailOnFile')) : (hasPhone ? t('sendTextNow') : t('noPhoneOnFile'))}
+          {channel === 'email' ? (hasEmail ? t(documentType === 'invoice' ? 'prepareEmailMessage' : 'sendEmailNow') : t('noEmailOnFile')) : (hasPhone ? t(documentType === 'invoice' ? 'prepareTextMessage' : 'sendTextNow') : t('noPhoneOnFile'))}
         </LoadingButton>
         <button
           type="button"
@@ -178,6 +192,11 @@ export function SendToCustomerModal({ isOpen, documentType = 'invoice', customer
           {t('cancel')}
         </button>
       </div>
+      {isDraftInvoice && onMarkSent ? (
+        <button type="button" disabled={isSubmitting || isMarkingSent} onClick={markInvoiceSent} className="mt-3 w-full rounded-2xl border border-slate-200 px-4 py-3 text-sm font-semibold text-slate-600 hover:bg-slate-50 disabled:cursor-not-allowed disabled:opacity-60">
+          {isMarkingSent ? t('saving') : t('markInvoiceSent')}
+        </button>
+      ) : null}
     </ModalShell>
   )
 }

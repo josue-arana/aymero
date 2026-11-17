@@ -78,7 +78,9 @@ for (const page of [
 
 assert.match(statusBadgeSource, /min-h-6/)
 assert.match(statusBadgeSource, /leading-none/)
-assert.match(statusBadgeSource, /Archived: 'bg-amber-50/)
+assert.match(statusBadgeSource, /'archived'.*return 'neutral'/)
+assert.match(statusBadgeSource, /'overdue'.*return 'danger'/)
+assert.match(statusBadgeSource, /'partially paid'.*return 'warning'/)
 assert.match(selectSource, /min-h-12/)
 assert.match(selectSource, /disabled:cursor-not-allowed/)
 assert.match(globalCssSource, /prefers-reduced-motion: reduce/)

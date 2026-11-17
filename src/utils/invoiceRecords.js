@@ -3,6 +3,7 @@ import { getInvoiceDisplayNumber } from './invoiceNumber.js'
 import { findLeadByProjectLookup, dedupeById } from './projectIdentity.js'
 import { dedupePayments, normalizePaymentRecord } from './projectPayments.js'
 import { normalizeEstimateFormattedTextForStorage } from './estimateDocument.js'
+import { isFinanciallyEffectivePayment } from './paymentStatus.js'
 
 function readField(source = {}, keys = []) {
   for (const key of keys) {
@@ -50,6 +51,11 @@ export function sanitizeInvoiceLineItemsForStorage(lineItems = []) {
   }))
 }
 
+export function removeInvoiceLineItem(lineItems = [], index) {
+  if (!Array.isArray(lineItems) || lineItems.length <= 1) return Array.isArray(lineItems) ? lineItems : []
+  return lineItems.filter((_, itemIndex) => itemIndex !== index)
+}
+
 export function calculateInvoiceTotal(lineItems = [], fallbackAmount = 0) {
   const normalizedLineItems = normalizeInvoiceLineItems(lineItems)
 
@@ -58,6 +64,32 @@ export function calculateInvoiceTotal(lineItems = [], fallbackAmount = 0) {
   }
 
   return sumMoney(normalizedLineItems.map((item) => item.amount))
+}
+
+export function resolveInvoiceFinancials(invoice = {}, { recalculateDraft = false } = {}) {
+  const lineItems = normalizeInvoiceLineItems(readField(invoice, ['lineItems', 'line_items']) || [])
+  const rawStatus = String(readField(invoice, ['status']) || '').trim().toLowerCase()
+  const isDraft = !rawStatus || rawStatus === 'draft'
+  const subtotalField = readField(invoice, ['subtotal'])
+  const taxField = readField(invoice, ['taxAmount', 'tax_amount', 'salesTax', 'sales_tax'])
+  const totalField = readField(invoice, ['amount', 'total', 'totalAmount', 'total_amount'])
+  const calculatedSubtotal = isDraft && recalculateDraft
+    ? calculateInvoiceTotal(lineItems)
+    : calculateInvoiceTotal(lineItems, subtotalField ?? totalField ?? 0)
+  const subtotal = isDraft || subtotalField === undefined || subtotalField === null
+    ? calculatedSubtotal
+    : roundMoney(subtotalField)
+  const taxRateField = readField(invoice, ['taxRate', 'tax_rate'])
+  const taxAmount = isDraft && taxRateField !== undefined && taxRateField !== null && taxRateField !== ''
+    ? roundMoney(subtotal * toNumber(taxRateField) / 100)
+    : roundMoney(taxField ?? 0)
+  const total = isDraft
+    ? roundMoney(subtotal + taxAmount)
+    : totalField === undefined || totalField === null
+      ? roundMoney(subtotal + taxAmount)
+      : roundMoney(totalField)
+
+  return { subtotal, taxAmount, total }
 }
 
 export function getInvoiceRemainingBalance(invoice = {}) {
@@ -132,6 +164,12 @@ export function normalizeInvoiceStatus(status, { amount = 0, amountPaid = 0, has
   return status || 'Draft'
 }
 
+export function canEditDraftInvoiceLineItems(invoice = {}, { displayStatus = '', archived = false } = {}) {
+  const persistedStatus = String(normalizeInvoiceStatus(invoice?.status)).trim().toLowerCase()
+  const effectiveStatus = String(displayStatus).trim().toLowerCase()
+  return !archived && persistedStatus === 'draft' && effectiveStatus === 'draft'
+}
+
 export function findRelatedLeadForInvoice(leads = [], invoice = {}) {
   const linkedLead = findLeadByProjectLookup(
     leads,
@@ -173,15 +211,19 @@ export function findRelatedLeadForInvoice(leads = [], invoice = {}) {
 export function hydrateInvoiceRecord(invoice = {}, { leads = [], payments = [], defaultContractorId = '' } = {}) {
   const relatedLead = findRelatedLeadForInvoice(leads, invoice)
   const lineItems = normalizeInvoiceLineItems(readField(invoice, ['lineItems', 'line_items']) || [])
-  const rawAmount = readField(invoice, ['amount', 'total', 'totalAmount', 'total_amount'])
-  const amount = calculateInvoiceTotal(lineItems, rawAmount)
-  const linkedPayments = dedupePayments(payments).filter((payment) => payment.invoiceId === invoice?.id)
-  const hasLinkedPayments = linkedPayments.length > 0
+  const { subtotal, taxAmount, total: amount } = resolveInvoiceFinancials({ ...invoice, lineItems })
+  const linkedPaymentRecords = (Array.isArray(payments) ? payments : []).filter((payment) => (
+    payment && (payment.invoiceId === invoice?.id || payment.invoice_id === invoice?.id)
+      && !(payment.archivedAt || payment.archived_at || payment.isArchived)
+  ))
+  const linkedPayments = dedupePayments(linkedPaymentRecords)
+  const effectivePayments = dedupePayments(linkedPaymentRecords.filter(isFinanciallyEffectivePayment))
+  const hasLinkedPayments = linkedPaymentRecords.length > 0
   const amountPaid = hasLinkedPayments
-    ? sumMoney(linkedPayments.map((payment) => payment.amount))
+    ? sumMoney(effectivePayments.map((payment) => payment.amount))
     : roundMoney(readField(invoice, ['amountPaid', 'amount_paid']))
   const paymentHistory = hasLinkedPayments
-    ? buildLinkedPaymentHistory(linkedPayments)
+    ? buildLinkedPaymentHistory(effectivePayments)
     : normalizeInvoicePaymentHistory(readField(invoice, ['paymentHistory', 'payment_history']) || [])
   const clientName = invoice?.client
     || invoice?.clientName
@@ -247,6 +289,8 @@ export function hydrateInvoiceRecord(invoice = {}, { leads = [], payments = [], 
     invoiceNumber: number,
     invoiceLanguage: invoice?.invoiceLanguage || '',
     lineItems,
+    subtotal,
+    taxAmount,
     amount,
     total: amount,
     totalAmount: amount,

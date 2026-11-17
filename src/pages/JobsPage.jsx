@@ -13,6 +13,7 @@ import { useAuth } from '../contexts/AuthContext'
 import { useAnalyticsMode } from '../contexts/SimpleModeContext'
 import { getProjectsContractorId } from '../services/system/projectsRuntimeService'
 import { currency } from '../utils/formatters'
+import { isFinanciallyEffectivePayment } from '../utils/paymentStatus'
 import { getPortalData } from '../utils/portal'
 import { archiveMenuItemClasses } from '../utils/buttonStyles'
 import { tStatus } from '../translations'
@@ -75,6 +76,7 @@ export function JobsPage({ leads, projectRecords = [], projectPayments = [], pro
             ]
         const linkedPaymentTotal = USE_SUPABASE_PROJECTS
           ? linkedPayments
+            .filter(isFinanciallyEffectivePayment)
             .reduce((sum, payment) => sum + Number(payment.amount || 0), 0)
           : 0
         const amountPaid = Number(linkedPaymentTotal || lead.amountPaid || lead.paid || portal.amountPaid || 0) || 0

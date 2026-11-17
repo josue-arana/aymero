@@ -79,7 +79,7 @@ assert.equal(scheduleView.nextAction.id, 'schedule-job')
 const inProgressView = buildProjectWorkspaceViewModel({
   ...baseInput,
   contract: { id: 'contract-1', status: 'Signed', signed: true },
-  paymentSummary: { payments: [{ id: 'payment-1', amount: 250 }], projectValue: 1000, totalPaid: 250, outstandingBalance: 750 },
+  paymentSummary: { payments: [{ id: 'payment-1', amount: 250, status: 'Recorded' }], projectValue: 1000, totalPaid: 250, outstandingBalance: 750 },
 })
 assert.equal(inProgressView.projectStatus, 'In Progress')
 assert.equal(inProgressView.nextAction.id, 'schedule-job')
@@ -96,7 +96,7 @@ assert.equal(completedView.nextAction, null)
 const fullyPaidActiveView = buildProjectWorkspaceViewModel({
   ...baseInput,
   contract: { id: 'contract-1', status: 'Signed', signed: true },
-  paymentSummary: { payments: [{ id: 'payment-1', amount: 1000 }], projectValue: 1000, totalPaid: 1000, outstandingBalance: 0 },
+  paymentSummary: { payments: [{ id: 'payment-1', amount: 1000, status: 'Recorded' }], projectValue: 1000, totalPaid: 1000, outstandingBalance: 0 },
   invoices: [{ id: 'invoice-1', amount: 1000, amountPaid: 1000, status: 'Paid' }],
 })
 assert.equal(fullyPaidActiveView.projectStatus, 'In Progress')

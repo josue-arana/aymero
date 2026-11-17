@@ -1,4 +1,5 @@
 import { currency } from './formatters.js'
+import { isFinanciallyEffectivePayment } from './paymentStatus.js'
 
 function toNumber(value) {
   const parsed = Number(value)
@@ -97,7 +98,7 @@ export function normalizePaymentRecord(payment = {}, fallbackValues = {}) {
     paymentType: displayType,
     type: displayType,
     paymentTypeKey: normalizePaymentTypeKey(displayType),
-    status: readField(payment, ['status']) ?? fallbackValues.status ?? 'Recorded',
+    status: readField(payment, ['status']) ?? fallbackValues.status ?? '',
     referenceNumber: readField(payment, ['referenceNumber', 'reference_number']) ?? fallbackValues.referenceNumber ?? fallbackValues.reference_number ?? '',
     notes: readField(payment, ['notes']) ?? fallbackValues.notes ?? '',
     createdAt,
@@ -108,25 +109,19 @@ export function normalizePaymentRecord(payment = {}, fallbackValues = {}) {
 
 export function dedupePayments(payments = []) {
   const paymentMap = new Map()
+  const unidentifiedPayments = []
 
-  payments
-    .filter(Boolean)
-    .map((payment) => normalizePaymentRecord(payment))
-    .forEach((payment, index) => {
-      const fallbackKey = [
-        payment.projectId || 'no-project',
-        payment.invoiceId || 'no-invoice',
-        payment.clientId || 'no-client',
-        payment.paymentDate || payment.createdAt || `payment-${index}`,
-        payment.amount,
-        payment.paymentTypeKey,
-      ].join(':')
-      const key = payment.id || fallbackKey
+  payments.filter(Boolean).map((payment) => normalizePaymentRecord(payment)).forEach((payment) => {
+    if (!payment.id) {
+      // Similar-looking legacy rows are not proof of duplication: two real
+      // receipts can share a date, amount, and payment type.
+      unidentifiedPayments.push(payment)
+      return
+    }
+    paymentMap.set(payment.id, payment)
+  })
 
-      paymentMap.set(key, payment)
-    })
-
-  return Array.from(paymentMap.values())
+  return [...paymentMap.values(), ...unidentifiedPayments]
 }
 
 export function collectProjectInvoiceIds(project = {}) {
@@ -154,7 +149,10 @@ export function getProjectPaymentRecords(project = {}, payments = [], { relatedI
   )
   const invoiceIds = new Set(relatedInvoiceIds.filter(Boolean))
 
-  return dedupePayments(payments)
+  return dedupePayments(payments
+    .filter(Boolean)
+    .filter((payment) => isFinanciallyEffectivePayment(payment))
+    .map((payment) => normalizePaymentRecord(payment)))
     .filter((payment) => !payment.archivedAt)
     .filter((payment) => {
       const matchesProjectId = Boolean(projectId && payment.projectId === projectId)
@@ -226,6 +224,7 @@ export function calculateProjectPaymentSummary(project = {}, payments = [], { re
 export function buildPaymentTimelineEntries(payments = []) {
   return dedupePayments(payments)
     .filter((payment) => !payment.archivedAt)
+    .filter(isFinanciallyEffectivePayment)
     .sort((left, right) => {
       const leftTimestamp = new Date(left.paymentDate || left.createdAt || 0).getTime()
       const rightTimestamp = new Date(right.paymentDate || right.createdAt || 0).getTime()

@@ -325,7 +325,8 @@ create table invoices (
   sample_data_key text,
   created_at timestamptz not null default now(),
   updated_at timestamptz not null default now(),
-  archived_at timestamptz
+  archived_at timestamptz,
+  public_share_token text
 );
 
 create table payments (
@@ -473,6 +474,7 @@ create index idx_leads_project_id on leads(project_id);
 create index idx_estimates_project_id on estimates(project_id);
 create index idx_estimates_lead_id on estimates(lead_id);
 create unique index estimates_public_share_token_idx on estimates(public_share_token);
+create unique index invoices_public_share_token_idx on invoices(public_share_token) where public_share_token is not null;
 create index idx_contracts_project_id on contracts(project_id);
 create index idx_invoices_project_id on invoices(project_id);
 create index idx_payments_project_id on payments(project_id);

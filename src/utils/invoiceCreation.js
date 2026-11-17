@@ -65,7 +65,12 @@ export function buildInvoiceProjectOptions(input = {}) {
     // could attach the Invoice to another Client with a similar name.
     if (!clientId || !client) return
 
-    const linkedContract = contracts.find((contract) => recordsShareProject(contract, project))
+    const projectContracts = contracts.filter((contract) => recordsShareProject(contract, project))
+    const explicitContractId = normalizeId(project?.contractId || project?.contract_id || project?.portal?.contract?.id)
+    const linkedContract = (explicitContractId
+      ? contracts.find((contract) => normalizeId(contract?.id) === explicitContractId)
+      : null)
+      || (projectContracts.length === 1 ? projectContracts[0] : null)
       || project?.portal?.contract
       || linkedLead?.portal?.contract
       || null
@@ -86,14 +91,14 @@ export function buildInvoiceProjectOptions(input = {}) {
         id: projectId,
         projectId,
         clientId,
-        contractId: linkedContract?.id || project?.contractId || null,
+        contractId: project?.contractId || project?.contract_id || project?.portal?.contract?.id || null,
       },
       estimates: [
         ...estimates.filter((estimate) => recordsShareProject(estimate, project)),
         ...(project?.portal?.estimate ? [project.portal.estimate] : []),
       ],
       contracts: [
-        ...contracts.filter((contract) => recordsShareProject(contract, project)),
+        ...projectContracts,
         ...(linkedContract ? [linkedContract] : []),
       ],
       invoices,
@@ -136,10 +141,13 @@ export function buildInvoiceCreationPayload(input = {}) {
     paymentTerms = '',
     customerNotes = '',
     invoiceLanguage = '',
+    taxRate = 0,
   } = source
   const normalizedLineItems = sanitizeInvoiceLineItemsForStorage(lineItems)
     .filter((item) => item.description || item.amount > 0)
   const total = calculateInvoiceTotal(normalizedLineItems)
+  const normalizedTaxRate = Math.min(100, Math.max(0, Number(taxRate) || 0))
+  const taxAmount = roundMoney(total * normalizedTaxRate / 100)
 
   return {
     clientId: normalizeId(client?.id || project?.clientId) || null,
@@ -154,10 +162,11 @@ export function buildInvoiceCreationPayload(input = {}) {
     dueDate: dueDate || '',
     lineItems: normalizedLineItems,
     subtotal: total,
-    taxAmount: 0,
-    amount: total,
-    total,
-    totalAmount: total,
+    taxRate: normalizedTaxRate,
+    taxAmount,
+    amount: roundMoney(total + taxAmount),
+    total: roundMoney(total + taxAmount),
+    totalAmount: roundMoney(total + taxAmount),
     amountPaid: 0,
     status: 'Draft',
     paymentTerms: String(paymentTerms || '').trim(),
@@ -174,6 +183,7 @@ export function validateInvoiceCreationDraft({
   issueDate,
   dueDate,
   lineItems,
+  taxRate = 0,
   billingCapacity = null,
 } = {}) {
   const errors = {}
@@ -209,8 +219,8 @@ export function validateInvoiceCreationDraft({
     }
 
     const amount = Number(rawAmount)
-    if (!Number.isFinite(amount) || amount <= 0) {
-      errors[amountKey] = 'positive'
+    if (!Number.isFinite(amount) || amount < 0) {
+      errors[amountKey] = 'invalid'
       return
     }
 
@@ -220,7 +230,8 @@ export function validateInvoiceCreationDraft({
   })
 
   if (!Object.keys(errors).some((key) => key.startsWith('lineItems.'))) {
-    const total = calculateInvoiceTotal(lineItems)
+    const subtotal = calculateInvoiceTotal(lineItems)
+    const total = roundMoney(subtotal + roundMoney(subtotal * Math.min(100, Math.max(0, Number(taxRate) || 0)) / 100))
     if (billingCapacity?.hasAgreedValue && total > Number(billingCapacity.availableToBill || 0)) {
       errors.billingCapacity = {
         code: 'exceedsAvailableToBill',
