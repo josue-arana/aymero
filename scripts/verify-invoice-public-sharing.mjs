@@ -6,6 +6,7 @@ import { es } from '../src/translations/es.js'
 import { buildCustomerDeliveryContent, getCustomerDeliveryAvailability } from '../src/utils/customerDelivery.js'
 import { createInvoicePublicShareToken, normalizeInvoicePublicShareToken } from '../src/utils/invoiceShareToken.js'
 import { resolveHostnameRoute } from '../src/utils/hostnameRouting.js'
+import { buildPublicInvoice, resolvePublicInvoiceFinancials } from '../supabase/functions/_shared/publicInvoiceFinancials.js'
 
 const dictionaries = { en, es }
 const translate = (language) => (key, params = {}) => Object.entries(params).reduce(
@@ -69,13 +70,15 @@ assert.match(endpoint, /\.eq\('public_share_token', token\)/)
 assert.match(endpoint, /\.in\('status', \['sent', 'partial', 'paid', 'overdue'\]\)/)
 assert.match(endpoint, /\.is\('archived_at', null\)/)
 assert.match(endpoint, /\.eq\('contractor_id', contractorId\)/)
+assert.match(endpoint, /\.select\('id, contractor_id, client_id, project_id, invoice_number/)
 assert.match(endpoint, /invoice_id', invoiceRow\.id/)
-assert.match(endpoint, /linkedPaymentHistory\.length \? linkedPaymentHistory : legacyPaymentHistory/)
-assert.match(endpoint, /const amountPaid = Number\(invoiceRow\.amount_paid \|\| 0\)/)
+assert.match(endpoint, /buildPublicInvoice/)
 assert.match(endpoint, /new Set\(linkedClientIds\)\.size > 1/)
 assert.doesNotMatch(endpoint, /console\.(?:log|error)\([^\n]*token/i)
-assert.match(endpoint, /customerNotes: invoiceRow\.customer_notes/)
-assert.doesNotMatch(endpoint, /publicInvoice\s*=\s*\{[^}]*public_share_token/s)
+const publicInvoiceMapper = read('../supabase/functions/_shared/publicInvoiceFinancials.js')
+assert.match(publicInvoiceMapper, /amountPaid: financials\.amountPaid/)
+assert.match(publicInvoiceMapper, /customerNotes: row\.customer_notes/)
+assert.doesNotMatch(endpoint, /function buildPublicInvoice/)
 assert.match(migration, /add column if not exists public_share_token text/)
 assert.match(migration, /create unique index if not exists invoices_public_share_token_idx/)
 assert.doesNotMatch(migration, /update public\.invoices|delete from|drop table/i)
@@ -101,5 +104,11 @@ assert.ok(en.invoiceClientLinkHelp && es.invoiceClientLinkHelp)
 assert.ok(en.invoiceMessagePreparationNote && es.invoiceMessagePreparationNote)
 assert.ok(en.markInvoiceSent && es.markInvoiceSent)
 assert.ok(en.invoiceMarkSentBeforePrepare && es.invoiceMarkSentBeforePrepare)
+
+assert.deepEqual(resolvePublicInvoiceFinancials({
+  totalAmount: 1625,
+  payments: [{ amount: 1625, status: 'recorded' }],
+  today: '2026-11-09',
+}), { amountPaid: 1625, remainingBalance: 0, status: 'Paid', hasLinkedPayments: true, paymentHistory: [{ amount: 1625, date: '', method: '', type: '' }] })
 
 console.log('Invoice public-sharing validation passed.')

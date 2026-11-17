@@ -115,6 +115,7 @@ export function CustomerPortalPage({ projects = [], clients = [], onBack, t, lan
     client,
     estimate,
     contract,
+    invoices,
     paymentSummary,
     scheduleEvents,
     upcomingEvents,
@@ -354,6 +355,7 @@ export function CustomerPortalPage({ projects = [], clients = [], onBack, t, lan
           client={client}
           estimate={estimate}
           contract={contract}
+          invoices={invoices}
           paymentSummary={paymentSummary}
           scheduleEvents={scheduleEvents}
           upcomingEvents={upcomingEvents}
@@ -364,6 +366,7 @@ export function CustomerPortalPage({ projects = [], clients = [], onBack, t, lan
           showPayments={showPayments}
           showPhotos={showPhotos}
           showDocuments={showDocuments}
+          language={language}
           t={t}
         />
       </div>

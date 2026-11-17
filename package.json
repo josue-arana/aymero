@@ -49,6 +49,7 @@
     "verify:invoice-line-item-removal": "node scripts/verify-invoice-line-item-removal.mjs",
     "verify:invoice-customer-note-whitespace": "node scripts/verify-invoice-customer-note-whitespace.mjs",
     "verify:invoice-public-sharing": "node scripts/verify-invoice-public-sharing.mjs",
+    "verify:invoice-portal-integration": "node scripts/verify-invoice-portal-integration.mjs",
     "verify:project-completion": "node scripts/verify-project-completion.mjs",
     "verify:project-data-integrity": "node scripts/verify-project-data-integrity.mjs",
     "verify:contract-status-integrity": "node scripts/verify-contract-status-integrity.mjs",

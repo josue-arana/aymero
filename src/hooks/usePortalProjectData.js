@@ -195,6 +195,7 @@ export function usePortalProjectData({ portalId = '', projects = [], clients = [
   const [contract, setContract] = useState(() => normalizeContractRecord(
     initialProject?.portal?.contract || readLinkedContractDraft(initialProject || portalId, portalId)
   ))
+  const [invoices, setInvoices] = useState(() => Array.isArray(initialProject?.portal?.invoices) ? initialProject.portal.invoices : [])
   const [client, setClient] = useState(() => findClientRecord(clients, initialProject))
   const [paymentRecords, setPaymentRecords] = useState(() => readProjectPaymentFallbacks(initialProject))
   const [eventRecords, setEventRecords] = useState(() => readProjectEventFallbacks(initialProject))
@@ -207,6 +208,7 @@ export function usePortalProjectData({ portalId = '', projects = [], clients = [
   useEffect(() => {
     if (!USE_SUPABASE_PROJECTS) {
       setProject(initialProject || null)
+      setInvoices(Array.isArray(initialProject?.portal?.invoices) ? initialProject.portal.invoices : [])
       setIsLoading(false)
       setHasLoaded(true)
       return undefined
@@ -247,6 +249,7 @@ export function usePortalProjectData({ portalId = '', projects = [], clients = [
                 client: payload.client || {},
                 estimate: payload.estimate || {},
                 contract: payload.contract || {},
+                invoices: Array.isArray(payload.invoices) ? payload.invoices : [],
                 payments: publicPayments,
                 events: publicEvents,
                 photos: Array.isArray(payload.photos) ? payload.photos : [],
@@ -259,6 +262,7 @@ export function usePortalProjectData({ portalId = '', projects = [], clients = [
           setClient(payload?.client || findClientRecord(clients, resolvedProject))
           setEstimate(normalizeEstimateRecord(payload?.estimate || resolvedProject?.portal?.estimate))
           setContract(normalizeContractRecord(payload?.contract || resolvedProject?.portal?.contract))
+          setInvoices(Array.isArray(payload?.invoices) ? payload.invoices : Array.isArray(resolvedProject?.portal?.invoices) ? resolvedProject.portal.invoices : [])
           setPaymentRecords(publicPayments.length ? publicPayments : readProjectPaymentFallbacks(resolvedProject))
           setEventRecords(publicEvents.length ? publicEvents : readProjectEventFallbacks(resolvedProject))
           setPublicPortalPhotos(Array.isArray(payload?.photos) ? payload.photos : [])
@@ -269,6 +273,7 @@ export function usePortalProjectData({ portalId = '', projects = [], clients = [
         if (error?.name === 'AbortError') return
         if (!isCancelled) {
           setProject(initialProject || null)
+          setInvoices(Array.isArray(initialProject?.portal?.invoices) ? initialProject.portal.invoices : [])
           setPortalLoadError(error)
         }
       } finally {
@@ -618,6 +623,7 @@ export function usePortalProjectData({ portalId = '', projects = [], clients = [
     client,
     estimate,
     contract,
+    invoices,
     paymentSummary,
     scheduleEvents,
     upcomingEvents,

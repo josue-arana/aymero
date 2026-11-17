@@ -1,4 +1,4 @@
-import { useEffect, useMemo, useRef, useState } from 'react'
+import { lazy, Suspense, useEffect, useMemo, useRef, useState } from 'react'
 import { CalendarDays, ChevronLeft, ChevronRight, CircleAlert, FileText, Images, Wallet, X } from 'lucide-react'
 import { useSearchParams } from 'react-router-dom'
 import { DetailRow } from '../ui/DetailRow'
@@ -27,11 +27,16 @@ import {
   buildContractNotesAndTermsItems as buildCanonicalContractNotesAndTermsItems,
 } from '../../utils/contractDocument'
 import { buildContractEditorState } from '../../utils/contractEditorState'
+import { formatInvoiceCalendarDate } from '../../utils/invoiceDate'
+import { getDocumentStatusTone } from '../ui/StatusBadge'
+import { ScaledDocumentPreview, defaultDocumentPreviewWidth } from '../common/ScaledDocumentPreview'
 import {
   ESTIMATE_DOCUMENT_SOURCE_PADDING,
   ESTIMATE_DOCUMENT_SOURCE_WIDTH,
   ESTIMATE_PAPER_MARGIN,
 } from '../../utils/estimatePagination'
+
+const LazyInvoicePdfTemplate = lazy(() => import('../invoices/InvoicePdfTemplate').then((module) => ({ default: module.InvoicePdfTemplate })))
 
 function EmptyState({ message }) {
   return (
@@ -246,6 +251,19 @@ function DocumentRow({ title, details = [], statusPresentation = null, primaryAc
   )
 }
 
+function getInvoiceStatusPresentation(status = '') {
+  const tone = getDocumentStatusTone(status)
+  const classNames = {
+    neutral: 'bg-slate-100 text-slate-700 ring-slate-200',
+    info: 'bg-blue-50 text-blue-700 ring-blue-100',
+    warning: 'bg-amber-50 text-amber-800 ring-amber-200',
+    success: 'bg-emerald-50 text-emerald-700 ring-emerald-100',
+    danger: 'bg-rose-50 text-rose-700 ring-rose-100',
+  }
+  const labelKey = status === 'Partially Paid' ? 'partiallyPaid' : String(status || '').toLowerCase()
+  return { labelKey, className: classNames[tone] || classNames.neutral }
+}
+
 function SectionBadge({ icon: Icon, tone = 'slate' }) {
   const toneClassNames = {
     emerald: 'bg-emerald-50 text-emerald-700 ring-emerald-100',
@@ -275,6 +293,7 @@ export function PortalSummary({
   client,
   estimate,
   contract,
+  invoices = [],
   paymentSummary,
   scheduleEvents = [],
   upcomingEvents = [],
@@ -285,16 +304,36 @@ export function PortalSummary({
   showPayments = true,
   showPhotos = true,
   showDocuments = true,
+  language = 'en',
   t = (key) => key,
 }) {
   const { showToast } = useToast()
   const [searchParams, setSearchParams] = useSearchParams()
   const estimatePreviewRef = useRef(null)
   const contractPreviewRef = useRef(null)
+  const invoicePreviewRef = useRef(null)
   const shouldUsePdfForPrint = useMemo(() => shouldUseGeneratedPdfForPrint(), [])
   const [selectedPhotoIndex, setSelectedPhotoIndex] = useState(-1)
+  const [activeInvoiceKey, setActiveInvoiceKey] = useState('')
+  const [invoiceTemplateReady, setInvoiceTemplateReady] = useState(false)
   const hasEstimate = Boolean(estimate)
   const hasContract = Boolean(contract)
+  const visibleInvoices = useMemo(() => (Array.isArray(invoices) ? invoices : []).slice().sort((left, right) => (
+    String(right?.issueDate || right?.createdAt || '').localeCompare(String(left?.issueDate || left?.createdAt || ''))
+  )), [invoices])
+  const activeInvoice = visibleInvoices.find((invoice, index) => getPortalInvoiceKey(invoice, index) === activeInvoiceKey) || null
+  const invoiceOutputLanguage = activeInvoice?.invoiceLanguage && activeInvoice.invoiceLanguage !== 'match' ? activeInvoice.invoiceLanguage : null
+  const invoiceDocumentLanguage = invoiceOutputLanguage || language
+  const invoiceDocumentT = useMemo(() => invoiceOutputLanguage ? createTranslator(invoiceOutputLanguage) : t, [invoiceOutputLanguage, t])
+  const invoicePreviewProps = useMemo(() => activeInvoice ? ({
+    invoice: activeInvoice,
+    company,
+    client: activeInvoice.client || client || {},
+    project: activeInvoice.project || project || {},
+    t: invoiceDocumentT,
+    language: invoiceDocumentLanguage,
+  }) : null, [activeInvoice, client, company, invoiceDocumentLanguage, invoiceDocumentT, project])
+  const invoiceDocumentRefs = useRef(new Map())
   const hasPayments = Boolean(paymentSummary?.payments?.length)
   const visibleScheduleEvents = scheduleEvents.length > 0 ? scheduleEvents : upcomingEvents
   const hasScheduleEvents = visibleScheduleEvents.length > 0
@@ -312,6 +351,18 @@ export function PortalSummary({
   const contractDocumentT = useMemo(() => (
     contractOutputLanguage ? createTranslator(contractOutputLanguage) : t
   ), [contractOutputLanguage, t])
+
+  useEffect(() => {
+    let isCancelled = false
+    if (!showDocuments || visibleInvoices.length === 0) {
+      setInvoiceTemplateReady(false)
+      return undefined
+    }
+    import('../invoices/InvoicePdfTemplate')
+      .then(() => { if (!isCancelled) setInvoiceTemplateReady(true) })
+      .catch(() => { if (!isCancelled) setInvoiceTemplateReady(false) })
+    return () => { isCancelled = true }
+  }, [showDocuments, visibleInvoices.length])
   const estimatePreviewProps = useMemo(() => ({
     company,
     lead: previewLead,
@@ -493,6 +544,62 @@ export function PortalSummary({
     }
   }
 
+  function getPortalInvoiceKey(invoice, index) {
+    return `${invoice?.number || invoice?.invoiceNumber || 'invoice'}:${invoice?.issueDate || invoice?.issue_date || ''}:${index}`
+  }
+
+  async function downloadPortalInvoice(invoice, index) {
+    const key = getPortalInvoiceKey(invoice, index)
+    const element = invoiceDocumentRefs.current.get(key)
+    if (!element) return
+
+    try {
+      const { downloadInvoicePdf } = await import('../../utils/invoicePdf')
+      await downloadInvoicePdf({
+        element,
+        invoiceNumber: invoice?.number || invoice?.invoiceNumber || '',
+        clientName: invoice?.customerName || invoice?.client?.name || client?.displayName || client?.name || '',
+      })
+      showToast(t('invoicePdfDownloaded'))
+    } catch {
+      showToast(t('invoicePdfGenerationError'), 'error')
+    }
+  }
+
+  async function printPortalInvoice() {
+    if (!invoicePreviewRef.current) return
+    try {
+      if (shouldUsePdfForPrint) {
+        const { downloadInvoicePdf } = await import('../../utils/invoicePdf')
+        await downloadInvoicePdf({
+          element: invoicePreviewRef.current,
+          invoiceNumber: activeInvoice?.number || activeInvoice?.invoiceNumber || '',
+          clientName: activeInvoice?.customerName || activeInvoice?.client?.name || client?.displayName || client?.name || '',
+        })
+        showToast(t('invoicePdfDownloaded'))
+        return
+      }
+      await printDocumentElement(invoicePreviewRef.current, { documentTitle: activeInvoice?.number || t('invoice') })
+    } catch (error) {
+      showToast(isPrintWindowBlockedError(error) ? t('invoicePrintPreparationError') : t('invoicePdfGenerationError'), 'error')
+    }
+  }
+
+  async function downloadActivePortalInvoice() {
+    if (!invoicePreviewRef.current) return
+    try {
+      const { downloadInvoicePdf } = await import('../../utils/invoicePdf')
+      await downloadInvoicePdf({
+        element: invoicePreviewRef.current,
+        invoiceNumber: activeInvoice?.number || activeInvoice?.invoiceNumber || '',
+        clientName: activeInvoice?.customerName || activeInvoice?.client?.name || client?.displayName || client?.name || '',
+      })
+      showToast(t('invoicePdfDownloaded'))
+    } catch {
+      showToast(t('invoicePdfGenerationError'), 'error')
+    }
+  }
+
   function closePhotoPreview() {
     setSelectedPhotoIndex(-1)
   }
@@ -625,6 +732,41 @@ export function PortalSummary({
               ) : (
                 <EmptyState message={t('noContractAvailableYet')} />
               )}
+
+              {visibleInvoices.map((invoice, index) => {
+                const invoiceKey = getPortalInvoiceKey(invoice, index)
+                const invoiceNumberValue = invoice?.number || invoice?.invoiceNumber || ''
+                const invoiceStatus = invoice?.status || 'Sent'
+                const invoiceLanguage = invoice?.invoiceLanguage && invoice.invoiceLanguage !== 'match' ? invoice.invoiceLanguage : language
+                const invoiceDate = formatInvoiceCalendarDate(invoice?.issueDate || invoice?.issue_date, invoiceLanguage)
+                const invoiceTotal = invoice?.totalAmount ?? invoice?.total ?? invoice?.amount
+                const invoicePaid = Number(invoice?.amountPaid ?? invoice?.amount_paid ?? 0)
+                const invoiceBalance = invoice?.remainingBalance ?? invoice?.amountDue ?? Math.max(Number(invoiceTotal || 0) - invoicePaid, 0)
+                return (
+                  <DocumentRow
+                    key={invoiceKey}
+                    title={`${t('invoice')} ${invoiceNumberValue}`.trim()}
+                    statusPresentation={getInvoiceStatusPresentation(invoiceStatus)}
+                    t={t}
+                    details={[
+                      { label: t('issueDate'), value: invoiceDate },
+                      { label: t('invoiceTotal'), value: formatCurrencyValue(invoiceTotal, t('notAdded')) },
+                      ...(invoicePaid > 0 ? [{ label: t('amountPaid'), value: currency.format(invoicePaid) }] : []),
+                      { label: t('remainingBalance'), value: currency.format(Number(invoiceBalance) || 0) },
+                    ]}
+                    primaryAction={(
+                      <button type="button" onClick={() => { setActiveInvoiceKey(invoiceKey); setOpenDocument('invoice') }} className="w-full rounded-2xl bg-slate-950 px-4 py-3 text-sm font-bold text-white hover:bg-slate-800 sm:w-auto">
+                        {t('view')}
+                      </button>
+                    )}
+                    secondaryAction={(
+                    <button type="button" disabled={!invoiceTemplateReady} onClick={() => downloadPortalInvoice(invoice, index)} className="w-full rounded-2xl border border-slate-200 bg-white px-4 py-3 text-sm font-bold text-slate-800 hover:bg-slate-50 disabled:cursor-wait disabled:opacity-60 sm:w-auto">
+                        {t('saveAsPdf')}
+                      </button>
+                    )}
+                  />
+                )
+              })}
             </div>
           </InfoCard>
         </div> : null}
@@ -700,6 +842,32 @@ export function PortalSummary({
         </div>
       ) : null}
 
+      {showDocuments ? visibleInvoices.map((invoice, index) => {
+        const key = getPortalInvoiceKey(invoice, index)
+        const invoiceLanguage = invoice?.invoiceLanguage && invoice.invoiceLanguage !== 'match' ? invoice.invoiceLanguage : language
+        const props = {
+          invoice,
+          company,
+          client: invoice?.client || client || {},
+          project: invoice?.project || project || {},
+          t: invoiceLanguage !== language ? createTranslator(invoiceLanguage) : t,
+          language: invoiceLanguage,
+        }
+        return (
+          <div key={`invoice-preview-${key}`} className="pointer-events-none fixed left-[-10000px] top-0 w-[850px] opacity-0">
+            <div
+              ref={(element) => element ? invoiceDocumentRefs.current.set(key, element) : invoiceDocumentRefs.current.delete(key)}
+              data-invoice-pdf-root="true"
+              style={{ width: '850px', backgroundColor: '#ffffff', color: '#0f172a', padding: 0, boxSizing: 'border-box' }}
+            >
+              <Suspense fallback={null}>
+                <LazyInvoicePdfTemplate {...props} />
+              </Suspense>
+            </div>
+          </div>
+        )
+      }) : null}
+
       {hasEstimate ? (
         <DocumentPreviewModal
           isOpen={openDocument === 'estimate'}
@@ -731,6 +899,25 @@ export function PortalSummary({
           <PaginatedContractPreview t={contractDocumentT}>
             <ContractPdfTemplate {...contractPreviewProps} />
           </PaginatedContractPreview>
+        </DocumentPreviewModal>
+      ) : null}
+
+      {activeInvoice && invoicePreviewProps ? (
+        <DocumentPreviewModal
+          isOpen={openDocument === 'invoice'}
+          title={`${t('invoice')} ${activeInvoice.number || activeInvoice.invoiceNumber || ''}`.trim()}
+          onClose={() => setOpenDocument(null)}
+          onPrimaryAction={printPortalInvoice}
+          primaryLabel={t('print')}
+          onDownload={downloadActivePortalInvoice}
+          downloadLabel={t('saveAsPdf')}
+          t={t}
+        >
+          <Suspense fallback={<AymeroLoader variant="document" title={t('invoicePreviewLoading')} accessibleLabel={t('invoicePreviewLoading')} />}>
+            <ScaledDocumentPreview pageWidth={defaultDocumentPreviewWidth} pagePadding={0}>
+              <LazyInvoicePdfTemplate ref={invoicePreviewRef} {...invoicePreviewProps} />
+            </ScaledDocumentPreview>
+          </Suspense>
         </DocumentPreviewModal>
       ) : null}
 

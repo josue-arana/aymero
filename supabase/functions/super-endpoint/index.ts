@@ -1,4 +1,9 @@
 import { createClient } from 'npm:@supabase/supabase-js@2'
+import {
+  buildPublicInvoice,
+  isPublicPortalInvoiceEligible,
+  PUBLIC_PORTAL_INVOICE_STATUSES,
+} from '../_shared/publicInvoiceFinancials.js'
 
 const corsHeaders = {
   'Access-Control-Allow-Origin': '*',
@@ -392,7 +397,7 @@ Deno.serve(async (request) => {
     const invoiceRequestId = crypto.randomUUID()
     const { data: invoiceRow, error: invoiceError } = await admin
       .from('invoices')
-      .select('contractor_id, client_id, project_id, invoice_number, title, description, customer_notes, line_items, subtotal, tax_amount, total_amount, amount_paid, status, issue_date, due_date, paid_at, public_share_token')
+      .select('id, contractor_id, client_id, project_id, invoice_number, title, description, customer_notes, line_items, subtotal, tax_amount, total_amount, amount_paid, status, issue_date, due_date, paid_at, public_share_token')
       .eq('public_share_token', token)
       .in('status', ['sent', 'partial', 'paid', 'overdue'])
       .is('archived_at', null)
@@ -450,6 +455,11 @@ Deno.serve(async (request) => {
       return jsonResponse({ error: 'Invoice service unavailable.' }, 500)
     }
 
+    if ((invoiceRow.project_id && !projectResult.data)
+      || (typeof storedInvoiceMetadata.leadId === 'string' && !leadResult.data)) {
+      return jsonResponse({ error: 'Invoice Not Found.' }, 404)
+    }
+
     const lead = leadResult.data || {}
     const project = projectResult.data || {}
     const linkedClientIds = [invoiceRow.client_id, project.client_id, lead.client_id]
@@ -461,8 +471,8 @@ Deno.serve(async (request) => {
         ? admin.from('clients').select('display_name, phone, email, address, city, state, postal_code, preferred_language')
           .eq('contractor_id', contractorId).eq('id', canonicalClientId).is('archived_at', null).maybeSingle()
         : Promise.resolve({ data: null, error: null }),
-      admin.from('payments').select('amount, payment_type, payment_date, payment_method, method, status, created_at')
-        .eq('contractor_id', contractorId).eq('invoice_id', invoiceRow.id).eq('status', 'recorded')
+      admin.from('payments').select('amount, payment_type, payment_date, payment_method, method, status, created_at, archived_at')
+        .eq('contractor_id', contractorId).eq('invoice_id', invoiceRow.id)
         .is('archived_at', null).order('payment_date', { ascending: false }),
     ])
     const failedInvoiceDataQuery = [
@@ -480,52 +490,17 @@ Deno.serve(async (request) => {
       return jsonResponse({ error: 'Invoice service unavailable.' }, 500)
     }
 
+    if (canonicalClientId && !clientResult.data) return jsonResponse({ error: 'Invoice Not Found.' }, 404)
+
     const client = clientResult.data || {}
     const settings = settingsResult.data || {}
     const customerName = storedInvoiceMetadata.clientName || client.display_name || lead.name || ''
-    const totalAmount = Number(invoiceRow.total_amount || 0)
-    const amountPaid = Number(invoiceRow.amount_paid || 0)
-    const linkedPaymentHistory = (paymentsResult.data || []).map((payment) => ({
-      amount: Number(payment.amount || 0),
-      date: payment.payment_date || payment.created_at || '',
-      method: payment.payment_method || payment.method || '',
-      type: payment.payment_type || '',
-    }))
-    const legacyPaymentHistory = Array.isArray(storedInvoiceMetadata.paymentHistory)
-      ? storedInvoiceMetadata.paymentHistory.map((payment: Record<string, unknown>) => ({
-        amount: Number(payment?.amount || 0),
-        date: String(payment?.date || payment?.paymentDate || ''),
-        method: String(payment?.method || payment?.paymentMethod || ''),
-        type: String(payment?.type || payment?.paymentType || ''),
-      }))
-      : []
-    const paymentHistory = linkedPaymentHistory.length ? linkedPaymentHistory : legacyPaymentHistory
-    const publicInvoice = {
-      number: invoiceRow.invoice_number || '',
-      invoiceNumber: invoiceRow.invoice_number || '',
-      title: invoiceRow.title || '',
-      projectTitle: invoiceRow.title || '',
-      customerName,
-      description: typeof storedInvoiceMetadata.summary === 'string' ? storedInvoiceMetadata.summary : '',
-      customerNotes: invoiceRow.customer_notes || '',
-      lineItems: Array.isArray(invoiceRow.line_items) ? invoiceRow.line_items.map((item: Record<string, unknown>) => ({
-        description: String(item?.description || item?.name || ''),
-        amount: item?.amount === null || item?.amount === undefined ? null : Number(item.amount),
-        quantity: item?.quantity === null || item?.quantity === undefined ? null : Number(item.quantity),
-      })) : [],
-      subtotal: Number(invoiceRow.subtotal || 0),
-      taxAmount: Number(invoiceRow.tax_amount || 0),
-      totalAmount,
-      amount: totalAmount,
-      amountPaid,
-      remainingBalance: Math.max(totalAmount - amountPaid, 0),
-      status: ({ sent: 'Sent', partial: 'Partially Paid', paid: 'Paid', overdue: 'Overdue' } as Record<string, string>)[String(invoiceRow.status)] || 'Sent',
-      issueDate: invoiceRow.issue_date || '',
-      dueDate: invoiceRow.due_date || '',
-      paidAt: invoiceRow.paid_at || '',
-      invoiceLanguage: storedInvoiceMetadata.invoiceLanguage || client.preferred_language || lead.client_language || 'en',
-      paymentHistory,
-    }
+    const customerLanguage = client.preferred_language || lead.client_language || 'en'
+    const publicInvoice = buildPublicInvoice(invoiceRow, paymentsResult.data || [], {
+      ...client,
+      display_name: customerName,
+      preferred_language: storedInvoiceMetadata.invoiceLanguage || customerLanguage,
+    })
 
     return jsonResponse({
       resource: 'invoice',
@@ -537,7 +512,7 @@ Deno.serve(async (request) => {
         city: client.city || '',
         state: client.state || '',
         postalCode: client.postal_code || '',
-        preferredLanguage: client.preferred_language || lead.client_language || '',
+        preferredLanguage: customerLanguage,
       },
       project: {
         title: project.title || invoiceRow.title || '',
@@ -591,7 +566,7 @@ Deno.serve(async (request) => {
     project.lead_id
       ? admin
           .from('leads')
-          .select('name, phone, email, address, client_language')
+          .select('name, phone, email, address, client_id, client_language')
           .eq('contractor_id', contractorId)
           .eq('id', project.lead_id)
           .is('archived_at', null)
@@ -611,13 +586,18 @@ Deno.serve(async (request) => {
     ? `project_id.eq.${projectId},and(project_id.is.null,lead_id.eq.${project.lead_id})`
     : `project_id.eq.${projectId}`
 
-  const [estimateResult, contractResult, paymentResult, eventResult, photoResult] = await Promise.all([
+  const [estimateResult, contractResult, invoiceResult, paymentResult, eventResult, photoResult] = await Promise.all([
     showDocuments
       ? admin.from('estimates').select('estimate_number, title, scope_of_work, line_items, subtotal, discount_amount, tax_amount, total_amount, additional_scope_charge_amount, additional_scope_charge_description, manual_total_override_enabled, manual_total_override_amount, deposit_percentage, materials_included, payment_terms, estimate_language, status, created_at, updated_at').eq('contractor_id', contractorId).eq('project_id', projectId).is('archived_at', null).order('created_at', { ascending: false }).limit(1).maybeSingle()
       : Promise.resolve({ data: null, error: null }),
     showDocuments
       ? admin.from('contracts').select('contract_number, title, scope_of_work, terms, total_amount, deposit_amount, payment_terms, status, sent_at, signed_at, signed_by, created_at, updated_at').eq('contractor_id', contractorId).eq('project_id', projectId).is('archived_at', null).order('created_at', { ascending: false }).limit(1).maybeSingle()
       : Promise.resolve({ data: null, error: null }),
+    showDocuments
+      ? admin.from('invoices').select('id, contractor_id, client_id, project_id, invoice_number, title, description, customer_notes, line_items, subtotal, tax_amount, total_amount, amount_paid, status, issue_date, due_date, paid_at, created_at')
+        .eq('contractor_id', contractorId).eq('project_id', projectId).in('status', PUBLIC_PORTAL_INVOICE_STATUSES)
+        .is('archived_at', null).order('issue_date', { ascending: false }).order('created_at', { ascending: false })
+      : Promise.resolve({ data: [], error: null }),
     showPayments
       ? admin.from('payments').select('amount, payment_type, payment_date, payment_method, method, status, created_at').eq('contractor_id', contractorId).eq('project_id', projectId).eq('status', 'recorded').is('archived_at', null).order('payment_date', { ascending: false })
       : Promise.resolve({ data: [], error: null }),
@@ -630,12 +610,35 @@ Deno.serve(async (request) => {
   const relatedQueries = [
     ['estimate', estimateResult.error],
     ['contract', contractResult.error],
+    ['invoices', invoiceResult.error],
     ['payments', paymentResult.error],
     ['events', eventResult.error],
     ['photos', photoResult.error],
   ] as const
   const failedQuery = relatedQueries.find(([, error]) => Boolean(error))
   if (failedQuery) return portalQueryFailure(failedQuery[0], failedQuery[1], portalRequestId)
+
+  const canonicalPortalClientId = project.client_id || leadResult.data?.client_id || ''
+  const rawPortalInvoices = (invoiceResult.data || []).filter((invoice) => isPublicPortalInvoiceEligible(invoice, {
+    contractorId,
+    projectId,
+    clientId: canonicalPortalClientId,
+  }))
+  const portalInvoiceIds = rawPortalInvoices.map((invoice) => invoice.id).filter(Boolean)
+  const invoiceClientIds = [...new Set([...rawPortalInvoices.map((invoice) => invoice.client_id), canonicalPortalClientId].filter(Boolean))]
+  const [invoicePaymentResult, invoiceClientResult] = await Promise.all([
+    portalInvoiceIds.length
+      ? admin.from('payments').select('invoice_id, amount, payment_type, payment_date, payment_method, method, status, created_at, archived_at')
+        .eq('contractor_id', contractorId).in('invoice_id', portalInvoiceIds).is('archived_at', null)
+        .order('payment_date', { ascending: false })
+      : Promise.resolve({ data: [], error: null }),
+    invoiceClientIds.length
+      ? admin.from('clients').select('id, display_name, phone, email, address, city, state, postal_code, preferred_language')
+        .eq('contractor_id', contractorId).in('id', invoiceClientIds).is('archived_at', null)
+      : Promise.resolve({ data: [], error: null }),
+  ])
+  if (invoicePaymentResult.error) return portalQueryFailure('invoice_payments', invoicePaymentResult.error, portalRequestId)
+  if (invoiceClientResult.error) return portalQueryFailure('invoice_clients', invoiceClientResult.error, portalRequestId)
 
   const photos = await Promise.all((photoResult.data || []).map(async (photo) => {
     const storagePath = photo.thumbnail_path || photo.file_path
@@ -655,6 +658,38 @@ Deno.serve(async (request) => {
 
   const client = clientResult.data || {}
   const relatedLead = leadResult.data || {}
+  const projectClientId = canonicalPortalClientId
+  const publicInvoices = rawPortalInvoices.filter((invoice) => (
+    !invoice.client_id || (invoiceClientResult.data || []).some((invoiceClient) => invoiceClient.id === invoice.client_id)
+  )).map((invoice) => {
+    const invoiceClient = (invoiceClientResult.data || []).find((candidate) => candidate.id === invoice.client_id)
+      || (invoice.client_id ? null : (invoiceClientResult.data || []).find((candidate) => candidate.id === projectClientId))
+      || client
+    const invoicePayments = (invoicePaymentResult.data || []).filter((payment) => payment.invoice_id === invoice.id)
+    const mapped = buildPublicInvoice(invoice, invoicePayments, {
+      display_name: invoiceClient.display_name || client.display_name || (projectClientId ? '' : relatedLead.name) || '',
+      preferred_language: invoiceClient.preferred_language || client.preferred_language || relatedLead.client_language || 'en',
+    })
+    return {
+      ...mapped,
+      client: {
+        name: mapped.customerName,
+        displayName: mapped.customerName,
+        phone: invoiceClient.phone || '',
+        email: invoiceClient.email || '',
+        address: invoiceClient.address || client.address || relatedLead.address || project.address || '',
+        city: invoiceClient.city || client.city || '',
+        state: invoiceClient.state || client.state || '',
+        postalCode: invoiceClient.postal_code || client.postal_code || '',
+        preferredLanguage: invoiceClient.preferred_language || client.preferred_language || relatedLead.client_language || '',
+      },
+      project: {
+        title: project.title || invoice.title || '',
+        projectTitle: project.title || invoice.title || '',
+        address: project.address || invoiceClient.address || client.address || relatedLead.address || '',
+      },
+    }
+  })
   const estimate = mapEstimate(estimateResult.data)
   const contract = mapContract(contractResult.data)
   const useDraftLeadContact = !contract || String(contract.status || '').toLowerCase() === 'draft'
@@ -696,6 +731,7 @@ Deno.serve(async (request) => {
       portal: {
         estimate: estimate || {},
         contract: contract || {},
+        invoices: publicInvoices,
         payments: publicPayments,
         events: publicEvents,
         photos: photos.filter(Boolean),
@@ -714,6 +750,7 @@ Deno.serve(async (request) => {
     },
     estimate,
     contract,
+    invoices: publicInvoices,
     payments: publicPayments,
     events: publicEvents,
     photos: photos.filter(Boolean),
